@@ -5,6 +5,8 @@ import typer
 from hollow_lodge import __version__
 from hollow_lodge.client.api import HollowLodgeApi, new_command_key
 from hollow_lodge.client.config import ClientConfig, load_config, save_config
+from hollow_lodge.client.handler import normalize_action_draft
+from hollow_lodge.client.local_log import LocalEventLog
 from hollow_lodge.client.render import render_contract_board, render_inbox
 
 
@@ -194,6 +196,40 @@ def check(
         idempotency_key=new_command_key("proof-provenance"),
     )
     typer.echo(f"{result['fragment_id']} provenance: {', '.join(result['provenance_flags'])}")
+
+
+@app.command()
+def act(
+    intent: str = typer.Argument(..., help="Freeform action intent."),
+    confirm: bool = typer.Option(False, "--confirm", help="Submit after normalization."),
+    crew_id: str | None = typer.Option(None, "--crew-id", help="Crew id; defaults to active crew."),
+    config: Path = typer.Option(DEFAULT_CONFIG_PATH, "--config", help="Local config path."),
+    local_log: Path = typer.Option(
+        Path.home() / ".local" / "state" / "hollow-lodge" / "local.jsonl",
+        "--local-log",
+        help="Local perspective log path.",
+    ),
+) -> None:
+    """Normalize and optionally submit a freeform action."""
+    current = load_config(config)
+    target_crew_id = crew_id or current.active_crew_id
+    if target_crew_id is None:
+        raise typer.BadParameter("crew id required when no active crew is configured")
+    frame = normalize_action_draft(
+        local_log=LocalEventLog(local_log),
+        intent=intent,
+        actor_player_id=current.player_id,
+        crew_id=target_crew_id,
+    )
+    if not confirm:
+        typer.echo(f"draft {frame.scope}: {frame.approach}")
+        return
+    response = _api_from_config(current).submit_action(
+        crew_id=target_crew_id,
+        intent=intent,
+        idempotency_key=new_command_key("action-submit"),
+    )
+    typer.echo(response["action_id"])
 
 
 def _api_from_config(config: ClientConfig) -> HollowLodgeApi:

@@ -5,6 +5,7 @@ from pathlib import Path
 from fastapi import FastAPI
 
 from hollow_lodge.eventlog.jsonl_store import JsonlEventStore
+from hollow_lodge.server.routes_actions import router as actions_router
 from hollow_lodge.server.routes_chat import router as chat_router
 from hollow_lodge.server.routes_contracts import router as contracts_router
 from hollow_lodge.server.routes_crews import router as crews_router
@@ -12,6 +13,7 @@ from hollow_lodge.server.routes_events import router as events_router
 from hollow_lodge.server.routes_identity import router as identity_router
 from hollow_lodge.server.routes_proofs import router as proofs_router
 from hollow_lodge.server.services import (
+    ActionService,
     ChatService,
     ContractService,
     CrewService,
@@ -46,6 +48,10 @@ def create_app(
         identity_service=identity_service,
         crew_service=crew_service,
     )
+    app.state.action_service = ActionService(
+        event_store=event_store,
+        crew_service=crew_service,
+    )
     app.state.visibility_service = VisibilityService(
         event_store=event_store,
         crew_service=crew_service,
@@ -61,6 +67,7 @@ def create_app(
     app.include_router(identity_router)
     app.include_router(crews_router)
     app.include_router(chat_router)
+    app.include_router(actions_router)
     app.include_router(contracts_router)
     app.include_router(proofs_router)
     app.include_router(events_router)

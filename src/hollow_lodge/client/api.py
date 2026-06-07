@@ -115,6 +115,13 @@ class HollowLodgeApi:
             idempotency_key=idempotency_key,
         )
 
+    def submit_action(self, *, crew_id: str, intent: str, idempotency_key: str) -> dict[str, Any]:
+        return self._post(
+            "/actions",
+            json={"crew_id": crew_id, "intent": intent, "confirmed": True},
+            idempotency_key=idempotency_key,
+        )
+
     def _post(
         self,
         path: str,

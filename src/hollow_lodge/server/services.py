@@ -11,6 +11,7 @@ from hollow_lodge.domain.events import EventVisibility
 from hollow_lodge.domain.chat import ChatMessage
 from hollow_lodge.domain.identity import Player, generate_token, hash_token
 from hollow_lodge.domain.proofs import ProofFragment
+from hollow_lodge.domain.actions import NormalizedAction
 from hollow_lodge.eventlog.jsonl_store import JsonlEventStore
 from hollow_lodge.eventlog.visibility import Principal
 from hollow_lodge.server.projections import contract_board_from_events, inbox_from_board
@@ -690,3 +691,141 @@ class ProofService:
             or event.payload["source_fragment_id"] != fragment_id
         ):
             raise ValueError("idempotency key conflict")
+
+
+class ActionService:
+    def __init__(self, *, event_store: JsonlEventStore, crew_service: CrewService):
+        self._event_store = event_store
+        self._crew_service = crew_service
+        self._lock = threading.RLock()
+
+    def submit_action(
+        self,
+        *,
+        player_id: str,
+        crew_id: str,
+        intent: str,
+        confirmed: bool,
+        idempotency_key: str,
+    ) -> dict:
+        if not confirmed:
+            raise ValueError("unconfirmed action was not submitted")
+        if not self._crew_service.is_member(crew_id=crew_id, player_id=player_id):
+            raise PermissionError(crew_id)
+        with self._lock:
+            existing = self._event_by_idempotency_key(idempotency_key)
+            if existing is not None:
+                if (
+                    existing.type != "action.submitted"
+                    or existing.actor_id != player_id
+                    or existing.payload["confirmed"] is not confirmed
+                    or existing.payload["action"]["crew_id"] != crew_id
+                    or existing.payload["action"]["intent"] != intent
+                ):
+                    raise ValueError("idempotency key conflict")
+                return existing.payload["action"]
+            action_number = self._submitted_action_count(crew_id) + 1
+            frame = NormalizedAction.from_intent(
+                intent=intent,
+                actor_player_id=player_id,
+                crew_id=crew_id,
+                action_number=action_number,
+            )
+            action = {
+                "action_id": f"action_{self._global_action_count() + 1:06d}",
+                "status": "submitted",
+                **frame.model_dump(mode="json"),
+            }
+            self._event_store.append_command(
+                event_type="action.submitted",
+                actor_id=player_id,
+                visibility=EventVisibility.crews([crew_id]),
+                payload={"confirmed": confirmed, "action": action},
+                idempotency_key=idempotency_key,
+            )
+            return action
+
+    def edit_action(
+        self,
+        *,
+        action_id: str,
+        player_id: str,
+        intent: str,
+        idempotency_key: str,
+    ) -> dict:
+        existing = self._event_by_idempotency_key(idempotency_key)
+        if existing is not None:
+            if (
+                existing.type != "action.edited"
+                or existing.actor_id != player_id
+                or existing.payload["action"]["action_id"] != action_id
+                or existing.payload["action"]["intent"] != intent
+            ):
+                raise ValueError("idempotency key conflict")
+            return existing.payload["action"]
+        action = self._current_action(action_id=action_id, player_id=player_id)
+        edited = {
+            **action,
+            "intent": intent,
+            "status": "submitted",
+        }
+        self._event_store.append_command(
+            event_type="action.edited",
+            actor_id=player_id,
+            visibility=EventVisibility.crews([action["crew_id"]]),
+            payload={"action": edited},
+            idempotency_key=idempotency_key,
+        )
+        return edited
+
+    def cancel_action(self, *, action_id: str, player_id: str, idempotency_key: str) -> dict:
+        existing = self._event_by_idempotency_key(idempotency_key)
+        if existing is not None:
+            if (
+                existing.type != "action.canceled"
+                or existing.actor_id != player_id
+                or existing.payload["action"]["action_id"] != action_id
+            ):
+                raise ValueError("idempotency key conflict")
+            return existing.payload["action"]
+        action = self._current_action(action_id=action_id, player_id=player_id)
+        canceled = {**action, "status": "canceled"}
+        self._event_store.append_command(
+            event_type="action.canceled",
+            actor_id=player_id,
+            visibility=EventVisibility.crews([action["crew_id"]]),
+            payload={"action": canceled},
+            idempotency_key=idempotency_key,
+        )
+        return canceled
+
+    def _submitted_action_count(self, crew_id: str) -> int:
+        return sum(
+            1
+            for event in self._event_store.read_for_principal(Principal.crew(crew_id))
+            if event.type == "action.submitted"
+        )
+
+    def _global_action_count(self) -> int:
+        return sum(1 for event in self._event_store.read() if event.type == "action.submitted")
+
+    def _current_action(self, *, action_id: str, player_id: str) -> dict:
+        current: dict | None = None
+        for crew_id in self._crew_service.crew_ids_for_player(player_id):
+            for event in self._event_store.read_for_principal(Principal.crew(crew_id)):
+                if event.type not in {"action.submitted", "action.edited", "action.canceled"}:
+                    continue
+                action = event.payload["action"]
+                if action["action_id"] == action_id:
+                    current = action
+        if current is None:
+            raise KeyError(action_id)
+        if current["status"] == "canceled":
+            raise ValueError("action already canceled")
+        return current
+
+    def _event_by_idempotency_key(self, idempotency_key: str):
+        for event in self._event_store.read():
+            if event.idempotency_key == idempotency_key:
+                return event
+        return None
