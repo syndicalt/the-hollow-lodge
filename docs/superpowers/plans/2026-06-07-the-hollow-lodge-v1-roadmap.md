@@ -131,12 +131,22 @@ Exit criteria:
 - Test: `tests/eventlog/test_visibility.py`
 
 - [ ] Define a Pydantic `GameEvent` with event id, sequence, timestamp, type, actor id, visibility, payload, and previous hash.
-- [ ] Implement JSONL append with monotonic sequence numbers and hash chaining.
+- [ ] Define an `EventStore` interface so server routes do not write JSONL directly.
+- [ ] Implement JSONL append with monotonic sequence numbers, canonical JSON serialization, hash chaining, and a process-local write lock.
+- [ ] Require an idempotency key for command-derived events and return the original event for replayed keys.
 - [ ] Implement read by sequence range.
-- [ ] Implement visibility filtering for public, crew-scoped, player-scoped, and server-only events.
+- [ ] Implement deny-by-default visibility filtering with explicit player and crew principals, not only broad scope labels.
+- [ ] Add event schema versioning to every persisted event.
+- [ ] Add an integrity verifier that detects hash-chain breaks and invalid JSONL rows.
+- [ ] Add projection rebuild helper tests that can rebuild current state from the log.
+- [ ] Define partial-write recovery behavior: ignore a trailing invalid JSON row only when verifier is called with explicit repair mode.
 - [ ] Test append/read/hash-chain behavior.
+- [ ] Test concurrent append does not duplicate sequence numbers.
+- [ ] Test replayed idempotency key does not append a duplicate event.
 - [ ] Test that player-scoped events are only visible to the named player.
 - [ ] Test that server-only events never appear in local perspective reads.
+- [ ] Test two-crew visibility and targeted proof/chat visibility fixtures.
+- [ ] Test verifier rejects a corrupted hash chain.
 - [ ] Run `pytest tests/eventlog -q`.
 - [ ] Commit with message: `feat: add authoritative event log`.
 
@@ -144,6 +154,7 @@ Exit criteria:
 
 - Event log append is deterministic and auditable.
 - Visibility filtering is test-covered before chat or contracts exist.
+- Server-only event data cannot leave server scopes through event reads.
 
 ## Milestone 2: Identity, Invites, Crews, And CLI Tokens
 
@@ -163,15 +174,21 @@ Exit criteria:
 - Test: `tests/client/test_config.py`
 
 - [ ] Add invite-code registration endpoint that returns a player id and token.
-- [ ] Store tokens server-side as hashed token records.
+- [ ] Generate tokens with at least 256 bits of entropy.
+- [ ] Store tokens server-side as SHA-256 hashed token records with constant-time comparison.
+- [ ] Add token revocation support even if no CLI command exposes it yet.
 - [ ] Add token auth dependency for server routes.
+- [ ] Define route-by-route authority rules for identity and crew routes before implementation.
 - [ ] Add CLI command: `hollow lodge register --server <url> --invite <code> --name <name>`.
-- [ ] Store local config under an explicit path supplied by tests; default user path can be added after tests.
+- [ ] Store local config under an explicit path supplied by tests with owner-only file permissions; default user path can be added after tests.
 - [ ] Add crew creation and join commands.
 - [ ] Enforce crew size range of 3-5 as a warning for readiness, while allowing 2-player test crews for the starter slice.
 - [ ] Test invite registration succeeds once and rejects reused invite codes.
+- [ ] Test invite attempts do not expose token or invite secrets in error responses.
 - [ ] Test token auth rejects missing/invalid tokens.
+- [ ] Test revoked tokens are rejected.
 - [ ] Test crew membership is recorded through authoritative events.
+- [ ] Test wrong actor and wrong crew operations are denied.
 - [ ] Run `pytest tests/server/test_identity_routes.py tests/server/test_crew_routes.py tests/client/test_config.py -q`.
 - [ ] Commit with message: `feat: add invite identity and crews`.
 
@@ -196,6 +213,7 @@ Exit criteria:
 - [ ] Define chat event payloads for direct player message, crew message, and crew-to-crew targeted message.
 - [ ] Require every chat message to receive a canonical server message id.
 - [ ] Persist chat as visibility-scoped events.
+- [ ] Add minimal local perspective log support for synced visible chat events and local-only Handler notes.
 - [ ] Add CLI commands:
   - `hollow lodge msg @player <text>`
   - `hollow lodge crew <text>`
@@ -206,6 +224,7 @@ Exit criteria:
 - [ ] Test crew messages sync only to crew members.
 - [ ] Test crew-to-crew messages sync only to both crews.
 - [ ] Test message ids can be cited by later commands.
+- [ ] Test local-only Handler notes never sync to the server as authoritative facts.
 - [ ] Run `pytest tests/server/test_chat_routes.py tests/client/test_chat_cli.py -q`.
 - [ ] Commit with message: `feat: add brokered chat`.
 
@@ -263,12 +282,14 @@ Exit criteria:
 - [ ] Define proof fragment model with fragment id, content summary, source chain, visibility, and provenance flags.
 - [ ] Add targeted proof transfer route.
 - [ ] Add side-action counter per player per phase.
+- [ ] Implement provenance check as a server command that consumes a side action and returns a visibility-scoped result event.
 - [ ] Add CLI command: `hollow lodge check <fragment-id> provenance`.
 - [ ] Implement deterministic shallow provenance read for the starter ledger fragment.
 - [ ] Enforce side-action consumption.
 - [ ] Test copied fragments preserve provenance chain internally.
 - [ ] Test recipient sees only surface provenance until a check is spent.
 - [ ] Test side-action limit rejects extra checks.
+- [ ] Test Handler summaries cannot create official provenance result events.
 - [ ] Run `pytest tests/domain/test_proof_fragments.py tests/server/test_proof_routes.py tests/workflows/test_deterministic_handler.py -q`.
 - [ ] Commit with message: `feat: add proof provenance checks`.
 
@@ -326,7 +347,7 @@ Exit criteria:
 
 - [ ] Define proof dossier model with claim, evidence ids, reasoning, weaknesses, and provenance concerns.
 - [ ] Add campaign Packet Lead assignment.
-- [ ] Add simple-majority Packet Lead replacement vote.
+- [ ] Add simple-majority Packet Lead replacement vote with explicit tie, duplicate-vote, vote-change, removed-member, and 2-player test-crew rules.
 - [ ] Add dossier update endpoint restricted to Packet Lead for framing fields.
 - [ ] Allow crew members to contribute notes/evidence without changing final framing.
 - [ ] Add CLI commands:
@@ -337,6 +358,7 @@ Exit criteria:
 - [ ] Test Packet Lead can edit claim/reasoning.
 - [ ] Test non-lead cannot overwrite framing.
 - [ ] Test simple-majority vote replaces Packet Lead.
+- [ ] Test ties and duplicate votes do not replace Packet Lead.
 - [ ] Test server does not label dossier contamination intent.
 - [ ] Run `pytest tests/domain/test_dossiers.py tests/server/test_packet_lead.py -q`.
 - [ ] Commit with message: `feat: add proof dossiers`.
@@ -360,14 +382,18 @@ Exit criteria:
 
 - [ ] Define scoring inputs: evidence credibility, corroboration, source independence, provenance quality, contradictions, reasoning quality, heat/noise penalties, and occult resonance.
 - [ ] Implement deterministic scorer for Auction Preview.
-- [ ] Implement phase lock when deadline is reached or enough meaningful actions are committed.
-- [ ] Resolve the Gilt Knives clerk action into forged-date correlation.
-- [ ] Resolve the Moth Choir moth jar action into door omen.
+- [ ] Implement a phase state machine with deterministic test clock support.
+- [ ] Implement phase lock when deadline is reached or enough meaningful actions are committed, including duplicate-lock protection.
+- [ ] Define edit/cancel behavior for submit-at-lock and cancel-at-lock conflicts.
+- [ ] Resolve provenance-analysis action frames into forged-date correlation when seeded evidence supports it.
+- [ ] Resolve occult-observation action frames into door omen when seeded evidence supports it.
 - [ ] Update crew heat/noise and proof standing.
 - [ ] Reveal phase scores after resolution while preserving campaign-hidden facts.
 - [ ] Test Gilt Knives takes a strong phase lead from clean provenance contradiction.
 - [ ] Test Moth Choir remains viable through alternate occult clue.
 - [ ] Test exact hidden truth does not leak in score reveal.
+- [ ] Test submit-at-lock, cancel-at-lock, replayed submit, and duplicate lock behavior.
+- [ ] Test equivalent valid frames resolve through rules, not crew-name special cases.
 - [ ] Run `pytest tests/domain/test_scoring.py tests/server/test_phase_resolution.py -q`.
 - [ ] Commit with message: `feat: resolve auction preview phase`.
 
@@ -460,6 +486,10 @@ Every milestone must include:
 - no server-only event visible in client sync tests
 - no local Handler output mutating server state without explicit submission
 - no OAuth dependency
+- wrong actor denied
+- replayed command ignored or returned idempotently
+- malformed payload rejected without mutating state
+- projection rebuild matches authoritative events for changed state
 - commit after green tests
 
 Before claiming the v1 vertical slice is ready:
