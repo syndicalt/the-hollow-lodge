@@ -178,3 +178,19 @@ def test_non_trailing_malformed_json_is_never_repaired(tmp_path):
 
     with pytest.raises(EventLogIntegrityError, match="invalid JSON"):
         store.verify_integrity(repair=True)
+
+
+def test_trailing_schema_invalid_json_is_never_repaired(tmp_path):
+    log_path = tmp_path / "events.jsonl"
+    store = JsonlEventStore(log_path)
+    store.append(
+        event_type="contract.seeded",
+        actor_id="server",
+        visibility=EventVisibility.server_only(),
+        payload={"contract_id": "contract_false_finger"},
+    )
+    with log_path.open("a", encoding="utf-8") as handle:
+        handle.write('{"not":"a game event"}\n')
+
+    with pytest.raises(EventLogIntegrityError, match="invalid event row"):
+        store.verify_integrity(repair=True)

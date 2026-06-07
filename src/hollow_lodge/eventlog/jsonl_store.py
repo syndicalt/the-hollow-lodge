@@ -174,11 +174,14 @@ class JsonlEventStore(EventStore):
                 continue
             try:
                 raw = json.loads(line)
-                event = GameEvent.model_validate(raw)
-            except (json.JSONDecodeError, ValidationError) as exc:
+            except json.JSONDecodeError as exc:
                 if repair and index == len(lines) - 1:
                     break
                 raise EventLogIntegrityError(f"invalid JSON row {index + 1}") from exc
+            try:
+                event = GameEvent.model_validate(raw)
+            except ValidationError as exc:
+                raise EventLogIntegrityError(f"invalid event row {index + 1}") from exc
             if validate_hashes:
                 expected_hash = compute_event_hash(event.model_dump(mode="json", exclude={"event_hash"}))
                 if event.event_hash != expected_hash:
@@ -193,8 +196,8 @@ class JsonlEventStore(EventStore):
         if not lines:
             return False
         try:
-            GameEvent.model_validate(json.loads(lines[-1]))
-        except (json.JSONDecodeError, ValidationError):
+            json.loads(lines[-1])
+        except json.JSONDecodeError:
             return True
         return False
 
