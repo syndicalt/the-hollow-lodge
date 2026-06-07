@@ -158,8 +158,9 @@ def test_malformed_trailing_json_fails_unless_explicit_repair_mode_is_used(tmp_p
         store.read()
     with pytest.raises(EventLogIntegrityError, match="invalid JSON"):
         store.verify_integrity()
+    with pytest.raises(TypeError):
+        store.read(repair=True)
 
-    assert [event.sequence for event in store.read(repair=True)] == [1]
     assert store.verify_integrity(repair=True).repaired_trailing_row is True
 
 
@@ -176,4 +177,4 @@ def test_non_trailing_malformed_json_is_never_repaired(tmp_path):
     log_path.write_text('{"sequence":\n' + valid_row)
 
     with pytest.raises(EventLogIntegrityError, match="invalid JSON"):
-        store.read(repair=True)
+        store.verify_integrity(repair=True)

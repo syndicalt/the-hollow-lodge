@@ -60,7 +60,6 @@ class EventStore(ABC):
         *,
         start_sequence: int | None = None,
         end_sequence: int | None = None,
-        repair: bool = False,
     ) -> list[GameEvent]:
         raise NotImplementedError
 
@@ -129,9 +128,8 @@ class JsonlEventStore(EventStore):
         *,
         start_sequence: int | None = None,
         end_sequence: int | None = None,
-        repair: bool = False,
     ) -> list[GameEvent]:
-        events = self._read_unlocked(repair=repair)
+        events = self._read_unlocked(repair=False)
         if start_sequence is not None:
             events = [event for event in events if event.sequence >= start_sequence]
         if end_sequence is not None:
