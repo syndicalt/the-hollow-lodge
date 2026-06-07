@@ -22,6 +22,7 @@ app.add_typer(packet_lead_app, name="packet-lead")
 
 
 DEFAULT_CONFIG_PATH = Path.home() / ".config" / "hollow-lodge" / "config.json"
+DEFAULT_LOCAL_LOG_PATH = Path.home() / ".local" / "state" / "hollow-lodge" / "local.jsonl"
 
 
 @app.callback()
@@ -187,6 +188,36 @@ def inbox(
 
 
 @app.command()
+def sync(
+    config: Path = typer.Option(DEFAULT_CONFIG_PATH, "--config", help="Local config path."),
+    local_log: Path = typer.Option(
+        DEFAULT_LOCAL_LOG_PATH,
+        "--local-log",
+        help="Local perspective log path.",
+    ),
+) -> None:
+    """Sync visible server events into the local perspective log."""
+    log = LocalEventLog(local_log)
+    events = _api_from_config(load_config(config)).visible_events()
+    synced = log.sync_visible_server_events(events)
+    typer.echo(f"synced {synced} events")
+
+
+@app.command()
+def replay(
+    since: int = typer.Option(0, "--since", help="Replay server events after this sequence."),
+    local_log: Path = typer.Option(
+        DEFAULT_LOCAL_LOG_PATH,
+        "--local-log",
+        help="Local perspective log path.",
+    ),
+) -> None:
+    """Replay the local perspective log."""
+    for line in LocalEventLog(local_log).render_replay(since_sequence=since):
+        typer.echo(line)
+
+
+@app.command()
 def check(
     fragment_id: str = typer.Argument(..., help="Proof fragment id."),
     check_type: str = typer.Argument(..., help="Check type."),
@@ -209,7 +240,7 @@ def act(
     crew_id: str | None = typer.Option(None, "--crew-id", help="Crew id; defaults to active crew."),
     config: Path = typer.Option(DEFAULT_CONFIG_PATH, "--config", help="Local config path."),
     local_log: Path = typer.Option(
-        Path.home() / ".local" / "state" / "hollow-lodge" / "local.jsonl",
+        DEFAULT_LOCAL_LOG_PATH,
         "--local-log",
         help="Local perspective log path.",
     ),

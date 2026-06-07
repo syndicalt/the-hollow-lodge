@@ -94,9 +94,13 @@ class HollowLodgeApi:
         )
 
     def visible_events(self) -> list[dict[str, Any]]:
+        return self.visible_events_since(since_sequence=0)
+
+    def visible_events_since(self, *, since_sequence: int) -> list[dict[str, Any]]:
         response = httpx.get(
             f"{self.server_url}/events",
             headers=self._auth_headers(),
+            params={"since_sequence": since_sequence},
             timeout=10,
         )
         response.raise_for_status()

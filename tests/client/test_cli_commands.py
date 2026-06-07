@@ -67,7 +67,9 @@ class FakeApi:
         self.calls.append(("visible_events", {}))
         return [
             {
+                "event_id": "evt_7",
                 "sequence": 7,
+                "type": "chat.message.created",
                 "payload": {
                     "message_id": "msg_000007",
                     "sender_player_id": "player_0001",
@@ -75,6 +77,17 @@ class FakeApi:
                     "recipient_crew_id": "crew_b",
                     "body": "No public claims until lock.",
                 },
+            }
+        ]
+
+    def visible_events_since(self, *, since_sequence: int):
+        self.calls.append(("visible_events_since", {"since_sequence": since_sequence}))
+        return [
+            {
+                "event_id": "evt_8",
+                "sequence": 8,
+                "type": "chat.message.created",
+                "payload": {"sender_player_id": "player_0002", "body": "Ledger moved."},
             }
         ]
 
@@ -239,6 +252,56 @@ def test_thread_command_renders_crew_to_crew_conversation_id(tmp_path, monkeypat
 
     assert result.exit_code == 0
     assert "No public claims until lock." in result.output
+
+
+def test_sync_command_fetches_delta_into_local_log(tmp_path, monkeypatch):
+    runner = CliRunner()
+    created_clients: list[FakeApi] = []
+
+    def fake_client(**kwargs):
+        client = FakeApi(**kwargs)
+        created_clients.append(client)
+        return client
+
+    monkeypatch.setattr(cli, "HollowLodgeApi", fake_client)
+    config_path = tmp_path / "config.json"
+    local_log_path = tmp_path / "local.jsonl"
+    save_config(
+        config_path,
+        ClientConfig(server_url="http://testserver", player_id="player_0001", token="token"),
+    )
+
+    result = runner.invoke(
+        cli.app,
+        ["sync", "--config", str(config_path), "--local-log", str(local_log_path)],
+    )
+
+    assert result.exit_code == 0
+    assert "synced 1 events" in result.output
+    assert created_clients[0].calls == [("visible_events", {})]
+    assert "No public claims until lock." in local_log_path.read_text()
+
+
+def test_replay_command_renders_local_perspective_log(tmp_path):
+    runner = CliRunner()
+    local_log_path = tmp_path / "local.jsonl"
+    LocalEventLog = cli.LocalEventLog
+    log = LocalEventLog(local_log_path)
+    log.sync_visible_server_events(
+        [
+            {
+                "event_id": "evt_8",
+                "sequence": 8,
+                "type": "chat.message.created",
+                "payload": {"sender_player_id": "player_0002", "body": "Ledger moved."},
+            }
+        ]
+    )
+
+    result = runner.invoke(cli.app, ["replay", "--since", "0", "--local-log", str(local_log_path)])
+
+    assert result.exit_code == 0
+    assert "8 player_0002: Ledger moved." in result.output
 
 
 def test_check_provenance_command_uses_saved_config(tmp_path, monkeypatch):
