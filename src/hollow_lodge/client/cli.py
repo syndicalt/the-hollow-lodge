@@ -5,6 +5,7 @@ import typer
 from hollow_lodge import __version__
 from hollow_lodge.client.api import HollowLodgeApi, new_command_key
 from hollow_lodge.client.config import ClientConfig, load_config, save_config
+from hollow_lodge.client.render import render_contract_board, render_inbox
 
 
 app = typer.Typer(
@@ -161,6 +162,22 @@ def thread(
         payload = event.get("payload", {})
         if _payload_matches_conversation(payload, conversation_id):
             typer.echo(f"{event['sequence']} {payload.get('sender_player_id')}: {payload.get('body')}")
+
+
+@app.command()
+def contracts(
+    config: Path = typer.Option(DEFAULT_CONFIG_PATH, "--config", help="Local config path."),
+) -> None:
+    """Show the contract board."""
+    typer.echo(render_contract_board(_api_from_config(load_config(config)).contracts()))
+
+
+@app.command()
+def inbox(
+    config: Path = typer.Option(DEFAULT_CONFIG_PATH, "--config", help="Local config path."),
+) -> None:
+    """Show the personal inbox."""
+    typer.echo(render_inbox(_api_from_config(load_config(config)).inbox()))
 
 
 def _api_from_config(config: ClientConfig) -> HollowLodgeApi:

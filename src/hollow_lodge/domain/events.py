@@ -16,15 +16,15 @@ SCHEMA_VERSION = 1
 class VisibilityPrincipal(BaseModel):
     model_config = ConfigDict(frozen=True, extra="forbid")
 
-    kind: Literal["player", "crew", "server"]
+    kind: Literal["player", "crew", "server", "public"]
     id: str | None = None
 
     @model_validator(mode="after")
     def validate_id_shape(self) -> VisibilityPrincipal:
         if self.kind in {"player", "crew"} and not self.id:
             raise ValueError("player and crew visibility principals require non-empty ids")
-        if self.kind == "server" and self.id is not None:
-            raise ValueError("server visibility principal must not include an id")
+        if self.kind in {"server", "public"} and self.id is not None:
+            raise ValueError("server and public visibility principals must not include an id")
         return self
 
 
@@ -44,6 +44,10 @@ class EventVisibility(BaseModel):
     @classmethod
     def server_only(cls) -> EventVisibility:
         return cls(principals=(VisibilityPrincipal(kind="server"),))
+
+    @classmethod
+    def public(cls) -> EventVisibility:
+        return cls(principals=(VisibilityPrincipal(kind="public"),))
 
     @classmethod
     def players(cls, player_ids: list[str] | tuple[str, ...]) -> EventVisibility:

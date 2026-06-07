@@ -12,6 +12,8 @@ from hollow_lodge.domain.chat import ChatMessage
 from hollow_lodge.domain.identity import Player, generate_token, hash_token
 from hollow_lodge.eventlog.jsonl_store import JsonlEventStore
 from hollow_lodge.eventlog.visibility import Principal
+from hollow_lodge.server.projections import contract_board_from_events, inbox_from_board
+from hollow_lodge.server.seed_data import STARTER_CAMPAIGN, STARTER_CONTRACT, STARTER_HIDDEN_TRUTH
 from hollow_lodge.server.auth import authenticate_token
 
 
@@ -464,3 +466,41 @@ class VisibilityService:
             for event in self._event_store.read_for_principal(Principal.crew(crew_id)):
                 visible[event.event_id] = event
         return sorted(visible.values(), key=lambda event: event.sequence)
+
+
+class ContractService:
+    def __init__(self, *, event_store: JsonlEventStore):
+        self._event_store = event_store
+        self._lock = threading.RLock()
+        self._seed_starter_contract()
+
+    def board_for_player(self, player_id: str):
+        _ = player_id
+        return contract_board_from_events(self._event_store.read())
+
+    def inbox_for_player(self, player_id: str):
+        return inbox_from_board(player_id=player_id, board=self.board_for_player(player_id))
+
+    def _seed_starter_contract(self) -> None:
+        with self._lock:
+            self._event_store.append_command(
+                event_type="campaign.seeded",
+                actor_id="server",
+                visibility=EventVisibility.public(),
+                payload=STARTER_CAMPAIGN.model_dump(mode="json"),
+                idempotency_key=f"seed.{STARTER_CAMPAIGN.campaign_id}",
+            )
+            self._event_store.append_command(
+                event_type="contract.hidden_truth.seeded",
+                actor_id="server",
+                visibility=EventVisibility.server_only(),
+                payload=STARTER_HIDDEN_TRUTH.model_dump(mode="json"),
+                idempotency_key=f"seed.{STARTER_HIDDEN_TRUTH.truth_id}",
+            )
+            self._event_store.append_command(
+                event_type="contract.board.published",
+                actor_id="server",
+                visibility=EventVisibility.public(),
+                payload=STARTER_CONTRACT.model_dump(mode="json"),
+                idempotency_key=f"seed.{STARTER_CONTRACT.contract_id}.board",
+            )

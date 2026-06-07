@@ -46,9 +46,9 @@ def test_direct_messages_sync_only_to_sender_and_recipient(tmp_path):
     assert sent.status_code == 201
     message_id = sent.json()["message_id"]
     assert message_id.startswith("msg_")
-    assert _visible_types(client, ada["token"]) == ["chat.message.created"]
-    assert _visible_types(client, grace["token"]) == ["chat.message.created"]
-    assert _visible_types(client, linus["token"]) == []
+    assert _visible_types(client, ada["token"], prefix="chat.") == ["chat.message.created"]
+    assert _visible_types(client, grace["token"], prefix="chat.") == ["chat.message.created"]
+    assert _visible_types(client, linus["token"], prefix="chat.") == []
 
 
 def test_crew_messages_sync_only_to_crew_members(tmp_path):
@@ -70,9 +70,17 @@ def test_crew_messages_sync_only_to_crew_members(tmp_path):
     )
 
     assert sent.status_code == 201
-    assert _visible_types(client, ada["token"]) == ["crew.created", "crew.member.joined", "chat.message.created"]
-    assert _visible_types(client, grace["token"]) == ["crew.created", "crew.member.joined", "chat.message.created"]
-    assert _visible_types(client, linus["token"]) == []
+    assert _visible_types(client, ada["token"], prefix=("crew.", "chat.")) == [
+        "crew.created",
+        "crew.member.joined",
+        "chat.message.created",
+    ]
+    assert _visible_types(client, grace["token"], prefix=("crew.", "chat.")) == [
+        "crew.created",
+        "crew.member.joined",
+        "chat.message.created",
+    ]
+    assert _visible_types(client, linus["token"], prefix=("crew.", "chat.")) == []
 
 
 def test_crew_to_crew_messages_sync_only_to_both_crews(tmp_path):
@@ -107,7 +115,9 @@ def test_chat_does_not_create_binding_deal_state(tmp_path):
     )
 
     visible = client.get("/events", headers=auth(ada["token"])).json()["events"]
-    assert [event["type"] for event in visible] == ["chat.message.created"]
+    assert [event["type"] for event in visible if event["type"].startswith("chat.")] == [
+        "chat.message.created"
+    ]
     assert all(not event["type"].startswith("deal.") for event in visible)
 
 
@@ -174,7 +184,15 @@ def test_chat_message_ids_advance_after_app_recreation(tmp_path):
     assert second.json()["message_id"] == "msg_000002"
 
 
-def _visible_types(client: TestClient, token: str) -> list[str]:
+def _visible_types(
+    client: TestClient,
+    token: str,
+    *,
+    prefix: str | tuple[str, ...] | None = None,
+) -> list[str]:
     response = client.get("/events", headers=auth(token))
     assert response.status_code == 200
-    return [event["type"] for event in response.json()["events"]]
+    types = [event["type"] for event in response.json()["events"]]
+    if prefix is None:
+        return types
+    return [event_type for event_type in types if event_type.startswith(prefix)]

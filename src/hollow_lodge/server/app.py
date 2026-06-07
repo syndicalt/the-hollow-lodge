@@ -6,10 +6,17 @@ from fastapi import FastAPI
 
 from hollow_lodge.eventlog.jsonl_store import JsonlEventStore
 from hollow_lodge.server.routes_chat import router as chat_router
+from hollow_lodge.server.routes_contracts import router as contracts_router
 from hollow_lodge.server.routes_crews import router as crews_router
 from hollow_lodge.server.routes_events import router as events_router
 from hollow_lodge.server.routes_identity import router as identity_router
-from hollow_lodge.server.services import ChatService, CrewService, IdentityService, VisibilityService
+from hollow_lodge.server.services import (
+    ChatService,
+    ContractService,
+    CrewService,
+    IdentityService,
+    VisibilityService,
+)
 
 
 def create_app(
@@ -41,9 +48,14 @@ def create_app(
         event_store=event_store,
         crew_service=crew_service,
     )
+
+    if data_dir is not None:
+        app.state.contract_service = ContractService(event_store=event_store)
+
     app.include_router(identity_router)
     app.include_router(crews_router)
     app.include_router(chat_router)
+    app.include_router(contracts_router)
     app.include_router(events_router)
 
     @app.get("/health", tags=["system"])

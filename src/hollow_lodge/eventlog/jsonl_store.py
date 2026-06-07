@@ -85,7 +85,6 @@ class JsonlEventStore(EventStore):
 
     def __init__(self, path: str | Path):
         self.path = Path(path)
-        self.path.parent.mkdir(parents=True, exist_ok=True)
         with self._locks_guard:
             self._write_lock = self._locks.setdefault(self.path.resolve(), threading.Lock())
 
@@ -126,6 +125,7 @@ class JsonlEventStore(EventStore):
                 idempotency_key=idempotency_key,
                 command_fingerprint=fingerprint,
             )
+            self.path.parent.mkdir(parents=True, exist_ok=True)
             with self.path.open("ab") as handle:
                 handle.write(canonical_json_bytes(event.model_dump(mode="json", by_alias=False)))
                 handle.write(b"\n")

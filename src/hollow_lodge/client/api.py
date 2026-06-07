@@ -102,6 +102,12 @@ class HollowLodgeApi:
         response.raise_for_status()
         return response.json()["events"]
 
+    def contracts(self) -> dict[str, Any]:
+        return self._get("/contracts")
+
+    def inbox(self) -> dict[str, Any]:
+        return self._get("/inbox")
+
     def _post(
         self,
         path: str,
@@ -117,6 +123,15 @@ class HollowLodgeApi:
             f"{self.server_url}{path}",
             headers=headers,
             json=json,
+            timeout=10,
+        )
+        response.raise_for_status()
+        return response.json()
+
+    def _get(self, path: str) -> dict[str, Any]:
+        response = httpx.get(
+            f"{self.server_url}{path}",
+            headers=self._auth_headers(),
             timeout=10,
         )
         response.raise_for_status()
