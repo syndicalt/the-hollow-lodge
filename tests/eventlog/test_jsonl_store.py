@@ -6,9 +6,11 @@ import pytest
 from hollow_lodge.domain.events import EventVisibility
 from hollow_lodge.eventlog.jsonl_store import (
     EventLogIntegrityError,
+    IdempotencyConflictError,
     JsonlEventStore,
     rebuild_projection,
 )
+from hollow_lodge.eventlog.visibility import Principal
 
 
 def test_append_read_and_hash_chain(tmp_path):
@@ -74,12 +76,34 @@ def test_replayed_idempotency_key_returns_original_event_without_duplicate(tmp_p
         event_type="action.submitted",
         actor_id="player_ada",
         visibility=EventVisibility.players(["player_ada"]),
-        payload={"intent": "inspect the ledger again"},
+        payload={"intent": "inspect the ledger"},
         idempotency_key="submit-action-1",
     )
 
     assert replayed == first
+    assert replayed.payload == {"intent": "inspect the ledger"}
+    assert replayed.command_fingerprint is not None
     assert len(store.read()) == 1
+
+
+def test_replayed_idempotency_key_with_different_command_is_rejected(tmp_path):
+    store = JsonlEventStore(tmp_path / "events.jsonl")
+    store.append_command(
+        event_type="action.submitted",
+        actor_id="player_ada",
+        visibility=EventVisibility.players(["player_ada"]),
+        payload={"intent": "inspect the ledger"},
+        idempotency_key="submit-action-1",
+    )
+
+    with pytest.raises(IdempotencyConflictError, match="idempotency key conflict"):
+        store.append_command(
+            event_type="action.submitted",
+            actor_id="player_ada",
+            visibility=EventVisibility.players(["player_ada"]),
+            payload={"intent": "inspect the reliquary"},
+            idempotency_key="submit-action-1",
+        )
 
 
 def test_command_events_require_idempotency_keys(tmp_path):
@@ -162,6 +186,7 @@ def test_malformed_trailing_json_fails_unless_explicit_repair_mode_is_used(tmp_p
         store.read(repair=True)
 
     assert store.verify_integrity(repair=True).repaired_trailing_row is True
+    assert store.read() == store.read_for_principal(Principal.server())
 
 
 def test_non_trailing_malformed_json_is_never_repaired(tmp_path):
@@ -194,3 +219,22 @@ def test_trailing_schema_invalid_json_is_never_repaired(tmp_path):
 
     with pytest.raises(EventLogIntegrityError, match="invalid event row"):
         store.verify_integrity(repair=True)
+
+
+def test_principal_scoped_read_excludes_server_only_events(tmp_path):
+    store = JsonlEventStore(tmp_path / "events.jsonl")
+    visible = store.append(
+        event_type="contract.board.published",
+        actor_id="server",
+        visibility=EventVisibility.crews(["crew_ember"]),
+        payload={"contract_id": "contract_false_finger"},
+    )
+    store.append(
+        event_type="contract.hidden_truth.sealed",
+        actor_id="server",
+        visibility=EventVisibility.server_only(),
+        payload={"truth": "false_finger"},
+    )
+
+    assert store.read_for_principal(Principal.crew("crew_ember")) == [visible]
+    assert len(store.read()) == 2

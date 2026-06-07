@@ -75,6 +75,7 @@ class GameEvent(BaseModel):
     event_hash: str
     schema_version: int = SCHEMA_VERSION
     idempotency_key: str | None = None
+    command_fingerprint: str | None = None
 
     @classmethod
     def new(
@@ -87,6 +88,7 @@ class GameEvent(BaseModel):
         payload: dict[str, Any],
         previous_hash: str | None,
         idempotency_key: str | None = None,
+        command_fingerprint: str | None = None,
         timestamp: datetime | None = None,
         event_id: EventId | None = None,
     ) -> GameEvent:
@@ -101,6 +103,7 @@ class GameEvent(BaseModel):
             "previous_hash": previous_hash,
             "schema_version": SCHEMA_VERSION,
             "idempotency_key": idempotency_key,
+            "command_fingerprint": command_fingerprint,
         }
         event_hash = compute_event_hash(event_data)
         return cls(event_hash=event_hash, **event_data)

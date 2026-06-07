@@ -16,9 +16,14 @@ from hollow_lodge.domain.events import (
     canonical_json_bytes,
     compute_event_hash,
 )
+from hollow_lodge.eventlog.visibility import Principal, filter_visible_events
 
 
 class EventLogIntegrityError(RuntimeError):
+    pass
+
+
+class IdempotencyConflictError(EventLogIntegrityError):
     pass
 
 
@@ -63,6 +68,16 @@ class EventStore(ABC):
     ) -> list[GameEvent]:
         raise NotImplementedError
 
+    @abstractmethod
+    def read_for_principal(
+        self,
+        principal: Principal,
+        *,
+        start_sequence: int | None = None,
+        end_sequence: int | None = None,
+    ) -> list[GameEvent]:
+        raise NotImplementedError
+
 
 class JsonlEventStore(EventStore):
     _locks_guard = threading.Lock()
@@ -86,9 +101,19 @@ class JsonlEventStore(EventStore):
         with self._write_lock:
             events = self._read_unlocked(repair=False)
             if idempotency_key:
+                fingerprint = _command_fingerprint(
+                    event_type=event_type,
+                    actor_id=actor_id,
+                    visibility=visibility,
+                    payload=payload,
+                )
                 existing = _find_idempotent(events, idempotency_key)
                 if existing is not None:
+                    if existing.command_fingerprint != fingerprint:
+                        raise IdempotencyConflictError("idempotency key conflict")
                     return existing
+            else:
+                fingerprint = None
             previous_hash = events[-1].event_hash if events else None
             event = GameEvent.new(
                 sequence=len(events) + 1,
@@ -98,6 +123,7 @@ class JsonlEventStore(EventStore):
                 payload=payload,
                 previous_hash=previous_hash,
                 idempotency_key=idempotency_key,
+                command_fingerprint=fingerprint,
             )
             with self.path.open("ab") as handle:
                 handle.write(canonical_json_bytes(event.model_dump(mode="json", by_alias=False)))
@@ -129,16 +155,30 @@ class JsonlEventStore(EventStore):
         start_sequence: int | None = None,
         end_sequence: int | None = None,
     ) -> list[GameEvent]:
-        events = self._read_unlocked(repair=False)
+        with self._write_lock:
+            events = self._read_unlocked(repair=False)
         if start_sequence is not None:
             events = [event for event in events if event.sequence >= start_sequence]
         if end_sequence is not None:
             events = [event for event in events if event.sequence <= end_sequence]
         return events
 
+    def read_for_principal(
+        self,
+        principal: Principal,
+        *,
+        start_sequence: int | None = None,
+        end_sequence: int | None = None,
+    ) -> list[GameEvent]:
+        return filter_visible_events(
+            self.read(start_sequence=start_sequence, end_sequence=end_sequence),
+            principal,
+        )
+
     def verify_integrity(self, *, repair: bool = False) -> IntegrityReport:
-        events = self._read_unlocked(repair=repair, validate_hashes=False)
-        repaired_trailing_row = self._has_repairable_trailing_row() if repair else False
+        with self._write_lock:
+            repaired_trailing_row = self._repair_trailing_invalid_json_row() if repair else False
+            events = self._read_unlocked(repair=False, validate_hashes=False)
         previous_hash: str | None = None
         expected_sequence = 1
         for event in events:
@@ -189,15 +229,21 @@ class JsonlEventStore(EventStore):
             events.append(event)
         return events
 
-    def _has_repairable_trailing_row(self) -> bool:
+    def _repair_trailing_invalid_json_row(self) -> bool:
         if not self.path.exists():
             return False
-        lines = self.path.read_text(encoding="utf-8").splitlines()
+        text = self.path.read_text(encoding="utf-8")
+        lines = text.splitlines()
         if not lines:
             return False
         try:
             json.loads(lines[-1])
         except json.JSONDecodeError:
+            valid_rows = lines[:-1]
+            rewritten = "\n".join(valid_rows)
+            if rewritten:
+                rewritten += "\n"
+            self.path.write_text(rewritten, encoding="utf-8")
             return True
         return False
 
@@ -207,6 +253,23 @@ def _find_idempotent(events: Iterable[GameEvent], idempotency_key: str) -> GameE
         if event.idempotency_key == idempotency_key:
             return event
     return None
+
+
+def _command_fingerprint(
+    *,
+    event_type: str,
+    actor_id: str,
+    visibility: EventVisibility,
+    payload: dict[str, Any],
+) -> str:
+    return canonical_json_bytes(
+        {
+            "actor_id": actor_id,
+            "event_type": event_type,
+            "payload": payload,
+            "visibility": visibility,
+        }
+    ).hex()
 
 
 StateT = TypeVar("StateT")
