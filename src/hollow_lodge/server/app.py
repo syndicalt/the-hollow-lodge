@@ -62,6 +62,7 @@ def create_app(
         app.state.proof_service = ProofService(
             event_store=event_store,
             identity_service=identity_service,
+            crew_service=crew_service,
         )
 
     app.include_router(identity_router)

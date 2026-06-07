@@ -10,7 +10,7 @@ from hollow_lodge.domain.crews import Crew
 from hollow_lodge.domain.events import EventVisibility
 from hollow_lodge.domain.chat import ChatMessage
 from hollow_lodge.domain.identity import Player, generate_token, hash_token
-from hollow_lodge.domain.proofs import ProofFragment
+from hollow_lodge.domain.proofs import ProofDossier, ProofFragment
 from hollow_lodge.domain.actions import NormalizedAction
 from hollow_lodge.eventlog.jsonl_store import JsonlEventStore
 from hollow_lodge.eventlog.visibility import Principal
@@ -269,7 +269,9 @@ class CrewService:
 
     def is_member(self, *, crew_id: str, player_id: str) -> bool:
         with self._lock:
-            crew = self._crews[crew_id]
+            crew = self._crews.get(crew_id)
+            if crew is None:
+                return False
             return player_id in crew.member_ids
 
     def has_crew(self, crew_id: str) -> bool:
@@ -283,6 +285,10 @@ class CrewService:
                 for crew_id, crew in self._crews.items()
                 if player_id in crew.member_ids
             ]
+
+    def member_ids(self, crew_id: str) -> list[str]:
+        with self._lock:
+            return list(self._crews[crew_id].member_ids)
 
     def _rebuild_from_events(self) -> None:
         for event in self._event_store.read():
@@ -516,9 +522,16 @@ class ContractService:
 
 
 class ProofService:
-    def __init__(self, *, event_store: JsonlEventStore, identity_service: IdentityService):
+    def __init__(
+        self,
+        *,
+        event_store: JsonlEventStore,
+        identity_service: IdentityService,
+        crew_service: CrewService,
+    ):
         self._event_store = event_store
         self._identity_service = identity_service
+        self._crew_service = crew_service
         self._lock = threading.RLock()
         self._seed_starter_fragment()
 
@@ -691,6 +704,180 @@ class ProofService:
             or event.payload["source_fragment_id"] != fragment_id
         ):
             raise ValueError("idempotency key conflict")
+
+    def dossier_for_crew(self, *, crew_id: str, player_id: str) -> dict:
+        if not self._crew_service.is_member(crew_id=crew_id, player_id=player_id):
+            raise PermissionError("not a crew member")
+        return self._current_dossier(crew_id).model_dump(mode="json")
+
+    def update_dossier_framing(
+        self,
+        *,
+        crew_id: str,
+        player_id: str,
+        updates: dict,
+        idempotency_key: str,
+    ) -> dict:
+        with self._lock:
+            existing = self._event_by_idempotency_key(idempotency_key)
+            if existing is not None:
+                if (
+                    existing.type != "proof.dossier.framing.updated"
+                    or existing.actor_id != player_id
+                    or existing.payload["crew_id"] != crew_id
+                    or existing.payload["updates"] != updates
+                ):
+                    raise ValueError("idempotency key conflict")
+                return existing.payload["dossier"]
+            if not self._crew_service.is_member(crew_id=crew_id, player_id=player_id):
+                raise PermissionError("not a crew member")
+            dossier = self._current_dossier(crew_id)
+            if dossier.packet_lead_player_id != player_id:
+                raise PermissionError("packet lead only")
+            updated = dossier.with_framing(**updates)
+            self._event_store.append_command(
+                event_type="proof.dossier.framing.updated",
+                actor_id=player_id,
+                visibility=EventVisibility.crews([crew_id]),
+                payload={
+                    "crew_id": crew_id,
+                    "updates": updates,
+                    "dossier": updated.model_dump(mode="json"),
+                },
+                idempotency_key=idempotency_key,
+            )
+            return updated.model_dump(mode="json")
+
+    def add_dossier_contribution(
+        self,
+        *,
+        crew_id: str,
+        player_id: str,
+        note: str,
+        evidence_ids: list[str],
+        idempotency_key: str,
+    ) -> dict:
+        if not self._crew_service.is_member(crew_id=crew_id, player_id=player_id):
+            raise PermissionError("not a crew member")
+        with self._lock:
+            existing = self._event_by_idempotency_key(idempotency_key)
+            if existing is not None:
+                if (
+                    existing.type != "proof.dossier.contribution.added"
+                    or existing.actor_id != player_id
+                    or existing.payload["crew_id"] != crew_id
+                    or existing.payload["note"] != note
+                    or existing.payload["evidence_ids"] != evidence_ids
+                ):
+                    raise ValueError("idempotency key conflict")
+                return existing.payload["dossier"]
+            updated = self._current_dossier(crew_id).with_contribution(
+                player_id=player_id,
+                note=note,
+                evidence_ids=evidence_ids,
+            )
+            self._event_store.append_command(
+                event_type="proof.dossier.contribution.added",
+                actor_id=player_id,
+                visibility=EventVisibility.crews([crew_id]),
+                payload={
+                    "crew_id": crew_id,
+                    "note": note,
+                    "evidence_ids": evidence_ids,
+                    "dossier": updated.model_dump(mode="json"),
+                },
+                idempotency_key=idempotency_key,
+            )
+            return updated.model_dump(mode="json")
+
+    def vote_packet_lead(
+        self,
+        *,
+        crew_id: str,
+        voter_player_id: str,
+        candidate_player_id: str,
+        idempotency_key: str,
+    ) -> dict:
+        if not self._crew_service.is_member(crew_id=crew_id, player_id=voter_player_id):
+            raise PermissionError("not a crew member")
+        if not self._crew_service.is_member(crew_id=crew_id, player_id=candidate_player_id):
+            raise PermissionError("candidate not a crew member")
+        with self._lock:
+            existing = self._event_by_idempotency_key(idempotency_key)
+            if existing is not None:
+                if (
+                    existing.type != "proof.packet_lead.vote.cast"
+                    or existing.actor_id != voter_player_id
+                    or existing.payload["crew_id"] != crew_id
+                    or existing.payload["candidate_player_id"] != candidate_player_id
+                ):
+                    raise ValueError("idempotency key conflict")
+                return self._current_dossier(crew_id).model_dump(mode="json")
+            self._event_store.append_command(
+                event_type="proof.packet_lead.vote.cast",
+                actor_id=voter_player_id,
+                visibility=EventVisibility.crews([crew_id]),
+                payload={
+                    "crew_id": crew_id,
+                    "voter_player_id": voter_player_id,
+                    "candidate_player_id": candidate_player_id,
+                },
+                idempotency_key=idempotency_key,
+            )
+            current = self._current_dossier(crew_id)
+            winner = self._packet_lead_majority_winner(crew_id)
+            if winner is not None and winner != current.packet_lead_player_id:
+                current = current.with_packet_lead(winner)
+                self._event_store.append_command(
+                    event_type="proof.packet_lead.replaced",
+                    actor_id="server",
+                    visibility=EventVisibility.crews([crew_id]),
+                    payload={"dossier": current.model_dump(mode="json")},
+                    idempotency_key=f"packet-lead.replace.{crew_id}.{winner}.{self._replacement_count(crew_id) + 1}",
+                )
+            return current.model_dump(mode="json")
+
+    def _current_dossier(self, crew_id: str) -> ProofDossier:
+        current: ProofDossier | None = None
+        for event in self._event_store.read_for_principal(Principal.crew(crew_id)):
+            if event.type == "crew.created" and event.payload["crew_id"] == crew_id and current is None:
+                current = ProofDossier.empty(
+                    dossier_id=f"dossier_{crew_id}",
+                    crew_id=crew_id,
+                    packet_lead_player_id=event.payload["owner_id"],
+                )
+            elif event.type in {
+                "proof.dossier.framing.updated",
+                "proof.dossier.contribution.added",
+                "proof.packet_lead.replaced",
+            }:
+                current = ProofDossier.model_validate(event.payload["dossier"])
+        if current is None:
+            raise KeyError(crew_id)
+        return current
+
+    def _packet_lead_majority_winner(self, crew_id: str) -> str | None:
+        latest_votes: dict[str, str] = {}
+        member_ids = set(self._crew_service.member_ids(crew_id))
+        for event in self._event_store.read_for_principal(Principal.crew(crew_id)):
+            if event.type != "proof.packet_lead.vote.cast":
+                continue
+            voter = event.payload["voter_player_id"]
+            candidate = event.payload["candidate_player_id"]
+            if voter in member_ids and candidate in member_ids:
+                latest_votes[voter] = candidate
+        threshold = (len(member_ids) // 2) + 1
+        for candidate in sorted(member_ids):
+            if list(latest_votes.values()).count(candidate) >= threshold:
+                return candidate
+        return None
+
+    def _replacement_count(self, crew_id: str) -> int:
+        return sum(
+            1
+            for event in self._event_store.read_for_principal(Principal.crew(crew_id))
+            if event.type == "proof.packet_lead.replaced"
+        )
 
 
 class ActionService:

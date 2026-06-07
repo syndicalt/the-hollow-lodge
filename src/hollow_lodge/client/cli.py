@@ -15,6 +15,10 @@ app = typer.Typer(
     help="The Hollow Lodge CLI.",
     no_args_is_help=True,
 )
+dossier_app = typer.Typer(help="Manage the crew proof dossier.", no_args_is_help=False)
+packet_lead_app = typer.Typer(help="Manage Packet Lead votes.", no_args_is_help=True)
+app.add_typer(dossier_app, name="dossier")
+app.add_typer(packet_lead_app, name="packet-lead")
 
 
 DEFAULT_CONFIG_PATH = Path.home() / ".config" / "hollow-lodge" / "config.json"
@@ -232,8 +236,80 @@ def act(
     typer.echo(response["action_id"])
 
 
+@dossier_app.callback(invoke_without_command=True)
+def dossier(
+    ctx: typer.Context,
+    crew_id: str | None = typer.Option(None, "--crew-id", help="Crew id; defaults to active crew."),
+    config: Path = typer.Option(DEFAULT_CONFIG_PATH, "--config", help="Local config path."),
+) -> None:
+    """Show the crew proof dossier."""
+    if ctx.invoked_subcommand is not None:
+        return
+    current = load_config(config)
+    target_crew_id = _target_crew_id(current, crew_id)
+    typer.echo(_api_from_config(current).dossier(crew_id=target_crew_id))
+
+
+@dossier_app.command("add-evidence")
+def dossier_add_evidence(
+    fragment_id: str,
+    crew_id: str | None = typer.Option(None, "--crew-id", help="Crew id; defaults to active crew."),
+    config: Path = typer.Option(DEFAULT_CONFIG_PATH, "--config", help="Local config path."),
+) -> None:
+    """Add evidence to the crew proof dossier."""
+    current = load_config(config)
+    target_crew_id = _target_crew_id(current, crew_id)
+    response = _api_from_config(current).add_dossier_evidence(
+        crew_id=target_crew_id,
+        fragment_id=fragment_id,
+        idempotency_key=new_command_key("dossier-evidence"),
+    )
+    typer.echo(response)
+
+
+@dossier_app.command("claim")
+def dossier_claim(
+    text: str,
+    crew_id: str | None = typer.Option(None, "--crew-id", help="Crew id; defaults to active crew."),
+    config: Path = typer.Option(DEFAULT_CONFIG_PATH, "--config", help="Local config path."),
+) -> None:
+    """Set the dossier claim."""
+    current = load_config(config)
+    target_crew_id = _target_crew_id(current, crew_id)
+    response = _api_from_config(current).update_dossier_claim(
+        crew_id=target_crew_id,
+        claim=text,
+        idempotency_key=new_command_key("dossier-claim"),
+    )
+    typer.echo(response)
+
+
+@packet_lead_app.command("vote")
+def packet_lead_vote(
+    player_id: str,
+    crew_id: str | None = typer.Option(None, "--crew-id", help="Crew id; defaults to active crew."),
+    config: Path = typer.Option(DEFAULT_CONFIG_PATH, "--config", help="Local config path."),
+) -> None:
+    """Vote to replace the Packet Lead."""
+    current = load_config(config)
+    target_crew_id = _target_crew_id(current, crew_id)
+    response = _api_from_config(current).vote_packet_lead(
+        crew_id=target_crew_id,
+        player_id=player_id,
+        idempotency_key=new_command_key("packet-lead-vote"),
+    )
+    typer.echo(response)
+
+
 def _api_from_config(config: ClientConfig) -> HollowLodgeApi:
     return HollowLodgeApi(server_url=config.server_url, token=config.token)
+
+
+def _target_crew_id(config: ClientConfig, crew_id: str | None) -> str:
+    target_crew_id = crew_id or config.active_crew_id
+    if target_crew_id is None:
+        raise typer.BadParameter("crew id required when no active crew is configured")
+    return target_crew_id
 
 
 def _payload_matches_conversation(payload: dict, conversation_id: str) -> bool:

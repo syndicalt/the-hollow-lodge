@@ -122,6 +122,48 @@ class HollowLodgeApi:
             idempotency_key=idempotency_key,
         )
 
+    def dossier(self, *, crew_id: str) -> dict[str, Any]:
+        return self._get(f"/proofs/dossiers/{crew_id}")
+
+    def add_dossier_evidence(
+        self,
+        *,
+        crew_id: str,
+        fragment_id: str,
+        idempotency_key: str,
+    ) -> dict[str, Any]:
+        return self._post(
+            f"/proofs/dossiers/{crew_id}/contributions",
+            json={"note": "Added evidence fragment.", "evidence_ids": [fragment_id]},
+            idempotency_key=idempotency_key,
+        )
+
+    def update_dossier_claim(
+        self,
+        *,
+        crew_id: str,
+        claim: str,
+        idempotency_key: str,
+    ) -> dict[str, Any]:
+        return self._patch(
+            f"/proofs/dossiers/{crew_id}/framing",
+            json={"claim": claim},
+            idempotency_key=idempotency_key,
+        )
+
+    def vote_packet_lead(
+        self,
+        *,
+        crew_id: str,
+        player_id: str,
+        idempotency_key: str,
+    ) -> dict[str, Any]:
+        return self._post(
+            f"/proofs/dossiers/{crew_id}/packet-lead/votes",
+            json={"candidate_player_id": player_id},
+            idempotency_key=idempotency_key,
+        )
+
     def _post(
         self,
         path: str,
@@ -146,6 +188,16 @@ class HollowLodgeApi:
         response = httpx.get(
             f"{self.server_url}{path}",
             headers=self._auth_headers(),
+            timeout=10,
+        )
+        response.raise_for_status()
+        return response.json()
+
+    def _patch(self, path: str, *, json: dict[str, Any], idempotency_key: str) -> dict[str, Any]:
+        response = httpx.patch(
+            f"{self.server_url}{path}",
+            headers={**self._auth_headers(), "Idempotency-Key": idempotency_key},
+            json=json,
             timeout=10,
         )
         response.raise_for_status()
