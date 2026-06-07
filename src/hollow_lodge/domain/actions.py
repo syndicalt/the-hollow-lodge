@@ -25,7 +25,11 @@ class NormalizedAction(BaseModel):
         action_number: int = 1,
     ) -> NormalizedAction:
         lower = intent.lower()
-        exposed_assets = ["fragment_starter_ledger"] if "ledger" in lower else []
+        exposed_assets: list[str] = []
+        if "ledger" in lower:
+            exposed_assets.append("fragment_starter_ledger")
+        if any(marker in lower for marker in ("omen", "moth", "door", "occult")):
+            exposed_assets.append("asset_door_omen")
         if "quiet" in lower or "inspect" in lower:
             scope = "proofwork"
             approach = "quiet inspection"

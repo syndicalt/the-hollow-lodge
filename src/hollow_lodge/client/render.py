@@ -15,6 +15,12 @@ def render_contract_board(board: dict[str, Any]) -> str:
         lines.append(f"Crew Heat: {contract['crew_heat']}")
         lines.append("Proof dossier needs:")
         lines.extend(f"- {need}" for need in contract["proof_dossier_needs"])
+        if "phase_result" in contract:
+            lines.append("Phase result:")
+            for standing in contract["phase_result"].get("standings", []):
+                lines.append(
+                    f"- {standing['crew_id']}: {standing['standing']} ({standing['score']})"
+                )
     return "\n".join(lines)
 
 

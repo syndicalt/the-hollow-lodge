@@ -11,6 +11,7 @@ from hollow_lodge.domain.events import EventVisibility
 from hollow_lodge.domain.chat import ChatMessage
 from hollow_lodge.domain.identity import Player, generate_token, hash_token
 from hollow_lodge.domain.proofs import ProofDossier, ProofFragment
+from hollow_lodge.domain.scoring import AuctionPreviewScoreInput, score_auction_preview
 from hollow_lodge.domain.actions import NormalizedAction
 from hollow_lodge.eventlog.jsonl_store import JsonlEventStore
 from hollow_lodge.eventlog.visibility import Principal
@@ -22,6 +23,7 @@ from hollow_lodge.server.auth import authenticate_token
 JOIN_CODE_BYTES = 18
 REGISTRATION_REPLAY_TTL = timedelta(minutes=15)
 SIDE_ACTION_LIMIT_PER_PHASE = 1
+COMMAND_SERIALIZATION_LOCK = threading.RLock()
 STARTER_FRAGMENT = ProofFragment(
     fragment_id="fragment_starter_ledger",
     content_summary="A red ledger rubric names three prior owners.",
@@ -496,6 +498,64 @@ class ContractService:
     def inbox_for_player(self, player_id: str):
         return inbox_from_board(player_id=player_id, board=self.board_for_player(player_id))
 
+    def lock_auction_preview(
+        self,
+        *,
+        contract_id: str,
+        actor_id: str,
+        hours_elapsed: int,
+        idempotency_key: str,
+    ) -> dict:
+        if contract_id != STARTER_CONTRACT.contract_id:
+            raise KeyError(contract_id)
+        with COMMAND_SERIALIZATION_LOCK, self._lock:
+            existing = self._event_by_idempotency_key(idempotency_key)
+            if existing is not None:
+                if (
+                    existing.type != "contract.phase.resolved"
+                    or existing.actor_id != actor_id
+                    or existing.payload["contract_id"] != contract_id
+                    or existing.payload["phase"] != "Auction Preview"
+                    or existing.payload["hours_elapsed"] != hours_elapsed
+                ):
+                    raise ValueError("idempotency key conflict")
+                return existing.payload["reveal"]
+            resolved = self._resolved_auction_preview()
+            if resolved is not None:
+                return resolved
+            if hours_elapsed < STARTER_CONTRACT.phase.remaining_hours and self._meaningful_action_count() < 2:
+                raise ValueError("phase still active")
+            locked = self._locked_auction_preview()
+            lock_hours_elapsed = hours_elapsed
+            if locked is None:
+                self._event_store.append_command(
+                    event_type="contract.phase.locked",
+                    actor_id="server",
+                    visibility=EventVisibility.public(),
+                    payload={
+                        "contract_id": contract_id,
+                        "phase": "Auction Preview",
+                        "hours_elapsed": hours_elapsed,
+                    },
+                    idempotency_key=f"phase-lock.{contract_id}.auction-preview",
+                )
+            else:
+                lock_hours_elapsed = locked["hours_elapsed"]
+            reveal = self._build_auction_preview_reveal(contract_id=contract_id)
+            self._event_store.append_command(
+                event_type="contract.phase.resolved",
+                actor_id=actor_id,
+                visibility=EventVisibility.public(),
+                payload={
+                    "contract_id": contract_id,
+                    "phase": "Auction Preview",
+                    "hours_elapsed": lock_hours_elapsed,
+                    "reveal": reveal,
+                },
+                idempotency_key=idempotency_key,
+            )
+            return reveal
+
     def _seed_starter_contract(self) -> None:
         with self._lock:
             self._event_store.append_command(
@@ -519,6 +579,152 @@ class ContractService:
                 payload=STARTER_CONTRACT.model_dump(mode="json"),
                 idempotency_key=f"seed.{STARTER_CONTRACT.contract_id}.board",
             )
+
+    def _event_by_idempotency_key(self, idempotency_key: str):
+        for event in self._event_store.read():
+            if event.idempotency_key == idempotency_key:
+                return event
+        return None
+
+    def _resolved_auction_preview(self) -> dict | None:
+        for event in self._event_store.read():
+            if (
+                event.type in {"contract.phase.locked", "contract.phase.resolved"}
+                and event.payload["contract_id"] == STARTER_CONTRACT.contract_id
+                and event.payload["phase"] == "Auction Preview"
+            ):
+                if event.type == "contract.phase.locked":
+                    continue
+                return event.payload["reveal"]
+        return None
+
+    def _locked_auction_preview(self) -> dict | None:
+        for event in self._event_store.read():
+            if (
+                event.type == "contract.phase.locked"
+                and event.payload["contract_id"] == STARTER_CONTRACT.contract_id
+                and event.payload["phase"] == "Auction Preview"
+            ):
+                return event.payload
+        return None
+
+    def _build_auction_preview_reveal(self, *, contract_id: str) -> dict:
+        scores = [
+            score_auction_preview(score_input)
+            for score_input in self._auction_preview_score_inputs()
+        ]
+        standings = [
+            {
+                "crew_id": score.crew_id,
+                "score": score.total,
+                "standing": score.standing,
+                "strengths": list(score.strengths),
+                "weaknesses": list(score.weaknesses),
+                "penalties": list(score.penalties),
+                "revealed_clues": list(score.revealed_clues),
+            }
+            for score in sorted(scores, key=lambda item: (-item.total, item.crew_id))
+        ]
+        return {
+            "contract_id": contract_id,
+            "phase": "Auction Preview",
+            "status": "resolved",
+            "standings": standings,
+            "contract_state": [
+                "Auction house provenance is now suspect.",
+                "Rival alternate clue paths remain open.",
+            ],
+        }
+
+    def _auction_preview_score_inputs(self) -> list[AuctionPreviewScoreInput]:
+        crew_ids = self._crew_ids()
+        actions_by_crew = self._current_actions_by_crew()
+        score_inputs: list[AuctionPreviewScoreInput] = []
+        for crew_id in crew_ids:
+            dossier = self._current_dossier_for_scoring(crew_id)
+            submitted_actions = [
+                action
+                for action in actions_by_crew.get(crew_id, [])
+                if action["status"] == "submitted"
+            ]
+            score_inputs.append(
+                AuctionPreviewScoreInput(
+                    crew_id=crew_id,
+                    claim=dossier.claim,
+                    evidence_ids=dossier.evidence_ids,
+                    reasoning=dossier.reasoning,
+                    weaknesses=dossier.weaknesses,
+                    provenance_concerns=dossier.provenance_concerns,
+                    exposed_assets=tuple(
+                        dict.fromkeys(
+                            (
+                                *dossier.evidence_ids,
+                                *(
+                                    asset
+                                    for action in submitted_actions
+                                    for asset in action["exposed_assets"]
+                                ),
+                            )
+                        )
+                    ),
+                    action_intents=[action["intent"] for action in submitted_actions],
+                    crew_noise=sum(action["crew_noise_impact"] for action in submitted_actions),
+                )
+            )
+        return score_inputs
+
+    def _current_dossier_for_scoring(self, crew_id: str) -> ProofDossier:
+        current: ProofDossier | None = None
+        for event in self._event_store.read_for_principal(Principal.crew(crew_id)):
+            if event.type == "crew.created" and current is None:
+                current = ProofDossier.empty(
+                    dossier_id=f"dossier_{crew_id}",
+                    crew_id=crew_id,
+                    packet_lead_player_id=event.payload["owner_id"],
+                )
+            elif event.type in {
+                "proof.dossier.framing.updated",
+                "proof.dossier.contribution.added",
+                "proof.packet_lead.replaced",
+            }:
+                current = ProofDossier.model_validate(event.payload["dossier"])
+        if current is None:
+            raise KeyError(crew_id)
+        return current
+
+    def _current_actions_by_crew(self) -> dict[str, list[dict]]:
+        latest: dict[str, dict] = {}
+        for event in self._event_store.read():
+            if event.type not in {"action.submitted", "action.edited", "action.canceled"}:
+                continue
+            action = event.payload["action"]
+            latest[action["action_id"]] = action
+        by_crew: dict[str, list[dict]] = {}
+        for action in latest.values():
+            by_crew.setdefault(action["crew_id"], []).append(action)
+        return by_crew
+
+    def _meaningful_action_count(self) -> int:
+        return sum(
+            1
+            for actions in self._current_actions_by_crew().values()
+            for action in actions
+            if action["status"] == "submitted" and self._is_meaningful_auction_preview_action(action)
+        )
+
+    def _is_meaningful_auction_preview_action(self, action: dict) -> bool:
+        return bool(
+            set(action["exposed_assets"])
+            & {"fragment_starter_ledger", "asset_door_omen"}
+        )
+
+    def _crew_ids(self) -> list[str]:
+        crew_ids = [
+            event.payload["crew_id"]
+            for event in self._event_store.read()
+            if event.type == "crew.created"
+        ]
+        return sorted(dict.fromkeys(crew_ids))
 
 
 class ProofService:
@@ -551,7 +757,7 @@ class ProofService:
     ) -> dict:
         if not self._identity_service.has_player(recipient_player_id):
             raise KeyError(recipient_player_id)
-        with self._lock:
+        with COMMAND_SERIALIZATION_LOCK, self._lock:
             existing = self._event_by_idempotency_key(idempotency_key)
             if existing is not None:
                 self._ensure_transfer_matches(
@@ -718,7 +924,7 @@ class ProofService:
         updates: dict,
         idempotency_key: str,
     ) -> dict:
-        with self._lock:
+        with COMMAND_SERIALIZATION_LOCK, self._lock:
             existing = self._event_by_idempotency_key(idempotency_key)
             if existing is not None:
                 if (
@@ -729,6 +935,8 @@ class ProofService:
                 ):
                     raise ValueError("idempotency key conflict")
                 return existing.payload["dossier"]
+            if self._auction_preview_locked():
+                raise ValueError("phase locked")
             if not self._crew_service.is_member(crew_id=crew_id, player_id=player_id):
                 raise PermissionError("not a crew member")
             dossier = self._current_dossier(crew_id)
@@ -759,7 +967,7 @@ class ProofService:
     ) -> dict:
         if not self._crew_service.is_member(crew_id=crew_id, player_id=player_id):
             raise PermissionError("not a crew member")
-        with self._lock:
+        with COMMAND_SERIALIZATION_LOCK, self._lock:
             existing = self._event_by_idempotency_key(idempotency_key)
             if existing is not None:
                 if (
@@ -771,6 +979,8 @@ class ProofService:
                 ):
                     raise ValueError("idempotency key conflict")
                 return existing.payload["dossier"]
+            if self._auction_preview_locked():
+                raise ValueError("phase locked")
             updated = self._current_dossier(crew_id).with_contribution(
                 player_id=player_id,
                 note=note,
@@ -802,7 +1012,7 @@ class ProofService:
             raise PermissionError("not a crew member")
         if not self._crew_service.is_member(crew_id=crew_id, player_id=candidate_player_id):
             raise PermissionError("candidate not a crew member")
-        with self._lock:
+        with COMMAND_SERIALIZATION_LOCK, self._lock:
             existing = self._event_by_idempotency_key(idempotency_key)
             if existing is not None:
                 if (
@@ -813,6 +1023,8 @@ class ProofService:
                 ):
                     raise ValueError("idempotency key conflict")
                 return self._current_dossier(crew_id).model_dump(mode="json")
+            if self._auction_preview_locked():
+                raise ValueError("phase locked")
             self._event_store.append_command(
                 event_type="proof.packet_lead.vote.cast",
                 actor_id=voter_player_id,
@@ -879,6 +1091,14 @@ class ProofService:
             if event.type == "proof.packet_lead.replaced"
         )
 
+    def _auction_preview_locked(self) -> bool:
+        return any(
+            event.type in {"contract.phase.locked", "contract.phase.resolved"}
+            and event.payload["contract_id"] == STARTER_CONTRACT.contract_id
+            and event.payload["phase"] == "Auction Preview"
+            for event in self._event_store.read()
+        )
+
 
 class ActionService:
     def __init__(self, *, event_store: JsonlEventStore, crew_service: CrewService):
@@ -895,11 +1115,7 @@ class ActionService:
         confirmed: bool,
         idempotency_key: str,
     ) -> dict:
-        if not confirmed:
-            raise ValueError("unconfirmed action was not submitted")
-        if not self._crew_service.is_member(crew_id=crew_id, player_id=player_id):
-            raise PermissionError(crew_id)
-        with self._lock:
+        with COMMAND_SERIALIZATION_LOCK, self._lock:
             existing = self._event_by_idempotency_key(idempotency_key)
             if existing is not None:
                 if (
@@ -911,6 +1127,12 @@ class ActionService:
                 ):
                     raise ValueError("idempotency key conflict")
                 return existing.payload["action"]
+            if self._auction_preview_locked():
+                raise ValueError("phase locked")
+            if not confirmed:
+                raise ValueError("unconfirmed action was not submitted")
+            if not self._crew_service.is_member(crew_id=crew_id, player_id=player_id):
+                raise PermissionError(crew_id)
             action_number = self._submitted_action_count(crew_id) + 1
             frame = NormalizedAction.from_intent(
                 intent=intent,
@@ -940,51 +1162,57 @@ class ActionService:
         intent: str,
         idempotency_key: str,
     ) -> dict:
-        existing = self._event_by_idempotency_key(idempotency_key)
-        if existing is not None:
-            if (
-                existing.type != "action.edited"
-                or existing.actor_id != player_id
-                or existing.payload["action"]["action_id"] != action_id
-                or existing.payload["action"]["intent"] != intent
-            ):
-                raise ValueError("idempotency key conflict")
-            return existing.payload["action"]
-        action = self._current_action(action_id=action_id, player_id=player_id)
-        edited = {
-            **action,
-            "intent": intent,
-            "status": "submitted",
-        }
-        self._event_store.append_command(
-            event_type="action.edited",
-            actor_id=player_id,
-            visibility=EventVisibility.crews([action["crew_id"]]),
-            payload={"action": edited},
-            idempotency_key=idempotency_key,
-        )
-        return edited
+        with COMMAND_SERIALIZATION_LOCK, self._lock:
+            existing = self._event_by_idempotency_key(idempotency_key)
+            if existing is not None:
+                if (
+                    existing.type != "action.edited"
+                    or existing.actor_id != player_id
+                    or existing.payload["action"]["action_id"] != action_id
+                    or existing.payload["action"]["intent"] != intent
+                ):
+                    raise ValueError("idempotency key conflict")
+                return existing.payload["action"]
+            if self._auction_preview_locked():
+                raise ValueError("phase locked")
+            action = self._current_action(action_id=action_id, player_id=player_id)
+            edited = {
+                **action,
+                "intent": intent,
+                "status": "submitted",
+            }
+            self._event_store.append_command(
+                event_type="action.edited",
+                actor_id=player_id,
+                visibility=EventVisibility.crews([action["crew_id"]]),
+                payload={"action": edited},
+                idempotency_key=idempotency_key,
+            )
+            return edited
 
     def cancel_action(self, *, action_id: str, player_id: str, idempotency_key: str) -> dict:
-        existing = self._event_by_idempotency_key(idempotency_key)
-        if existing is not None:
-            if (
-                existing.type != "action.canceled"
-                or existing.actor_id != player_id
-                or existing.payload["action"]["action_id"] != action_id
-            ):
-                raise ValueError("idempotency key conflict")
-            return existing.payload["action"]
-        action = self._current_action(action_id=action_id, player_id=player_id)
-        canceled = {**action, "status": "canceled"}
-        self._event_store.append_command(
-            event_type="action.canceled",
-            actor_id=player_id,
-            visibility=EventVisibility.crews([action["crew_id"]]),
-            payload={"action": canceled},
-            idempotency_key=idempotency_key,
-        )
-        return canceled
+        with COMMAND_SERIALIZATION_LOCK, self._lock:
+            existing = self._event_by_idempotency_key(idempotency_key)
+            if existing is not None:
+                if (
+                    existing.type != "action.canceled"
+                    or existing.actor_id != player_id
+                    or existing.payload["action"]["action_id"] != action_id
+                ):
+                    raise ValueError("idempotency key conflict")
+                return existing.payload["action"]
+            if self._auction_preview_locked():
+                raise ValueError("phase locked")
+            action = self._current_action(action_id=action_id, player_id=player_id)
+            canceled = {**action, "status": "canceled"}
+            self._event_store.append_command(
+                event_type="action.canceled",
+                actor_id=player_id,
+                visibility=EventVisibility.crews([action["crew_id"]]),
+                payload={"action": canceled},
+                idempotency_key=idempotency_key,
+            )
+            return canceled
 
     def _submitted_action_count(self, crew_id: str) -> int:
         return sum(
@@ -1016,3 +1244,11 @@ class ActionService:
             if event.idempotency_key == idempotency_key:
                 return event
         return None
+
+    def _auction_preview_locked(self) -> bool:
+        return any(
+            event.type in {"contract.phase.locked", "contract.phase.resolved"}
+            and event.payload["contract_id"] == STARTER_CONTRACT.contract_id
+            and event.payload["phase"] == "Auction Preview"
+            for event in self._event_store.read()
+        )
