@@ -221,6 +221,40 @@ def test_trailing_schema_invalid_json_is_never_repaired(tmp_path):
         store.verify_integrity(repair=True)
 
 
+def test_persisted_row_without_schema_version_is_rejected(tmp_path):
+    log_path = tmp_path / "events.jsonl"
+    store = JsonlEventStore(log_path)
+    store.append(
+        event_type="contract.seeded",
+        actor_id="server",
+        visibility=EventVisibility.server_only(),
+        payload={"contract_id": "contract_false_finger"},
+    )
+    row = json.loads(log_path.read_text().splitlines()[0])
+    del row["schema_version"]
+    log_path.write_text(json.dumps(row, sort_keys=True) + "\n", encoding="utf-8")
+
+    with pytest.raises(EventLogIntegrityError, match="invalid event row"):
+        store.verify_integrity()
+
+
+def test_persisted_row_with_unknown_top_level_field_is_rejected(tmp_path):
+    log_path = tmp_path / "events.jsonl"
+    store = JsonlEventStore(log_path)
+    store.append(
+        event_type="contract.seeded",
+        actor_id="server",
+        visibility=EventVisibility.server_only(),
+        payload={"contract_id": "contract_false_finger"},
+    )
+    row = json.loads(log_path.read_text().splitlines()[0])
+    row["unexpected"] = "not allowed"
+    log_path.write_text(json.dumps(row, sort_keys=True) + "\n", encoding="utf-8")
+
+    with pytest.raises(EventLogIntegrityError, match="invalid event row"):
+        store.verify_integrity()
+
+
 def test_principal_scoped_read_excludes_server_only_events(tmp_path):
     store = JsonlEventStore(tmp_path / "events.jsonl")
     visible = store.append(

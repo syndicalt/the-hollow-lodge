@@ -14,14 +14,14 @@ SCHEMA_VERSION = 1
 
 
 class VisibilityPrincipal(BaseModel):
-    model_config = ConfigDict(frozen=True)
+    model_config = ConfigDict(frozen=True, extra="forbid")
 
     kind: Literal["player", "crew", "server"]
     id: str | None = None
 
 
 class EventVisibility(BaseModel):
-    model_config = ConfigDict(frozen=True, populate_by_name=True)
+    model_config = ConfigDict(frozen=True, populate_by_name=True, extra="forbid")
 
     entries: tuple[VisibilityPrincipal, ...] = Field(
         default_factory=tuple,
@@ -62,7 +62,7 @@ class EventVisibility(BaseModel):
 
 
 class GameEvent(BaseModel):
-    model_config = ConfigDict(frozen=True)
+    model_config = ConfigDict(frozen=True, extra="forbid")
 
     event_id: EventId
     sequence: int = Field(ge=1)
@@ -73,7 +73,7 @@ class GameEvent(BaseModel):
     payload: dict[str, Any] = Field(default_factory=dict)
     previous_hash: str | None = None
     event_hash: str
-    schema_version: int = SCHEMA_VERSION
+    schema_version: Literal[1]
     idempotency_key: str | None = None
     command_fingerprint: str | None = None
 
