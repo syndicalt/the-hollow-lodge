@@ -10,6 +10,7 @@ from hollow_lodge.domain.crews import Crew
 from hollow_lodge.domain.events import EventVisibility
 from hollow_lodge.domain.chat import ChatMessage
 from hollow_lodge.domain.identity import Player, generate_token, hash_token
+from hollow_lodge.domain.proofs import ProofFragment
 from hollow_lodge.eventlog.jsonl_store import JsonlEventStore
 from hollow_lodge.eventlog.visibility import Principal
 from hollow_lodge.server.projections import contract_board_from_events, inbox_from_board
@@ -19,6 +20,13 @@ from hollow_lodge.server.auth import authenticate_token
 
 JOIN_CODE_BYTES = 18
 REGISTRATION_REPLAY_TTL = timedelta(minutes=15)
+SIDE_ACTION_LIMIT_PER_PHASE = 1
+STARTER_FRAGMENT = ProofFragment(
+    fragment_id="fragment_starter_ledger",
+    content_summary="A red ledger rubric names three prior owners.",
+    source_chain=("archive:lot-card",),
+    provenance_flags=("copied-hand", "ink-after-binding"),
+)
 
 
 class IdentityService:
@@ -504,3 +512,181 @@ class ContractService:
                 payload=STARTER_CONTRACT.model_dump(mode="json"),
                 idempotency_key=f"seed.{STARTER_CONTRACT.contract_id}.board",
             )
+
+
+class ProofService:
+    def __init__(self, *, event_store: JsonlEventStore, identity_service: IdentityService):
+        self._event_store = event_store
+        self._identity_service = identity_service
+        self._lock = threading.RLock()
+        self._seed_starter_fragment()
+
+    def fragment_for_player(self, *, fragment_id: str, player_id: str) -> dict:
+        fragment = self._visible_fragment(fragment_id=fragment_id, player_id=player_id)
+        if fragment is None:
+            raise KeyError(fragment_id)
+        return fragment.surface_view()
+
+    def transfer_fragment(
+        self,
+        *,
+        fragment_id: str,
+        sender_player_id: str,
+        recipient_player_id: str,
+        idempotency_key: str,
+    ) -> dict:
+        if not self._identity_service.has_player(recipient_player_id):
+            raise KeyError(recipient_player_id)
+        with self._lock:
+            existing = self._event_by_idempotency_key(idempotency_key)
+            if existing is not None:
+                self._ensure_transfer_matches(
+                    existing,
+                    sender_player_id=sender_player_id,
+                    recipient_player_id=recipient_player_id,
+                    fragment_id=fragment_id,
+                )
+                return existing.payload["surface"]
+            fragment = self._visible_fragment(
+                fragment_id=fragment_id,
+                player_id=sender_player_id,
+            )
+            if fragment is None:
+                raise KeyError(fragment_id)
+            copied = fragment.copy_for_transfer(
+                new_fragment_id=f"{fragment_id}.copy.{recipient_player_id}.{self._next_transfer_number()}",
+                sender_player_id=sender_player_id,
+                recipient_player_id=recipient_player_id,
+            )
+            surface = copied.surface_view()
+            self._event_store.append_command(
+                event_type="proof.fragment.transferred",
+                actor_id=sender_player_id,
+                visibility=EventVisibility.players([sender_player_id, recipient_player_id]),
+                payload={
+                    "sender_player_id": sender_player_id,
+                    "recipient_player_id": recipient_player_id,
+                    "source_fragment_id": fragment_id,
+                    "surface": surface,
+                },
+                idempotency_key=idempotency_key,
+            )
+            self._event_store.append_command(
+                event_type="proof.fragment.transferred.internal",
+                actor_id="server",
+                visibility=EventVisibility.server_only(),
+                payload={
+                    "transfer_idempotency_key": idempotency_key,
+                    "fragment": copied.model_dump(mode="json"),
+                },
+                idempotency_key=f"{idempotency_key}.internal",
+            )
+            return surface
+
+    def check_provenance(
+        self,
+        *,
+        fragment_id: str,
+        player_id: str,
+        idempotency_key: str,
+    ) -> dict:
+        with self._lock:
+            existing = self._event_by_idempotency_key(idempotency_key)
+            if existing is not None:
+                if (
+                    existing.type != "proof.provenance.checked"
+                    or existing.actor_id != player_id
+                    or existing.payload["fragment_id"] != fragment_id
+                ):
+                    raise ValueError("idempotency key conflict")
+                return existing.payload["result"]
+            if self._side_actions_used(player_id) >= SIDE_ACTION_LIMIT_PER_PHASE:
+                raise ValueError("side action limit reached")
+            fragment = self._visible_fragment(fragment_id=fragment_id, player_id=player_id)
+            if fragment is None:
+                raise KeyError(fragment_id)
+            result = fragment.checked_view()
+            self._event_store.append_command(
+                event_type="proof.provenance.checked",
+                actor_id=player_id,
+                visibility=EventVisibility.players([player_id]),
+                payload={"fragment_id": fragment_id, "result": result},
+                idempotency_key=idempotency_key,
+            )
+            return result
+
+    def _seed_starter_fragment(self) -> None:
+        self._event_store.append_command(
+            event_type="proof.fragment.seeded",
+            actor_id="server",
+            visibility=EventVisibility.server_only(),
+            payload=STARTER_FRAGMENT.model_dump(mode="json"),
+            idempotency_key=f"seed.{STARTER_FRAGMENT.fragment_id}",
+        )
+
+    def _fragment_with_provenance(self, fragment_id: str) -> ProofFragment:
+        if fragment_id == STARTER_FRAGMENT.fragment_id:
+            return STARTER_FRAGMENT
+        for event in self._event_store.read():
+            if event.type == "proof.fragment.seeded" and event.payload["fragment_id"] == fragment_id:
+                return ProofFragment.model_validate(event.payload)
+            if (
+                event.type == "proof.fragment.transferred.internal"
+                and event.payload["fragment"]["fragment_id"] == fragment_id
+            ):
+                return ProofFragment.model_validate(event.payload["fragment"])
+        raise KeyError(fragment_id)
+
+    def _visible_fragment(self, *, fragment_id: str, player_id: str) -> ProofFragment | None:
+        if fragment_id == STARTER_FRAGMENT.fragment_id and self._owns_starter_fragment(player_id):
+            return STARTER_FRAGMENT
+        for event in self._event_store.read_for_principal(Principal.player(player_id)):
+            if event.type != "proof.fragment.transferred":
+                continue
+            if event.payload["surface"]["fragment_id"] == fragment_id:
+                return self._fragment_with_provenance(fragment_id)
+        return None
+
+    def _owns_starter_fragment(self, player_id: str) -> bool:
+        for event in self._event_store.read():
+            if event.type == "identity.player.registered" and event.payload["player_id"] == player_id:
+                return True
+            if event.type == "identity.player.registered":
+                return False
+        return False
+
+    def _next_transfer_number(self) -> int:
+        return (
+            sum(1 for event in self._event_store.read() if event.type == "proof.fragment.transferred")
+            + 1
+        )
+
+    def _side_actions_used(self, player_id: str) -> int:
+        return sum(
+            1
+            for event in self._event_store.read_for_principal(Principal.player(player_id))
+            if event.type == "proof.provenance.checked" and event.actor_id == player_id
+        )
+
+    def _event_by_idempotency_key(self, idempotency_key: str):
+        for event in self._event_store.read():
+            if event.idempotency_key == idempotency_key:
+                return event
+        return None
+
+    def _ensure_transfer_matches(
+        self,
+        event,
+        *,
+        sender_player_id: str,
+        recipient_player_id: str,
+        fragment_id: str,
+    ) -> None:
+        if event.type != "proof.fragment.transferred":
+            raise ValueError("idempotency key conflict")
+        if (
+            event.actor_id != sender_player_id
+            or event.payload["recipient_player_id"] != recipient_player_id
+            or event.payload["source_fragment_id"] != fragment_id
+        ):
+            raise ValueError("idempotency key conflict")

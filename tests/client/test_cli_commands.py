@@ -78,6 +78,19 @@ class FakeApi:
             }
         ]
 
+    def check_provenance(self, *, fragment_id: str, idempotency_key: str):
+        self.calls.append(
+            (
+                "check_provenance",
+                {"fragment_id": fragment_id, "idempotency_key": idempotency_key},
+            )
+        )
+        return {
+            "fragment_id": fragment_id,
+            "provenance_checked": True,
+            "provenance_flags": ["copied-hand", "ink-after-binding"],
+        }
+
 
 def test_register_command_saves_local_config(tmp_path, monkeypatch):
     runner = CliRunner()
@@ -226,3 +239,38 @@ def test_thread_command_renders_crew_to_crew_conversation_id(tmp_path, monkeypat
 
     assert result.exit_code == 0
     assert "No public claims until lock." in result.output
+
+
+def test_check_provenance_command_uses_saved_config(tmp_path, monkeypatch):
+    runner = CliRunner()
+    created_clients: list[FakeApi] = []
+
+    def fake_client(**kwargs):
+        client = FakeApi(**kwargs)
+        created_clients.append(client)
+        return client
+
+    monkeypatch.setattr(cli, "HollowLodgeApi", fake_client)
+    monkeypatch.setattr(cli, "new_command_key", lambda prefix: f"{prefix}-key")
+    config_path = tmp_path / "config.json"
+    save_config(
+        config_path,
+        ClientConfig(server_url="http://testserver", player_id="player_0001", token="token"),
+    )
+
+    result = runner.invoke(
+        cli.app,
+        ["check", "fragment_starter_ledger", "provenance", "--config", str(config_path)],
+    )
+
+    assert result.exit_code == 0
+    assert "copied-hand" in result.output
+    assert created_clients[0].calls == [
+        (
+            "check_provenance",
+            {
+                "fragment_id": "fragment_starter_ledger",
+                "idempotency_key": "proof-provenance-key",
+            },
+        )
+    ]

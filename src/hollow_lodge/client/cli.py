@@ -180,6 +180,22 @@ def inbox(
     typer.echo(render_inbox(_api_from_config(load_config(config)).inbox()))
 
 
+@app.command()
+def check(
+    fragment_id: str = typer.Argument(..., help="Proof fragment id."),
+    check_type: str = typer.Argument(..., help="Check type."),
+    config: Path = typer.Option(DEFAULT_CONFIG_PATH, "--config", help="Local config path."),
+) -> None:
+    """Spend a side action on a proof check."""
+    if check_type != "provenance":
+        raise typer.BadParameter("only provenance checks are available")
+    result = _api_from_config(load_config(config)).check_provenance(
+        fragment_id=fragment_id,
+        idempotency_key=new_command_key("proof-provenance"),
+    )
+    typer.echo(f"{result['fragment_id']} provenance: {', '.join(result['provenance_flags'])}")
+
+
 def _api_from_config(config: ClientConfig) -> HollowLodgeApi:
     return HollowLodgeApi(server_url=config.server_url, token=config.token)
 

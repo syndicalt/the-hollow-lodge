@@ -10,11 +10,13 @@ from hollow_lodge.server.routes_contracts import router as contracts_router
 from hollow_lodge.server.routes_crews import router as crews_router
 from hollow_lodge.server.routes_events import router as events_router
 from hollow_lodge.server.routes_identity import router as identity_router
+from hollow_lodge.server.routes_proofs import router as proofs_router
 from hollow_lodge.server.services import (
     ChatService,
     ContractService,
     CrewService,
     IdentityService,
+    ProofService,
     VisibilityService,
 )
 
@@ -51,11 +53,16 @@ def create_app(
 
     if data_dir is not None:
         app.state.contract_service = ContractService(event_store=event_store)
+        app.state.proof_service = ProofService(
+            event_store=event_store,
+            identity_service=identity_service,
+        )
 
     app.include_router(identity_router)
     app.include_router(crews_router)
     app.include_router(chat_router)
     app.include_router(contracts_router)
+    app.include_router(proofs_router)
     app.include_router(events_router)
 
     @app.get("/health", tags=["system"])

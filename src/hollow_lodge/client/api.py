@@ -108,6 +108,13 @@ class HollowLodgeApi:
     def inbox(self) -> dict[str, Any]:
         return self._get("/inbox")
 
+    def check_provenance(self, *, fragment_id: str, idempotency_key: str) -> dict[str, Any]:
+        return self._post(
+            f"/proofs/fragments/{fragment_id}/check/provenance",
+            json={},
+            idempotency_key=idempotency_key,
+        )
+
     def _post(
         self,
         path: str,
