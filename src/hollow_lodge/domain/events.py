@@ -5,7 +5,7 @@ import json
 from datetime import UTC, datetime
 from typing import Any, Literal
 
-from pydantic import BaseModel, ConfigDict, Field
+from pydantic import BaseModel, ConfigDict, Field, model_validator
 
 from hollow_lodge.domain.ids import EventId, new_event_id
 
@@ -18,6 +18,14 @@ class VisibilityPrincipal(BaseModel):
 
     kind: Literal["player", "crew", "server"]
     id: str | None = None
+
+    @model_validator(mode="after")
+    def validate_id_shape(self) -> VisibilityPrincipal:
+        if self.kind in {"player", "crew"} and not self.id:
+            raise ValueError("player and crew visibility principals require non-empty ids")
+        if self.kind == "server" and self.id is not None:
+            raise ValueError("server visibility principal must not include an id")
+        return self
 
 
 class EventVisibility(BaseModel):

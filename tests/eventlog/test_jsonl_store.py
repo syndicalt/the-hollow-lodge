@@ -3,7 +3,7 @@ from concurrent.futures import ThreadPoolExecutor
 
 import pytest
 
-from hollow_lodge.domain.events import EventVisibility
+from hollow_lodge.domain.events import EventVisibility, canonical_json_bytes, compute_event_hash
 from hollow_lodge.eventlog.jsonl_store import (
     EventLogIntegrityError,
     IdempotencyConflictError,
@@ -165,6 +165,64 @@ def test_verifier_rejects_corrupted_hash_chain(tmp_path):
 
     with pytest.raises(EventLogIntegrityError, match="hash"):
         store.verify_integrity()
+
+
+def test_read_rejects_previous_hash_chain_break(tmp_path):
+    log_path = tmp_path / "events.jsonl"
+    store = JsonlEventStore(log_path)
+    store.append(
+        event_type="contract.seeded",
+        actor_id="server",
+        visibility=EventVisibility.server_only(),
+        payload={"contract_id": "contract_false_finger"},
+    )
+    store.append(
+        event_type="contract.board.published",
+        actor_id="server",
+        visibility=EventVisibility.crews(["crew_ember"]),
+        payload={"contract_id": "contract_false_finger"},
+    )
+    rows = log_path.read_text().splitlines()
+    second = json.loads(rows[1])
+    second["previous_hash"] = "0" * 64
+    second["event_hash"] = compute_event_hash(second)
+    rows[1] = json.dumps(second, sort_keys=True)
+    log_path.write_text("\n".join(rows) + "\n", encoding="utf-8")
+
+    with pytest.raises(EventLogIntegrityError, match="hash chain break"):
+        store.read()
+
+
+def test_append_rejects_existing_hash_chain_break(tmp_path):
+    log_path = tmp_path / "events.jsonl"
+    store = JsonlEventStore(log_path)
+    first = store.append(
+        event_type="first",
+        actor_id="server",
+        visibility=EventVisibility.server_only(),
+        payload={"n": 1},
+    )
+    second = store.append(
+        event_type="second",
+        actor_id="server",
+        visibility=EventVisibility.server_only(),
+        payload={"n": 2},
+    )
+    rows = [event.model_dump(mode="json") for event in [first, second]]
+    rows[1]["previous_hash"] = "0" * 64
+    rows[1]["event_hash"] = compute_event_hash(rows[1])
+    log_path.write_text(
+        "\n".join(canonical_json_bytes(row).decode("utf-8") for row in rows) + "\n",
+        encoding="utf-8",
+    )
+
+    with pytest.raises(EventLogIntegrityError, match="hash chain break"):
+        store.append(
+            event_type="third",
+            actor_id="server",
+            visibility=EventVisibility.server_only(),
+            payload={"n": 3},
+        )
 
 
 def test_malformed_trailing_json_fails_unless_explicit_repair_mode_is_used(tmp_path):

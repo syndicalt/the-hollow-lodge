@@ -11,6 +11,7 @@ class ClientConfig(BaseModel):
     server_url: str = Field(min_length=1)
     player_id: str = Field(min_length=1)
     token: str = Field(min_length=1)
+    active_crew_id: str | None = None
 
 
 def save_config(path: Path, config: ClientConfig) -> None:

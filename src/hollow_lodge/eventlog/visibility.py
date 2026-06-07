@@ -1,15 +1,25 @@
 from __future__ import annotations
 
-from dataclasses import dataclass
-from typing import Iterable
+from typing import Iterable, Literal
+
+from pydantic import BaseModel, ConfigDict, Field, model_validator
 
 from hollow_lodge.domain.events import GameEvent
 
 
-@dataclass(frozen=True)
-class Principal:
-    kind: str
-    id: str | None = None
+class Principal(BaseModel):
+    model_config = ConfigDict(frozen=True, extra="forbid")
+
+    kind: Literal["player", "crew", "server"]
+    id: str | None = Field(default=None)
+
+    @model_validator(mode="after")
+    def validate_id_shape(self) -> Principal:
+        if self.kind in {"player", "crew"} and not self.id:
+            raise ValueError("player and crew principals require non-empty ids")
+        if self.kind == "server" and self.id is not None:
+            raise ValueError("server principal must not include an id")
+        return self
 
     @classmethod
     def player(cls, player_id: str) -> Principal:

@@ -11,6 +11,7 @@ MAX_CREW_SIZE = 5
 class Crew:
     crew_id: str
     name: str
+    join_code: str
     member_ids: list[str] = field(default_factory=list)
 
     @property
@@ -29,4 +30,3 @@ class Crew:
         if len(self.member_ids) >= MAX_CREW_SIZE:
             raise ValueError("crew is full")
         self.member_ids.append(player_id)
-

@@ -97,9 +97,10 @@ class JsonlEventStore(EventStore):
         visibility: EventVisibility,
         payload: dict[str, Any],
         idempotency_key: str | None = None,
-    ) -> GameEvent:
+        ) -> GameEvent:
         with self._write_lock:
             events = self._read_unlocked(repair=False)
+            self._validate_chain(events)
             if idempotency_key:
                 fingerprint = _command_fingerprint(
                     event_type=event_type,
@@ -157,6 +158,7 @@ class JsonlEventStore(EventStore):
     ) -> list[GameEvent]:
         with self._write_lock:
             events = self._read_unlocked(repair=False)
+            self._validate_chain(events)
         if start_sequence is not None:
             events = [event for event in events if event.sequence >= start_sequence]
         if end_sequence is not None:
@@ -179,6 +181,14 @@ class JsonlEventStore(EventStore):
         with self._write_lock:
             repaired_trailing_row = self._repair_trailing_invalid_json_row() if repair else False
             events = self._read_unlocked(repair=False, validate_hashes=False)
+            self._validate_chain(events)
+        return IntegrityReport(
+            ok=True,
+            event_count=len(events),
+            repaired_trailing_row=repaired_trailing_row,
+        )
+
+    def _validate_chain(self, events: list[GameEvent]) -> None:
         previous_hash: str | None = None
         expected_sequence = 1
         for event in events:
@@ -193,11 +203,6 @@ class JsonlEventStore(EventStore):
                 raise EventLogIntegrityError(f"invalid event hash at sequence {event.sequence}")
             previous_hash = event.event_hash
             expected_sequence += 1
-        return IntegrityReport(
-            ok=True,
-            event_count=len(events),
-            repaired_trailing_row=repaired_trailing_row,
-        )
 
     def _read_unlocked(
         self,

@@ -5,9 +5,11 @@ from pathlib import Path
 from fastapi import FastAPI
 
 from hollow_lodge.eventlog.jsonl_store import JsonlEventStore
+from hollow_lodge.server.routes_chat import router as chat_router
 from hollow_lodge.server.routes_crews import router as crews_router
+from hollow_lodge.server.routes_events import router as events_router
 from hollow_lodge.server.routes_identity import router as identity_router
-from hollow_lodge.server.services import CrewService, IdentityService
+from hollow_lodge.server.services import ChatService, CrewService, IdentityService, VisibilityService
 
 
 def create_app(
@@ -23,13 +25,26 @@ def create_app(
     root = Path(data_dir) if data_dir is not None else Path(".hollow-lodge")
     event_store = JsonlEventStore(root / "server-events.jsonl")
     app.state.event_store = event_store
-    app.state.identity_service = IdentityService(
+    identity_service = IdentityService(
         invite_codes=invite_codes or [],
         event_store=event_store,
     )
-    app.state.crew_service = CrewService(event_store=event_store)
+    crew_service = CrewService(event_store=event_store)
+    app.state.identity_service = identity_service
+    app.state.crew_service = crew_service
+    app.state.chat_service = ChatService(
+        event_store=event_store,
+        identity_service=identity_service,
+        crew_service=crew_service,
+    )
+    app.state.visibility_service = VisibilityService(
+        event_store=event_store,
+        crew_service=crew_service,
+    )
     app.include_router(identity_router)
     app.include_router(crews_router)
+    app.include_router(chat_router)
+    app.include_router(events_router)
 
     @app.get("/health", tags=["system"])
     def health() -> dict[str, str]:

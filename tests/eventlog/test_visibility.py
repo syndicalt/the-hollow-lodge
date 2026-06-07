@@ -1,4 +1,7 @@
-from hollow_lodge.domain.events import EventVisibility, GameEvent
+import pytest
+from pydantic import ValidationError
+
+from hollow_lodge.domain.events import EventVisibility, GameEvent, VisibilityPrincipal
 from hollow_lodge.eventlog.visibility import Principal, filter_visible_events
 
 
@@ -76,3 +79,14 @@ def test_empty_visibility_is_deny_by_default():
     assert filter_visible_events([secret], Principal.player("player_ada")) == []
     assert filter_visible_events([secret], Principal.crew("crew_ember")) == []
     assert filter_visible_events([secret], Principal.server()) == []
+
+
+def test_visibility_principals_require_valid_kind_and_id_shape():
+    with pytest.raises(ValidationError):
+        VisibilityPrincipal(kind="player")
+    with pytest.raises(ValidationError):
+        VisibilityPrincipal(kind="crew", id="")
+    with pytest.raises(ValidationError):
+        VisibilityPrincipal(kind="server", id="server_1")
+    with pytest.raises(ValidationError):
+        Principal(kind="ghost", id="player_ada")
