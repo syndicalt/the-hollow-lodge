@@ -621,6 +621,7 @@ def act(
     intent: str = typer.Argument(..., help="Freeform action intent."),
     confirm: bool = typer.Option(False, "--confirm", help="Submit after normalization."),
     crew_id: str | None = typer.Option(None, "--crew-id", help="Crew id; defaults to active crew."),
+    rumor_id: str | None = typer.Option(None, "--rumor-id", help="Visible rumor id this action answers."),
     config: Path = typer.Option(DEFAULT_CONFIG_PATH, "--config", help="Local config path."),
     local_log: Path = typer.Option(
         DEFAULT_LOCAL_LOG_PATH,
@@ -645,6 +646,7 @@ def act(
     response = _api_from_config(current).submit_action(
         crew_id=target_crew_id,
         intent=intent,
+        rumor_id=rumor_id,
         idempotency_key=new_command_key("action-submit"),
     )
     typer.echo(response["action_id"])

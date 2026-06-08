@@ -156,10 +156,12 @@ def test_submit_action_mcp_call_passes_confirmation_to_session(monkeypatch):
             intent: str,
             confirm: bool,
             crew_id: str | None = None,
+            rumor_id: str | None = None,
         ) -> RenderPacket:
             assert intent == "Inspect the ledger."
             assert confirm is False
             assert crew_id is None
+            assert rumor_id == "rumor_msg_000001"
             return packet
 
     monkeypatch.setattr(mcp_server, "_session", lambda: StubSession())
@@ -167,7 +169,11 @@ def test_submit_action_mcp_call_passes_confirmation_to_session(monkeypatch):
     result = asyncio.run(
         mcp_server.mcp.call_tool(
             "submit_action",
-            {"intent": "Inspect the ledger.", "confirm": False},
+            {
+                "intent": "Inspect the ledger.",
+                "confirm": False,
+                "rumor_id": "rumor_msg_000001",
+            },
         )
     )
 

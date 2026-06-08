@@ -255,7 +255,7 @@ def _shape_activity_event(event: dict[str, Any]) -> dict[str, Any]:
         action = payload.get("action", {})
         shaped["action"] = {
             key: action[key]
-            for key in ("action_id", "crew_id", "intent")
+            for key in ("action_id", "crew_id", "intent", "responds_to_rumor_id")
             if key in action
         }
     elif event_type == "contract.phase.resolved":
@@ -270,7 +270,7 @@ def _shape_mutation_result(operation: str, result: dict[str, Any]) -> dict[str, 
     if operation == "submit_action":
         return {
             key: result[key]
-            for key in ("action_id", "crew_id", "intent")
+            for key in ("action_id", "crew_id", "intent", "responds_to_rumor_id")
             if key in result
         }
     if operation in {

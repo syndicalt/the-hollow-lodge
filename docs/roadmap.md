@@ -285,10 +285,14 @@ Status:
 - Third social-pressure slice completed: visible rumors from deals or chat now
   create `rumor_response` pending decisions in inbox and crew board surfaces,
   so players can respond from Codex without hunting through raw activity.
+- Fourth social-pressure slice completed: confirmed crew actions can now
+  reference a visible rumor, clearing that rumor's pending response while
+  preserving the action cost, confirmation, phase lock, and crew-scoped audit
+  trail.
 - Escrowed deal acceptance remains participant-scoped and server-enforced.
 - Deferred: freeform chat body pressure scanning, reputation consequences for
-  deal conduct, explicit cleanup/counterintelligence mutations, and richer
-  rumor verification outcomes.
+  deal conduct, richer cleanup/counterintelligence effects, and richer rumor
+  verification outcomes.
 
 Likely files:
 
@@ -476,6 +480,21 @@ crew action. This slice does not add a new cleanup mutation yet.
 Expected verification:
 
 - `pytest tests/server/test_chat_routes.py tests/server/test_deal_routes.py tests/server/test_crew_routes.py tests/client/test_render_packets.py -q`
+- `pytest -q`
+
+### Slice 13: Rumor-Linked Crew Actions
+
+Status: completed.
+
+Let a confirmed freeform crew action answer a visible rumor by passing a
+structured `rumor_id`. The server validates that the rumor is visible to the
+acting crew, stores only `responds_to_rumor_id` on the submitted action, and
+clears the related `rumor_response` pending decision by projection. Canceling
+the action reopens the decision naturally.
+
+Expected verification:
+
+- `pytest tests/server/test_action_routes.py tests/client/test_api.py tests/client/test_codex_session.py tests/test_mcp_server.py tests/client/test_action_cli.py tests/client/test_render_packets.py -q`
 - `pytest -q`
 
 ## Completion Standard

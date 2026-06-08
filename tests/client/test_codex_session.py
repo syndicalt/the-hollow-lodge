@@ -126,7 +126,14 @@ class FakeApi:
             ]
         }
 
-    def submit_action(self, *, crew_id: str, intent: str, idempotency_key: str):
+    def submit_action(
+        self,
+        *,
+        crew_id: str,
+        intent: str,
+        idempotency_key: str,
+        rumor_id: str | None = None,
+    ):
         self.calls.append(
             (
                 "submit_action",
@@ -134,10 +141,14 @@ class FakeApi:
                     "crew_id": crew_id,
                     "intent": intent,
                     "idempotency_key": idempotency_key,
+                    "rumor_id": rumor_id,
                 },
             )
         )
-        return {"action_id": "action_000001", "crew_id": crew_id, "intent": intent}
+        result = {"action_id": "action_000001", "crew_id": crew_id, "intent": intent}
+        if rumor_id is not None:
+            result["responds_to_rumor_id"] = rumor_id
+        return result
 
     def add_dossier_evidence(
         self,
@@ -600,13 +611,18 @@ def test_codex_session_preview_submit_action_does_not_call_mutating_api(tmp_path
     )
     session = CodexGameSession(config_path=config_path, local_log_path=log_path, api=fake_api)
 
-    packet = session.submit_action(intent="Inspect the red ledger.", confirm=False)
+    packet = session.submit_action(
+        intent="Inspect the red ledger.",
+        confirm=False,
+        rumor_id="rumor_msg_000001",
+    )
 
     assert packet.surface == "mutation"
     assert packet.agent_context["mutation"] is False
     assert packet.agent_context["preview"] == {
         "crew_id": "crew_0001",
         "intent": "Inspect the red ledger.",
+        "rumor_id": "rumor_msg_000001",
     }
     assert fake_api.calls == []
 
@@ -630,13 +646,18 @@ def test_codex_session_confirm_submit_action_calls_api_with_active_crew(tmp_path
     )
     session = CodexGameSession(config_path=config_path, local_log_path=log_path, api=fake_api)
 
-    packet = session.submit_action(intent="Inspect the red ledger.", confirm=True)
+    packet = session.submit_action(
+        intent="Inspect the red ledger.",
+        confirm=True,
+        rumor_id="rumor_msg_000001",
+    )
 
     assert packet.agent_context["mutation"] is True
     assert packet.agent_context["result"] == {
         "action_id": "action_000001",
         "crew_id": "crew_0001",
         "intent": "Inspect the red ledger.",
+        "responds_to_rumor_id": "rumor_msg_000001",
     }
     assert fake_api.calls == [
         (
@@ -645,6 +666,7 @@ def test_codex_session_confirm_submit_action_calls_api_with_active_crew(tmp_path
                 "crew_id": "crew_0001",
                 "intent": "Inspect the red ledger.",
                 "idempotency_key": "action-submit.fixed",
+                "rumor_id": "rumor_msg_000001",
             },
         ),
         "visible_events",

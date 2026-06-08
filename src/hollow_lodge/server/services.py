@@ -35,6 +35,7 @@ from hollow_lodge.server.projections import contract_board_from_events, inbox_fr
 from hollow_lodge.server.contract_seed import ContractSeed
 from hollow_lodge.server.seed_data import STARTER_CAMPAIGN, STARTER_CONTRACT, STARTER_HIDDEN_TRUTH
 from hollow_lodge.server.auth import authenticate_token
+from hollow_lodge.server.rumors import visible_rumors_for_crew
 from hollow_lodge.workflows.deterministic_oracle import DeterministicResolutionOracle
 from hollow_lodge.workflows.oracle_boundary import (
     AuctionPreviewCrewPacket,
@@ -2043,6 +2044,7 @@ class ActionService:
         crew_id: str,
         intent: str,
         confirmed: bool,
+        rumor_id: str | None = None,
         idempotency_key: str,
     ) -> dict:
         with COMMAND_SERIALIZATION_LOCK, self._lock:
@@ -2054,6 +2056,7 @@ class ActionService:
                     or existing.payload["confirmed"] is not confirmed
                     or existing.payload["action"]["crew_id"] != crew_id
                     or existing.payload["action"]["intent"] != intent
+                    or existing.payload["action"].get("responds_to_rumor_id") != rumor_id
                 ):
                     raise ValueError("idempotency key conflict")
                 self._award_action_artifacts(
@@ -2068,6 +2071,8 @@ class ActionService:
                 raise ValueError("unconfirmed action was not submitted")
             if not self._crew_service.is_member(crew_id=crew_id, player_id=player_id):
                 raise PermissionError(crew_id)
+            if rumor_id is not None:
+                self._require_visible_rumor(crew_id=crew_id, rumor_id=rumor_id)
             action_number = self._submitted_action_count(crew_id) + 1
             frame = NormalizedAction.from_intent(
                 intent=intent,
@@ -2080,6 +2085,8 @@ class ActionService:
                 "status": "submitted",
                 **frame.model_dump(mode="json"),
             }
+            if rumor_id is not None:
+                action["responds_to_rumor_id"] = rumor_id
             self._event_store.append_command(
                 event_type="action.submitted",
                 actor_id=player_id,
@@ -2093,6 +2100,13 @@ class ActionService:
                 crew_id=crew_id,
             )
             return action
+
+    def _require_visible_rumor(self, *, crew_id: str, rumor_id: str) -> None:
+        if not any(
+            rumor.get("rumor_id") == rumor_id
+            for rumor in visible_rumors_for_crew(self._event_store, crew_id)
+        ):
+            raise KeyError(rumor_id)
 
     def edit_action(
         self,

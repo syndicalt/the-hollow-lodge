@@ -106,17 +106,22 @@ class CodexGameSession:
         intent: str,
         confirm: bool,
         crew_id: str | None = None,
+        rumor_id: str | None = None,
     ) -> RenderPacket:
         target_crew_id = self._target_crew_id(crew_id)
         if not confirm:
+            preview_fields = {"crew_id": target_crew_id, "intent": intent}
+            if rumor_id is not None:
+                preview_fields["rumor_id"] = rumor_id
             return build_mutation_result_packet(
                 operation="submit_action",
                 confirmed=False,
-                preview_fields={"crew_id": target_crew_id, "intent": intent},
+                preview_fields=preview_fields,
             )
         result = self.api.submit_action(
             crew_id=target_crew_id,
             intent=intent,
+            rumor_id=rumor_id,
             idempotency_key=new_command_key("action-submit"),
         )
         self.sync()

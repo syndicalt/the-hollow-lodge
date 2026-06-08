@@ -10,14 +10,29 @@ class FakeApi:
     def __init__(self, *, server_url: str, token: str | None = None):
         self.calls = []
 
-    def submit_action(self, *, crew_id: str, intent: str, idempotency_key: str):
+    def submit_action(
+        self,
+        *,
+        crew_id: str,
+        intent: str,
+        idempotency_key: str,
+        rumor_id: str | None = None,
+    ):
         self.calls.append(
             (
                 "submit_action",
-                {"crew_id": crew_id, "intent": intent, "idempotency_key": idempotency_key},
+                {
+                    "crew_id": crew_id,
+                    "intent": intent,
+                    "idempotency_key": idempotency_key,
+                    "rumor_id": rumor_id,
+                },
             )
         )
-        return {"action_id": "action_000001", "status": "submitted"}
+        result = {"action_id": "action_000001", "status": "submitted"}
+        if rumor_id is not None:
+            result["responds_to_rumor_id"] = rumor_id
+        return result
 
     def edit_action(self, *, action_id: str, intent: str, idempotency_key: str):
         self.calls.append(
@@ -107,6 +122,8 @@ def test_act_command_confirms_and_submits(tmp_path, monkeypatch):
             "act",
             "I inspect the red ledger rubric quietly.",
             "--confirm",
+            "--rumor-id",
+            "rumor_msg_000001",
             "--config",
             str(config_path),
             "--local-log",
@@ -123,6 +140,7 @@ def test_act_command_confirms_and_submits(tmp_path, monkeypatch):
                 "crew_id": "crew_0001",
                 "intent": "I inspect the red ledger rubric quietly.",
                 "idempotency_key": "action-submit-key",
+                "rumor_id": "rumor_msg_000001",
             },
         )
     ]

@@ -16,6 +16,7 @@ class SubmitActionRequest(BaseModel):
     crew_id: str = Field(min_length=1)
     intent: str = Field(min_length=1)
     confirmed: bool
+    rumor_id: str | None = Field(default=None, min_length=1)
 
 
 class EditActionRequest(BaseModel):
@@ -35,8 +36,11 @@ def submit_action(
             crew_id=payload.crew_id,
             intent=payload.intent,
             confirmed=payload.confirmed,
+            rumor_id=payload.rumor_id,
             idempotency_key=idempotency_key,
         )
+    except KeyError as exc:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="rumor not found") from exc
     except PermissionError as exc:
         raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="not a crew member") from exc
     except ValueError as exc:

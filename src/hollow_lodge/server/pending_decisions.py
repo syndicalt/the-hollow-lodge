@@ -21,6 +21,12 @@ def pending_decisions_for_player(
     visible_crew_ids = set(crew_ids)
     actions_by_crew = actions_by_crew or {}
     rumors_by_crew = rumors_by_crew or {}
+    answered_rumor_ids = {
+        action.get("responds_to_rumor_id")
+        for actions in actions_by_crew.values()
+        for action in actions
+        if action.get("status") == "submitted" and action.get("responds_to_rumor_id")
+    }
 
     for deal in deals:
         if deal.get("status") != "proposed":
@@ -61,6 +67,8 @@ def pending_decisions_for_player(
     ]
     for crew_id in crew_ids:
         for rumor in rumors_by_crew.get(crew_id, []):
+            if rumor["rumor_id"] in answered_rumor_ids:
+                continue
             decisions.append(
                 {
                     "kind": "rumor_response",

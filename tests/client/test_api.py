@@ -326,6 +326,63 @@ def test_api_edits_and_cancels_action(monkeypatch):
     ]
 
 
+def test_api_submits_action_with_rumor_reference(monkeypatch):
+    calls = []
+
+    class Response:
+        def raise_for_status(self):
+            calls.append("raise_for_status")
+
+        def json(self):
+            return {
+                "action_id": "action_000001",
+                "responds_to_rumor_id": "rumor_msg_000001",
+            }
+
+    def fake_post(url, *, headers, json, timeout):
+        calls.append(
+            {
+                "url": url,
+                "headers": headers,
+                "json": json,
+                "timeout": timeout,
+            }
+        )
+        return Response()
+
+    monkeypatch.setattr("httpx.post", fake_post)
+    api = HollowLodgeApi(server_url="http://testserver", token="token")
+
+    result = api.submit_action(
+        crew_id="crew_0001",
+        intent="Verify the rumor quietly.",
+        rumor_id="rumor_msg_000001",
+        idempotency_key="action-submit-key",
+    )
+
+    assert result == {
+        "action_id": "action_000001",
+        "responds_to_rumor_id": "rumor_msg_000001",
+    }
+    assert calls == [
+        {
+            "url": "http://testserver/actions",
+            "headers": {
+                "Idempotency-Key": "action-submit-key",
+                "Authorization": "Bearer token",
+            },
+            "json": {
+                "crew_id": "crew_0001",
+                "intent": "Verify the rumor quietly.",
+                "confirmed": True,
+                "rumor_id": "rumor_msg_000001",
+            },
+            "timeout": 10,
+        },
+        "raise_for_status",
+    ]
+
+
 def test_api_locks_auction_preview_phase(monkeypatch):
     calls = []
 
