@@ -13,6 +13,7 @@ from hollow_lodge.server.routes_artifacts import router as artifacts_router
 from hollow_lodge.server.routes_chat import router as chat_router
 from hollow_lodge.server.routes_contracts import router as contracts_router
 from hollow_lodge.server.routes_crews import router as crews_router
+from hollow_lodge.server.routes_deals import router as deals_router
 from hollow_lodge.server.routes_events import router as events_router
 from hollow_lodge.server.routes_identity import router as identity_router
 from hollow_lodge.server.routes_proofs import router as proofs_router
@@ -94,6 +95,7 @@ def create_app(
     app.include_router(chat_router)
     app.include_router(actions_router)
     app.include_router(artifacts_router)
+    app.include_router(deals_router)
     app.include_router(contracts_router)
     app.include_router(proofs_router)
     app.include_router(events_router)
