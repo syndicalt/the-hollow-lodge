@@ -104,6 +104,33 @@ def _shape_deal(deal: dict[str, Any]) -> dict[str, Any]:
     }
 
 
+def _render_deal_lines(deal: dict[str, Any]) -> list[str]:
+    offered = _artifact_list(deal.get("offered_artifact_ids", []))
+    requested = _artifact_list(deal.get("requested_artifact_ids", []))
+    action = "offered" if deal.get("status") == "fulfilled" else "offers"
+    lines = [
+        (
+            f"- {deal['deal_id']} {deal['status']}: "
+            f"{deal['proposer_crew_id']} {action} {offered} for {requested}"
+        )
+    ]
+    if deal.get("expires_phase"):
+        lines.append(f"  Expires: {deal['expires_phase']}")
+    for soft_term in deal.get("soft_terms", []):
+        lines.append(f"  Soft term: {soft_term}")
+    proposer_received = deal.get("proposer_received_artifact_ids", [])
+    if proposer_received:
+        lines.append(f"  Received by proposer: {_artifact_list(proposer_received)}")
+    recipient_received = deal.get("recipient_received_artifact_ids", [])
+    if recipient_received:
+        lines.append(f"  Received by recipient: {_artifact_list(recipient_received)}")
+    return lines
+
+
+def _artifact_list(artifact_ids: list[str] | tuple[str, ...]) -> str:
+    return ", ".join(artifact_ids) if artifact_ids else "nothing"
+
+
 def _shape_crew(crew: dict[str, Any]) -> dict[str, Any]:
     return {
         key: crew[key]
@@ -245,7 +272,8 @@ def build_crew_board_packet(board: dict[str, Any]) -> RenderPacket:
     lines.extend(["", "Deals:"])
     deals = board.get("deals", [])
     if deals:
-        lines.extend(f"- {deal['deal_id']} {deal['status']}" for deal in deals)
+        for deal in deals:
+            lines.extend(_render_deal_lines(deal))
     else:
         lines.append("- none")
     lines.extend(
@@ -334,7 +362,8 @@ def build_inbox_packet(inbox: dict[str, Any]) -> RenderPacket:
     lines.append("")
     lines.append("Incoming deals:")
     if deals:
-        lines.extend(f"- {deal['deal_id']} {deal['status']}" for deal in deals)
+        for deal in deals:
+            lines.extend(_render_deal_lines(deal))
     else:
         lines.append("- none")
     artifacts = inbox.get("visible_artifacts", [])
