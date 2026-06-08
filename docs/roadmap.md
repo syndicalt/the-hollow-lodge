@@ -265,6 +265,8 @@ Likely files:
 
 ### Slice 1: Playable Alpha Audit And Script
 
+Status: completed in `206b8a2`.
+
 Create a repeatable local playthrough script or test that exercises the
 Milestone 1 proof gate and renders the resulting Codex packets. This should
 identify missing MCP tools or awkward player-facing output before adding more
@@ -277,6 +279,8 @@ Expected verification:
   deals, actions, dossier state, and resolution.
 
 ### Slice 2: Codex Activity And Thread Rendering
+
+Status: completed in `2ad3631`.
 
 Add MCP render tools for conversation threads and a visibility-scoped activity
 summary. The player should be able to ask what changed without reading raw
@@ -300,6 +304,8 @@ Expected verification:
 
 ### Slice 4: Production Diagnostics
 
+Status: completed in `9a17c8d`.
+
 Add server diagnostics that expose provider, data-dir, event-log status, and
 oracle readiness without leaking secrets. Add config validation for missing or
 inconsistent production env.
@@ -316,6 +322,39 @@ update the installer/site text when the hosted path is actually usable.
 Expected verification:
 
 - `pytest tests/server/test_identity_routes.py tests/client/test_installer_script.py -q`
+
+### Slice 6: Codex-Native Confirmed Mutations
+
+Add MCP tools for the confirmed, irreversible actions required by the alpha
+loop. These tools must remain explicit and confirmation-oriented: the agent can
+translate player intent and submit the command only after the player has
+approved the concrete consequence summary.
+
+Initial tool set:
+
+- `submit_action`
+- `dossier_contribute`
+- `dossier_cite_artifact`
+- `propose_deal`
+- `accept_deal`
+- `transfer_artifact`
+- `vote_packet_lead`
+
+Expected verification:
+
+- `pytest tests/client/test_codex_session.py tests/test_mcp_server.py -q`
+- `pytest tests/e2e/test_codex_render_surfaces.py tests/e2e/test_full_game_loop_with_escrow.py -q`
+
+### Slice 7: CLI Reachability Gaps
+
+Expose server-supported operations that are currently hard to reach from the
+CLI: proof fragment transfer, artifact dossier citation, full dossier framing
+fields, action edit/cancel, and phase lock/resolve preview.
+
+Expected verification:
+
+- `pytest tests/client/test_cli_commands.py tests/client/test_dossier_cli.py -q`
+- `pytest tests/server/test_action_routes.py tests/server/test_phase_resolution.py -q`
 
 ## Completion Standard
 
