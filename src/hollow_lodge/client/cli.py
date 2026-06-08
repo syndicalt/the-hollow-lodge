@@ -1,3 +1,4 @@
+import json
 from pathlib import Path
 
 import typer
@@ -207,6 +208,99 @@ def admin_key_requests(
             f"{key_request['request_id']} {key_request['status']} "
             f"{key_request['display_name']} {contact}"
         )
+
+
+@admin_app.command("invites")
+def admin_invites(
+    server: str = typer.Option(
+        DEFAULT_SERVER_URL,
+        "--server",
+        help="Authoritative server URL. Defaults to the official Lodge.",
+    ),
+    admin_token: str = typer.Option(
+        ...,
+        "--admin-token",
+        envvar="HOLLOW_LODGE_ADMIN_TOKEN",
+        help="Server admin token.",
+    ),
+) -> None:
+    """List invite inventory without exposing invite codes."""
+    response = HollowLodgeApi(server_url=server).list_invites(
+        admin_token=admin_token,
+    )
+    for invite in response["invites"]:
+        state = "used" if invite["used"] else "unused"
+        typer.echo(f"{invite['invite_id']} {state}")
+
+
+@admin_app.command("players")
+def admin_players(
+    server: str = typer.Option(
+        DEFAULT_SERVER_URL,
+        "--server",
+        help="Authoritative server URL. Defaults to the official Lodge.",
+    ),
+    admin_token: str = typer.Option(
+        ...,
+        "--admin-token",
+        envvar="HOLLOW_LODGE_ADMIN_TOKEN",
+        help="Server admin token.",
+    ),
+) -> None:
+    """List registered players without token material."""
+    response = HollowLodgeApi(server_url=server).list_players(
+        admin_token=admin_token,
+    )
+    for player in response["players"]:
+        state = "revoked" if player["token_revoked"] else "active"
+        typer.echo(f"{player['player_id']} {state} {player['display_name']}")
+
+
+@admin_app.command("event-log-verify")
+def admin_event_log_verify(
+    server: str = typer.Option(
+        DEFAULT_SERVER_URL,
+        "--server",
+        help="Authoritative server URL. Defaults to the official Lodge.",
+    ),
+    admin_token: str = typer.Option(
+        ...,
+        "--admin-token",
+        envvar="HOLLOW_LODGE_ADMIN_TOKEN",
+        help="Server admin token.",
+    ),
+) -> None:
+    """Verify the authoritative event-log hash chain."""
+    response = HollowLodgeApi(server_url=server).verify_event_log(
+        admin_token=admin_token,
+    )
+    status_text = "ok" if response["ok"] else "failed"
+    repair_note = " repaired" if response.get("repaired_trailing_row") else ""
+    typer.echo(f"{status_text} {response['event_count']} events{repair_note}")
+
+
+@admin_app.command("event-log-export")
+def admin_event_log_export(
+    output: Path = typer.Option(..., "--output", help="Destination JSON file."),
+    server: str = typer.Option(
+        DEFAULT_SERVER_URL,
+        "--server",
+        help="Authoritative server URL. Defaults to the official Lodge.",
+    ),
+    admin_token: str = typer.Option(
+        ...,
+        "--admin-token",
+        envvar="HOLLOW_LODGE_ADMIN_TOKEN",
+        help="Server admin token.",
+    ),
+) -> None:
+    """Export the authoritative event log as JSON."""
+    response = HollowLodgeApi(server_url=server).export_event_log(
+        admin_token=admin_token,
+    )
+    output.parent.mkdir(parents=True, exist_ok=True)
+    output.write_text(json.dumps(response, indent=2, sort_keys=True) + "\n", encoding="utf-8")
+    typer.echo(f"wrote {output}")
 
 
 @admin_app.command("key-request-approve")

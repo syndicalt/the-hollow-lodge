@@ -7,6 +7,7 @@ from pydantic import BaseModel, Field
 from fastapi import APIRouter, Depends, Header, HTTPException, Request, status
 
 from hollow_lodge.domain.identity import Player
+from hollow_lodge.eventlog.jsonl_store import EventLogIntegrityError
 from hollow_lodge.server.auth import current_player
 
 
@@ -35,6 +36,35 @@ class AdminAccessKeyRequestResponse(AccessKeyRequestResponse):
 
 class AdminAccessKeyRequestListResponse(BaseModel):
     key_requests: list[AdminAccessKeyRequestResponse]
+
+
+class AdminInviteResponse(BaseModel):
+    invite_id: str
+    used: bool
+
+
+class AdminInviteListResponse(BaseModel):
+    invites: list[AdminInviteResponse]
+
+
+class AdminPlayerResponse(BaseModel):
+    player_id: str
+    display_name: str
+    token_revoked: bool
+
+
+class AdminPlayerListResponse(BaseModel):
+    players: list[AdminPlayerResponse]
+
+
+class EventLogVerifyResponse(BaseModel):
+    ok: bool
+    event_count: int
+    repaired_trailing_row: bool
+
+
+class EventLogExportResponse(BaseModel):
+    events: list[dict]
 
 
 class AccessKeyApprovalResponse(BaseModel):
@@ -137,6 +167,44 @@ def create_invite(
 
 
 @router.get(
+    "/admin/invites",
+    response_model=AdminInviteListResponse,
+)
+def list_invites(
+    request: Request,
+    admin_token: str | None = Header(None, alias="X-Hollow-Lodge-Admin-Token"),
+) -> AdminInviteListResponse:
+    _require_admin_token(admin_token)
+    return AdminInviteListResponse(
+        invites=[
+            AdminInviteResponse(invite_id=invite.invite_id, used=invite.used)
+            for invite in request.app.state.identity_service.list_invites()
+        ]
+    )
+
+
+@router.get(
+    "/admin/players",
+    response_model=AdminPlayerListResponse,
+)
+def list_players(
+    request: Request,
+    admin_token: str | None = Header(None, alias="X-Hollow-Lodge-Admin-Token"),
+) -> AdminPlayerListResponse:
+    _require_admin_token(admin_token)
+    return AdminPlayerListResponse(
+        players=[
+            AdminPlayerResponse(
+                player_id=player.player_id,
+                display_name=player.display_name,
+                token_revoked=player.token_revoked,
+            )
+            for player in request.app.state.identity_service.list_players()
+        ]
+    )
+
+
+@router.get(
     "/admin/key-requests",
     response_model=AdminAccessKeyRequestListResponse,
 )
@@ -155,6 +223,44 @@ def list_key_requests(
             )
             for key_request in request.app.state.identity_service.list_access_key_requests()
         ]
+    )
+
+
+@router.get(
+    "/admin/event-log/verify",
+    response_model=EventLogVerifyResponse,
+)
+def verify_event_log(
+    request: Request,
+    admin_token: str | None = Header(None, alias="X-Hollow-Lodge-Admin-Token"),
+) -> EventLogVerifyResponse:
+    _require_admin_token(admin_token)
+    try:
+        report = request.app.state.event_store.verify_integrity()
+    except EventLogIntegrityError as exc:
+        raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail=str(exc)) from exc
+    return EventLogVerifyResponse(
+        ok=report.ok,
+        event_count=report.event_count,
+        repaired_trailing_row=report.repaired_trailing_row,
+    )
+
+
+@router.get(
+    "/admin/event-log/export",
+    response_model=EventLogExportResponse,
+)
+def export_event_log(
+    request: Request,
+    admin_token: str | None = Header(None, alias="X-Hollow-Lodge-Admin-Token"),
+) -> EventLogExportResponse:
+    _require_admin_token(admin_token)
+    try:
+        events = request.app.state.event_store.read()
+    except EventLogIntegrityError as exc:
+        raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail=str(exc)) from exc
+    return EventLogExportResponse(
+        events=[event.model_dump(mode="json") for event in events]
     )
 
 

@@ -301,6 +301,86 @@ def test_admin_invite_creation_replays_by_idempotency_key(tmp_path, monkeypatch)
     assert replay.json() == first.json()
 
 
+def test_admin_can_list_invite_inventory_without_raw_codes(tmp_path, monkeypatch):
+    monkeypatch.setenv("HOLLOW_LODGE_ADMIN_TOKEN", "admin-secret")
+    client = TestClient(create_app(data_dir=tmp_path, invite_codes=[]))
+    invite = client.post(
+        "/identity/admin/invites",
+        headers={"Idempotency-Key": "invite-create-1", "X-Hollow-Lodge-Admin-Token": "admin-secret"},
+    ).json()
+
+    response = client.get(
+        "/identity/admin/invites",
+        headers={"X-Hollow-Lodge-Admin-Token": "admin-secret"},
+    )
+
+    assert response.status_code == 200
+    assert response.json() == {
+        "invites": [
+            {
+                "invite_id": "invite_0001",
+                "used": False,
+            }
+        ]
+    }
+    assert invite["invite_code"] not in response.text
+
+
+def test_admin_player_lookup_returns_registered_players_without_tokens(tmp_path, monkeypatch):
+    monkeypatch.setenv("HOLLOW_LODGE_ADMIN_TOKEN", "admin-secret")
+    client = TestClient(create_app(data_dir=tmp_path, invite_codes=["alpha-code"]))
+    registered = client.post(
+        "/identity/register",
+        json={"invite_code": "alpha-code", "display_name": "Ada"},
+        headers={"Idempotency-Key": "register-ada"},
+    ).json()
+
+    response = client.get(
+        "/identity/admin/players",
+        headers={"X-Hollow-Lodge-Admin-Token": "admin-secret"},
+    )
+
+    assert response.status_code == 200
+    assert response.json() == {
+        "players": [
+            {
+                "player_id": registered["player_id"],
+                "display_name": "Ada",
+                "token_revoked": False,
+            }
+        ]
+    }
+    assert registered["token"] not in response.text
+    assert "token_hash" not in response.text
+
+
+def test_admin_can_verify_and_export_event_log(tmp_path, monkeypatch):
+    monkeypatch.setenv("HOLLOW_LODGE_ADMIN_TOKEN", "admin-secret")
+    client = TestClient(create_app(data_dir=tmp_path, invite_codes=["alpha-code"]))
+    client.post(
+        "/identity/register",
+        json={"invite_code": "alpha-code", "display_name": "Ada"},
+        headers={"Idempotency-Key": "register-ada"},
+    )
+
+    verify = client.get(
+        "/identity/admin/event-log/verify",
+        headers={"X-Hollow-Lodge-Admin-Token": "admin-secret"},
+    )
+    exported = client.get(
+        "/identity/admin/event-log/export",
+        headers={"X-Hollow-Lodge-Admin-Token": "admin-secret"},
+    )
+
+    assert verify.status_code == 200
+    assert verify.json()["ok"] is True
+    assert verify.json()["event_count"] >= 1
+    assert verify.json()["repaired_trailing_row"] is False
+    assert exported.status_code == 200
+    assert any(event["type"] == "identity.player.registered" for event in exported.json()["events"])
+    assert "alpha-code" not in exported.text
+
+
 def test_admin_can_list_access_key_requests(tmp_path, monkeypatch):
     monkeypatch.setenv("HOLLOW_LODGE_ADMIN_TOKEN", "admin-secret")
     client = TestClient(create_app(data_dir=tmp_path, invite_codes=[]))

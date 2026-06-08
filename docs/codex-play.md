@@ -39,6 +39,9 @@ hollow-lodge admin key-requests
 hollow-lodge admin key-request-approve key_request_0001
 ```
 
+See [operations.md](operations.md) for deployment checks, backup/export, and
+admin inventory commands.
+
 ## Session Loop
 
 1. Sync visible events before advising.

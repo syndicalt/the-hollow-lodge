@@ -65,6 +65,42 @@ class HollowLodgeApi:
         response.raise_for_status()
         return response.json()
 
+    def list_invites(self, *, admin_token: str) -> dict[str, Any]:
+        response = httpx.get(
+            f"{self.server_url}/identity/admin/invites",
+            headers={"X-Hollow-Lodge-Admin-Token": admin_token},
+            timeout=10,
+        )
+        response.raise_for_status()
+        return response.json()
+
+    def list_players(self, *, admin_token: str) -> dict[str, Any]:
+        response = httpx.get(
+            f"{self.server_url}/identity/admin/players",
+            headers={"X-Hollow-Lodge-Admin-Token": admin_token},
+            timeout=10,
+        )
+        response.raise_for_status()
+        return response.json()
+
+    def verify_event_log(self, *, admin_token: str) -> dict[str, Any]:
+        response = httpx.get(
+            f"{self.server_url}/identity/admin/event-log/verify",
+            headers={"X-Hollow-Lodge-Admin-Token": admin_token},
+            timeout=10,
+        )
+        response.raise_for_status()
+        return response.json()
+
+    def export_event_log(self, *, admin_token: str) -> dict[str, Any]:
+        response = httpx.get(
+            f"{self.server_url}/identity/admin/event-log/export",
+            headers={"X-Hollow-Lodge-Admin-Token": admin_token},
+            timeout=10,
+        )
+        response.raise_for_status()
+        return response.json()
+
     def approve_key_request(
         self,
         *,

@@ -104,6 +104,30 @@ class FakeApi:
             "invite_code": "lodge_invite_0001",
         }
 
+    def list_invites(self, *, admin_token: str):
+        self.calls.append(("list_invites", {"admin_token": admin_token}))
+        return {"invites": [{"invite_id": "invite_0001", "used": False}]}
+
+    def list_players(self, *, admin_token: str):
+        self.calls.append(("list_players", {"admin_token": admin_token}))
+        return {
+            "players": [
+                {
+                    "player_id": "player_0001",
+                    "display_name": "Ada",
+                    "token_revoked": False,
+                }
+            ]
+        }
+
+    def verify_event_log(self, *, admin_token: str):
+        self.calls.append(("verify_event_log", {"admin_token": admin_token}))
+        return {"ok": True, "event_count": 7, "repaired_trailing_row": False}
+
+    def export_event_log(self, *, admin_token: str):
+        self.calls.append(("export_event_log", {"admin_token": admin_token}))
+        return {"events": [{"sequence": 1, "type": "identity.player.registered"}]}
+
     def create_crew(self, *, name: str, idempotency_key: str):
         self.calls.append(("create_crew", {"name": name, "idempotency_key": idempotency_key}))
         return {"crew_id": "crew_0001", "join_code": "join-secret"}
@@ -762,6 +786,109 @@ def test_admin_key_request_approve_command_prints_invite(tmp_path, monkeypatch):
             },
         )
     ]
+
+
+def test_admin_invites_command_lists_inventory_without_player_auth(tmp_path, monkeypatch):
+    runner = CliRunner()
+    created_clients: list[FakeApi] = []
+
+    def fake_client(**kwargs):
+        client = FakeApi(**kwargs)
+        created_clients.append(client)
+        return client
+
+    monkeypatch.setattr(cli, "HollowLodgeApi", fake_client)
+
+    result = runner.invoke(
+        cli.app,
+        [
+            "admin",
+            "invites",
+            "--server",
+            "http://testserver",
+            "--admin-token",
+            "admin-secret",
+        ],
+    )
+
+    assert result.exit_code == 0
+    assert "invite_0001 unused" in result.output
+    assert created_clients[0].token is None
+    assert created_clients[0].calls == [("list_invites", {"admin_token": "admin-secret"})]
+
+
+def test_admin_players_command_lists_player_lookup(tmp_path, monkeypatch):
+    runner = CliRunner()
+    created_clients: list[FakeApi] = []
+
+    def fake_client(**kwargs):
+        client = FakeApi(**kwargs)
+        created_clients.append(client)
+        return client
+
+    monkeypatch.setattr(cli, "HollowLodgeApi", fake_client)
+
+    result = runner.invoke(
+        cli.app,
+        [
+            "admin",
+            "players",
+            "--server",
+            "http://testserver",
+            "--admin-token",
+            "admin-secret",
+        ],
+    )
+
+    assert result.exit_code == 0
+    assert "player_0001 active Ada" in result.output
+    assert created_clients[0].calls == [("list_players", {"admin_token": "admin-secret"})]
+
+
+def test_admin_event_log_commands_verify_and_export(tmp_path, monkeypatch):
+    runner = CliRunner()
+    created_clients: list[FakeApi] = []
+
+    def fake_client(**kwargs):
+        client = FakeApi(**kwargs)
+        created_clients.append(client)
+        return client
+
+    monkeypatch.setattr(cli, "HollowLodgeApi", fake_client)
+    output_path = tmp_path / "events.json"
+
+    verify = runner.invoke(
+        cli.app,
+        [
+            "admin",
+            "event-log-verify",
+            "--server",
+            "http://testserver",
+            "--admin-token",
+            "admin-secret",
+        ],
+    )
+    export = runner.invoke(
+        cli.app,
+        [
+            "admin",
+            "event-log-export",
+            "--server",
+            "http://testserver",
+            "--admin-token",
+            "admin-secret",
+            "--output",
+            str(output_path),
+        ],
+    )
+
+    assert verify.exit_code == 0
+    assert "ok 7 events" in verify.output
+    assert export.exit_code == 0
+    assert f"wrote {output_path}" in export.output
+    assert '"identity.player.registered"' in output_path.read_text(encoding="utf-8")
+    assert created_clients[0].calls == [("verify_event_log", {"admin_token": "admin-secret"})]
+    assert created_clients[1].calls == [("export_event_log", {"admin_token": "admin-secret"})]
 
 
 def test_crew_commands_use_saved_config(tmp_path, monkeypatch):

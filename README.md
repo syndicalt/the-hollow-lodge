@@ -25,6 +25,9 @@ The installer uses `uv tool install` and then launches first-run onboarding.
 Players with an invite can register immediately; players without an invite can
 request an access key.
 
+Operational deployment, access approval, and event-log backup commands are in
+[docs/operations.md](docs/operations.md).
+
 ## Server Oracle
 
 The server defaults to deterministic resolution:

@@ -168,6 +168,20 @@ class IdentityService:
                 key=lambda request: request.request_id,
             )
 
+    def list_invites(self) -> list[Invite]:
+        with self._lock:
+            return sorted(
+                self._invites.values(),
+                key=lambda invite: invite.invite_id,
+            )
+
+    def list_players(self) -> list[Player]:
+        with self._lock:
+            return sorted(
+                self._players.values(),
+                key=lambda player: player.player_id,
+            )
+
     def approve_access_key_request(
         self,
         *,
