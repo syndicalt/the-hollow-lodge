@@ -247,6 +247,24 @@ def _shape_rumor(payload: dict[str, Any]) -> dict[str, Any]:
     }
 
 
+def _shape_rumor_response(payload: dict[str, Any]) -> dict[str, Any]:
+    return {
+        key: payload[key]
+        for key in (
+            "rumor_id",
+            "action_id",
+            "crew_id",
+            "source_type",
+            "source_id",
+            "contract_id",
+            "pressure",
+            "outcome",
+            "summary",
+        )
+        if key in payload
+    }
+
+
 def _shape_activity_event(event: dict[str, Any]) -> dict[str, Any]:
     sequence = int(event["sequence"])
     event_type = event["type"]
@@ -285,6 +303,8 @@ def _shape_activity_event(event: dict[str, Any]) -> dict[str, Any]:
         shaped["phase_result"] = _shape_phase_result(reveal)
     elif event_type == "contract.rumor.leaked":
         shaped["rumor"] = _shape_rumor(payload)
+    elif event_type == "contract.rumor.responded":
+        shaped["rumor_response"] = _shape_rumor_response(payload)
     return shaped
 
 
@@ -394,6 +414,11 @@ def _render_activity_event(event: dict[str, Any]) -> str:
         )
     if event_type == "contract.rumor.leaked":
         return f"{sequence} rumor: {payload.get('summary')}"
+    if event_type == "contract.rumor.responded":
+        return (
+            f"{sequence} rumor response {payload.get('action_id')}: "
+            f"{payload.get('summary')}"
+        )
     return f"{sequence} {event_type}"
 
 

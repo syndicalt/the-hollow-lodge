@@ -773,6 +773,26 @@ def test_activity_summary_packet_shapes_visible_events_without_server_only_field
                     "soft_terms": ["Do not cite us."],
                 },
             },
+            {
+                "origin": "server",
+                "event_id": "evt_4",
+                "sequence": 4,
+                "type": "contract.rumor.responded",
+                "payload": {
+                    "rumor_id": "rumor_msg_000001",
+                    "action_id": "action_000001",
+                    "crew_id": "crew_0003",
+                    "source_type": "chat.message.created",
+                    "source_id": "msg_000001",
+                    "contract_id": "contract_saints_false_finger",
+                    "pressure": "artifact_reference_detected",
+                    "outcome": "investigation_started",
+                    "summary": "The crew committed an action to investigate or answer a leaked rumor.",
+                    "body": "The ledger proves our leverage. Keep quiet.",
+                    "artifact_ids": ["artifact_ledger_rubric"],
+                    "suspected_crew_ids": ["crew_0001", "crew_0002"],
+                },
+            },
         ]
     )
 
@@ -781,16 +801,22 @@ def test_activity_summary_packet_shapes_visible_events_without_server_only_field
     assert "1 chat player_0002: No public claims until lock." in packet.player_markdown
     assert "2 proof fragment fragment_1: A chipped reliquary seal." in packet.player_markdown
     assert "3 rumor: A private artifact discussion is echoing between crews." in packet.player_markdown
+    assert (
+        "4 rumor response action_000001: The crew committed an action to investigate "
+        "or answer a leaked rumor."
+    ) in packet.player_markdown
     assert "server-only" not in packet.player_markdown
     assert "hidden" not in packet.player_markdown
     assert "artifact_ledger_rubric" not in packet.player_markdown
     assert "Do not cite us." not in packet.player_markdown
+    assert "The ledger proves our leverage" not in packet.player_markdown
     assert packet.agent_context == {
-        "visible_event_count": 3,
+        "visible_event_count": 4,
         "event_type_counts": {
             "chat.message.created": 1,
             "proof.fragment.transferred": 1,
             "contract.rumor.leaked": 1,
+            "contract.rumor.responded": 1,
         },
         "recent_events": [
             {
@@ -824,6 +850,24 @@ def test_activity_summary_packet_shapes_visible_events_without_server_only_field
                     "suspected_crew_ids": ["crew_0001", "crew_0002"],
                     "summary": "A private artifact discussion is echoing between crews.",
                     "pressure": "artifact_reference_detected",
+                },
+            },
+            {
+                "sequence": 4,
+                "type": "contract.rumor.responded",
+                "rumor_response": {
+                    "rumor_id": "rumor_msg_000001",
+                    "action_id": "action_000001",
+                    "crew_id": "crew_0003",
+                    "source_type": "chat.message.created",
+                    "source_id": "msg_000001",
+                    "contract_id": "contract_saints_false_finger",
+                    "pressure": "artifact_reference_detected",
+                    "outcome": "investigation_started",
+                    "summary": (
+                        "The crew committed an action to investigate or answer "
+                        "a leaked rumor."
+                    ),
                 },
             },
         ],

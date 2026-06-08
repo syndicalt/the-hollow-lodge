@@ -289,10 +289,14 @@ Status:
   reference a visible rumor, clearing that rumor's pending response while
   preserving the action cost, confirmation, phase lock, and crew-scoped audit
   trail.
+- Fifth social-pressure slice completed: rumor-linked crew actions now append a
+  crew-visible `contract.rumor.responded` outcome event, giving players a
+  sanitized activity record that an investigation or answer has started without
+  revealing private chat bodies, artifact IDs, deal terms, or participant-only
+  details.
 - Escrowed deal acceptance remains participant-scoped and server-enforced.
-- Deferred: freeform chat body pressure scanning, reputation consequences for
-  deal conduct, richer cleanup/counterintelligence effects, and richer rumor
-  verification outcomes.
+- Deferred: richer cleanup/counterintelligence effects and deeper rumor
+  verification results beyond the initial response outcome.
 
 Likely files:
 
@@ -560,6 +564,23 @@ player IDs, and participant-only deal state.
 Expected verification:
 
 - `pytest tests/server/test_chat_routes.py tests/server/test_crew_routes.py tests/client/test_render_packets.py -q`
+- `pytest -q`
+
+### Slice 18: Rumor Response Outcomes
+
+Status: completed.
+
+Make rumor-linked crew actions leave a player-visible result trail: after a
+confirmed action references a visible rumor, the server now appends a
+crew-visible `contract.rumor.responded` event that records the action, source
+rumor, pressure category, optional contract id, and a sanitized outcome summary.
+Codex activity packets render the outcome while omitting private chat bodies,
+artifact IDs, artifact titles, deal terms, participant-only deal state, and
+hidden server context.
+
+Expected verification:
+
+- `pytest tests/server/test_action_routes.py tests/client/test_render_packets.py tests/client/test_codex_session.py tests/test_mcp_server.py -q`
 - `pytest -q`
 
 ## Completion Standard

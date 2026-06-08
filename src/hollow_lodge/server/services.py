@@ -2152,8 +2152,9 @@ class ActionService:
                 raise ValueError("unconfirmed action was not submitted")
             if not self._crew_service.is_member(crew_id=crew_id, player_id=player_id):
                 raise PermissionError(crew_id)
+            rumor: dict | None = None
             if rumor_id is not None:
-                self._require_visible_rumor(crew_id=crew_id, rumor_id=rumor_id)
+                rumor = self._require_visible_rumor(crew_id=crew_id, rumor_id=rumor_id)
             action_number = self._submitted_action_count(crew_id) + 1
             frame = NormalizedAction.from_intent(
                 intent=intent,
@@ -2175,6 +2176,14 @@ class ActionService:
                 payload={"confirmed": confirmed, "action": action},
                 idempotency_key=idempotency_key,
             )
+            if rumor is not None:
+                self._append_rumor_response_outcome(
+                    player_id=player_id,
+                    crew_id=crew_id,
+                    action=action,
+                    rumor=rumor,
+                    idempotency_key=idempotency_key,
+                )
             self._award_action_artifacts(
                 action=action,
                 player_id=player_id,
@@ -2182,12 +2191,40 @@ class ActionService:
             )
             return action
 
-    def _require_visible_rumor(self, *, crew_id: str, rumor_id: str) -> None:
-        if not any(
-            rumor.get("rumor_id") == rumor_id
-            for rumor in visible_rumors_for_crew(self._event_store, crew_id)
-        ):
-            raise KeyError(rumor_id)
+    def _require_visible_rumor(self, *, crew_id: str, rumor_id: str) -> dict:
+        for rumor in visible_rumors_for_crew(self._event_store, crew_id):
+            if rumor.get("rumor_id") == rumor_id:
+                return rumor
+        raise KeyError(rumor_id)
+
+    def _append_rumor_response_outcome(
+        self,
+        *,
+        player_id: str,
+        crew_id: str,
+        action: dict,
+        rumor: dict,
+        idempotency_key: str,
+    ) -> None:
+        payload = {
+            "rumor_id": rumor["rumor_id"],
+            "action_id": action["action_id"],
+            "crew_id": crew_id,
+            "source_type": rumor["source_type"],
+            "source_id": rumor["source_id"],
+            "pressure": rumor["pressure"],
+            "outcome": "investigation_started",
+            "summary": "The crew committed an action to investigate or answer a leaked rumor.",
+        }
+        if "contract_id" in rumor:
+            payload["contract_id"] = rumor["contract_id"]
+        self._event_store.append_command(
+            event_type="contract.rumor.responded",
+            actor_id=player_id,
+            visibility=EventVisibility.crews([crew_id]),
+            payload=payload,
+            idempotency_key=f"{idempotency_key}:rumor-response",
+        )
 
     def edit_action(
         self,
