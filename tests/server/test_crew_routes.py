@@ -108,6 +108,29 @@ def test_crew_board_shows_member_roster_contracts_and_dossier(tmp_path):
     assert "join_code" not in body["crew"]
 
 
+def test_crew_board_lazy_contract_service_preserves_injected_oracle(tmp_path):
+    class InjectedOracle:
+        def resolve_auction_preview(self, packet):
+            raise AssertionError("crew board should not resolve phases")
+
+    oracle = InjectedOracle()
+    client = TestClient(
+        create_app(data_dir=tmp_path, invite_codes=["a"], resolution_oracle=oracle)
+    )
+    ada = register(client, "a", "Ada")
+    crew = client.post(
+        "/crews",
+        headers=command_auth(ada["token"], "crew-create-gilt"),
+        json={"name": "The Gilt Knives"},
+    ).json()
+    del client.app.state.contract_service
+
+    response = client.get(f"/crews/{crew['crew_id']}/board", headers=auth(ada["token"]))
+
+    assert response.status_code == 200
+    assert client.app.state.contract_service._resolution_oracle is oracle
+
+
 def test_crew_board_shapes_contracts_and_dossier_at_server_boundary(tmp_path):
     client = TestClient(create_app(data_dir=tmp_path, invite_codes=["a"]))
     ada = register(client, "a", "Ada")
