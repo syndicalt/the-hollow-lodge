@@ -17,6 +17,7 @@ class FakeApi:
         intent: str,
         idempotency_key: str,
         rumor_id: str | None = None,
+        rumor_response_mode: str | None = None,
     ):
         self.calls.append(
             (
@@ -26,6 +27,7 @@ class FakeApi:
                     "intent": intent,
                     "idempotency_key": idempotency_key,
                     "rumor_id": rumor_id,
+                    "rumor_response_mode": rumor_response_mode,
                 },
             )
         )
@@ -124,6 +126,8 @@ def test_act_command_confirms_and_submits(tmp_path, monkeypatch):
             "--confirm",
             "--rumor-id",
             "rumor_msg_000001",
+            "--rumor-response-mode",
+            "contain",
             "--config",
             str(config_path),
             "--local-log",
@@ -141,6 +145,7 @@ def test_act_command_confirms_and_submits(tmp_path, monkeypatch):
                 "intent": "I inspect the red ledger rubric quietly.",
                 "idempotency_key": "action-submit-key",
                 "rumor_id": "rumor_msg_000001",
+                "rumor_response_mode": "contain",
             },
         )
     ]

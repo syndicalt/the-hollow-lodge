@@ -357,6 +357,7 @@ def test_api_submits_action_with_rumor_reference(monkeypatch):
         crew_id="crew_0001",
         intent="Verify the rumor quietly.",
         rumor_id="rumor_msg_000001",
+        rumor_response_mode="contain",
         idempotency_key="action-submit-key",
     )
 
@@ -376,6 +377,7 @@ def test_api_submits_action_with_rumor_reference(monkeypatch):
                 "intent": "Verify the rumor quietly.",
                 "confirmed": True,
                 "rumor_id": "rumor_msg_000001",
+                "rumor_response_mode": "contain",
             },
             "timeout": 10,
         },

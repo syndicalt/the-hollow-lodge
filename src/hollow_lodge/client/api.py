@@ -343,6 +343,7 @@ class HollowLodgeApi:
         intent: str,
         idempotency_key: str,
         rumor_id: str | None = None,
+        rumor_response_mode: str | None = None,
     ) -> dict[str, Any]:
         payload: dict[str, Any] = {
             "crew_id": crew_id,
@@ -351,6 +352,8 @@ class HollowLodgeApi:
         }
         if rumor_id is not None:
             payload["rumor_id"] = rumor_id
+        if rumor_response_mode is not None:
+            payload["rumor_response_mode"] = rumor_response_mode
         return self._post(
             "/actions",
             json=payload,

@@ -93,6 +93,7 @@ def submit_action(
     confirm: bool,
     crew_id: str | None = None,
     rumor_id: str | None = None,
+    rumor_response_mode: str | None = None,
 ) -> CallToolResult:
     return packet_response(
         _session().submit_action(
@@ -100,6 +101,7 @@ def submit_action(
             confirm=confirm,
             crew_id=crew_id,
             rumor_id=rumor_id,
+            rumor_response_mode=rumor_response_mode,
         )
     )
 

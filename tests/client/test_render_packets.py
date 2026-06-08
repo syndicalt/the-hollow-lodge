@@ -184,6 +184,32 @@ def test_mutation_result_packet_uses_visible_shaped_result_only():
     }
 
 
+def test_submit_action_mutation_result_includes_safe_rumor_response_mode():
+    packet = build_mutation_result_packet(
+        operation="submit_action",
+        confirmed=True,
+        result={
+            "action_id": "action_000001",
+            "crew_id": "crew_0001",
+            "intent": "Contain the rumor.",
+            "responds_to_rumor_id": "rumor_msg_000001",
+            "rumor_response_mode": "contain",
+            "body": "The ledger proves our leverage.",
+            "artifact_ids": ["artifact_ledger_rubric"],
+        },
+    )
+
+    assert packet.agent_context["result"] == {
+        "action_id": "action_000001",
+        "crew_id": "crew_0001",
+        "intent": "Contain the rumor.",
+        "responds_to_rumor_id": "rumor_msg_000001",
+        "rumor_response_mode": "contain",
+    }
+    assert "artifact_ledger_rubric" not in str(packet.agent_context)
+    assert "The ledger proves our leverage" not in str(packet.agent_context)
+
+
 def test_accept_deal_mutation_packet_renders_received_artifacts():
     packet = build_mutation_result_packet(
         operation="accept_deal",
@@ -408,6 +434,12 @@ def test_crew_board_packet_renders_legacy_and_future_modifiers_without_hidden_fi
                     "offered_artifact_ids": ["artifact_private_ledger"],
                     "soft_terms": ["Do not cite us."],
                 },
+                "counterintelligence": {
+                    "investigations_started": 1,
+                    "containments_started": 1,
+                    "heat_from_containment": 1,
+                    "artifact_ids": ["artifact_private_ledger"],
+                },
                 "completed_contracts": [
                     {
                         "contract_id": "contract_false_finger",
@@ -500,6 +532,8 @@ def test_crew_board_packet_renders_legacy_and_future_modifiers_without_hidden_fi
     assert "Conduct score: 2" in packet.player_markdown
     assert "Reliability: reliable_escrow_partner" in packet.player_markdown
     assert "Fulfilled: 1; Canceled: 0; Declined: 0; Open: 0" in packet.player_markdown
+    assert "Counterintelligence:" in packet.player_markdown
+    assert "Investigations: 1; Containments: 1; Heat from containment: 1" in packet.player_markdown
     assert "- The Saint's False Finger: Strong lead (82)" in packet.player_markdown
     assert "Future modifiers:" in packet.player_markdown
     assert (
@@ -522,6 +556,11 @@ def test_crew_board_packet_renders_legacy_and_future_modifiers_without_hidden_fi
             "declined_count": 0,
             "open_count": 0,
             "reliability": "reliable_escrow_partner",
+        },
+        "counterintelligence": {
+            "investigations_started": 1,
+            "containments_started": 1,
+            "heat_from_containment": 1,
         },
         "completed_contracts": [
             {
@@ -786,8 +825,10 @@ def test_activity_summary_packet_shapes_visible_events_without_server_only_field
                     "source_id": "msg_000001",
                     "contract_id": "contract_saints_false_finger",
                     "pressure": "artifact_reference_detected",
-                    "outcome": "investigation_started",
-                    "summary": "The crew committed an action to investigate or answer a leaked rumor.",
+                    "mode": "contain",
+                    "outcome": "containment_started",
+                    "heat_delta": 1,
+                    "summary": "The crew started counterintelligence to contain a leaked rumor.",
                     "body": "The ledger proves our leverage. Keep quiet.",
                     "artifact_ids": ["artifact_ledger_rubric"],
                     "suspected_crew_ids": ["crew_0001", "crew_0002"],
@@ -802,8 +843,8 @@ def test_activity_summary_packet_shapes_visible_events_without_server_only_field
     assert "2 proof fragment fragment_1: A chipped reliquary seal." in packet.player_markdown
     assert "3 rumor: A private artifact discussion is echoing between crews." in packet.player_markdown
     assert (
-        "4 rumor response action_000001: The crew committed an action to investigate "
-        "or answer a leaked rumor."
+        "4 rumor response action_000001: The crew started counterintelligence "
+        "to contain a leaked rumor."
     ) in packet.player_markdown
     assert "server-only" not in packet.player_markdown
     assert "hidden" not in packet.player_markdown
@@ -863,11 +904,10 @@ def test_activity_summary_packet_shapes_visible_events_without_server_only_field
                     "source_id": "msg_000001",
                     "contract_id": "contract_saints_false_finger",
                     "pressure": "artifact_reference_detected",
-                    "outcome": "investigation_started",
-                    "summary": (
-                        "The crew committed an action to investigate or answer "
-                        "a leaked rumor."
-                    ),
+                    "mode": "contain",
+                    "outcome": "containment_started",
+                    "heat_delta": 1,
+                    "summary": "The crew started counterintelligence to contain a leaked rumor.",
                 },
             },
         ],

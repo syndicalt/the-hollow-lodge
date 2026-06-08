@@ -387,7 +387,9 @@ def test_rumor_action_appends_sanitized_crew_visible_response_outcome(tmp_path):
         "source_type": "chat.message.created",
         "source_id": "msg_000001",
         "pressure": "artifact_reference_detected",
+        "mode": "investigate",
         "outcome": "investigation_started",
+        "heat_delta": 0,
         "summary": "The crew committed an action to investigate or answer a leaked rumor.",
     }
     outcome_text = str(outcomes)
@@ -396,6 +398,101 @@ def test_rumor_action_appends_sanitized_crew_visible_response_outcome(tmp_path):
     assert gilt["crew_id"] not in outcome_text
     assert moth["crew_id"] not in outcome_text
     assert all(event["type"] != "contract.rumor.responded" for event in ada_events)
+
+
+def test_rumor_action_can_start_containment_with_visible_heat_cost(tmp_path):
+    client = TestClient(create_app(data_dir=tmp_path, invite_codes=["a", "b", "c"]))
+    ada = register(client, "a", "Ada")
+    grace = register(client, "b", "Grace")
+    linus = register(client, "c", "Linus")
+    gilt = create_crew(client, ada["token"])
+    moth = client.post(
+        "/crews",
+        headers=command_auth(grace["token"], "crew-create-moth"),
+        json={"name": "The Moth Choir"},
+    ).json()
+    ash = client.post(
+        "/crews",
+        headers=command_auth(linus["token"], "crew-create-ash"),
+        json={"name": "The Ash Keys"},
+    ).json()
+    client.post(
+        "/chat/crew-to-crew",
+        headers=command_auth(ada["token"], "chat-gilt-moth-ledger"),
+        json={
+            "sender_crew_id": gilt["crew_id"],
+            "recipient_crew_id": moth["crew_id"],
+            "body": "The ledger proves our leverage. Keep quiet.",
+            "artifact_ids": ["artifact_ledger_rubric"],
+        },
+    )
+
+    submitted = client.post(
+        "/actions",
+        headers=command_auth(linus["token"], "action-contain-rumor"),
+        json={
+            "crew_id": ash["crew_id"],
+            "intent": "Plant a bland catalog correction to smother the rumor.",
+            "confirmed": True,
+            "rumor_id": "rumor_msg_000001",
+            "rumor_response_mode": "contain",
+        },
+    )
+    board = client.get(f"/crews/{ash['crew_id']}/board", headers=auth(linus["token"]))
+    events = client.get("/events", headers=auth(linus["token"])).json()["events"]
+
+    assert submitted.status_code == 201
+    assert submitted.json()["rumor_response_mode"] == "contain"
+    outcomes = [
+        event["payload"]
+        for event in events
+        if event["type"] == "contract.rumor.responded"
+    ]
+    assert outcomes == [
+        {
+            "rumor_id": "rumor_msg_000001",
+            "action_id": submitted.json()["action_id"],
+            "crew_id": ash["crew_id"],
+            "source_type": "chat.message.created",
+            "source_id": "msg_000001",
+            "pressure": "artifact_reference_detected",
+            "mode": "contain",
+            "outcome": "containment_started",
+            "heat_delta": 1,
+            "summary": "The crew started counterintelligence to contain a leaked rumor.",
+        }
+    ]
+    assert board.status_code == 200
+    assert board.json()["legacy"]["heat"] == 1
+    assert board.json()["legacy"]["counterintelligence"] == {
+        "investigations_started": 0,
+        "containments_started": 1,
+        "heat_from_containment": 1,
+    }
+    assert "The ledger proves our leverage" not in str(outcomes)
+    assert "artifact_ledger_rubric" not in str(outcomes)
+    assert gilt["crew_id"] not in str(outcomes)
+    assert moth["crew_id"] not in str(outcomes)
+
+
+def test_rumor_response_mode_requires_visible_rumor_reference(tmp_path):
+    client = TestClient(create_app(data_dir=tmp_path, invite_codes=["a"]))
+    ada = register(client, "a", "Ada")
+    crew = create_crew(client, ada["token"])
+
+    response = client.post(
+        "/actions",
+        headers=command_auth(ada["token"], "action-contain-without-rumor"),
+        json={
+            "crew_id": crew["crew_id"],
+            "intent": "Run cleanup without a specific rumor.",
+            "confirmed": True,
+            "rumor_response_mode": "contain",
+        },
+    )
+
+    assert response.status_code == 409
+    assert response.json()["detail"] == "rumor response mode requires rumor_id"
 
 
 def test_action_cannot_reference_invisible_rumor(tmp_path):
@@ -499,6 +596,11 @@ def test_rumor_action_replay_checks_rumor_reference_and_cancel_reopens_decision(
         headers=command_auth(linus["token"], "action-answer-rumor"),
         json={**payload, "rumor_id": None},
     )
+    mode_conflict = client.post(
+        "/actions",
+        headers=command_auth(linus["token"], "action-answer-rumor"),
+        json={**payload, "rumor_response_mode": "contain"},
+    )
     after_answer = client.get(f"/crews/{ash['crew_id']}/board", headers=auth(linus["token"]))
     canceled = client.delete(
         f"/actions/{first.json()['action_id']}",
@@ -510,6 +612,7 @@ def test_rumor_action_replay_checks_rumor_reference_and_cancel_reopens_decision(
     assert replay.status_code == 201
     assert replay.json() == first.json()
     assert conflict.status_code == 409
+    assert mode_conflict.status_code == 409
     assert not any(
         decision.get("kind") == "rumor_response"
         and decision.get("rumor_id") == "rumor_msg_000001"
@@ -596,7 +699,9 @@ def test_deal_rumor_action_response_preserves_contract_id_without_terms(tmp_path
             "source_id": proposed.json()["deal_id"],
             "contract_id": "contract_false_finger",
             "pressure": "escrow_terms_detected",
+            "mode": "investigate",
             "outcome": "investigation_started",
+            "heat_delta": 0,
             "summary": "The crew committed an action to investigate or answer a leaked rumor.",
         }
     ]

@@ -32,6 +32,11 @@ def test_crew_legacy_is_empty_before_resolved_contracts():
             "open_count": 0,
             "reliability": "unproven",
         },
+        "counterintelligence": {
+            "investigations_started": 0,
+            "containments_started": 0,
+            "heat_from_containment": 0,
+        },
         "completed_contracts": [],
         "future_opportunities": [],
     }

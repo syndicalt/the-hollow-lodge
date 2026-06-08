@@ -622,6 +622,11 @@ def act(
     confirm: bool = typer.Option(False, "--confirm", help="Submit after normalization."),
     crew_id: str | None = typer.Option(None, "--crew-id", help="Crew id; defaults to active crew."),
     rumor_id: str | None = typer.Option(None, "--rumor-id", help="Visible rumor id this action answers."),
+    rumor_response_mode: str | None = typer.Option(
+        None,
+        "--rumor-response-mode",
+        help="Rumor response mode for a rumor-linked action: investigate or contain.",
+    ),
     config: Path = typer.Option(DEFAULT_CONFIG_PATH, "--config", help="Local config path."),
     local_log: Path = typer.Option(
         DEFAULT_LOCAL_LOG_PATH,
@@ -647,6 +652,7 @@ def act(
         crew_id=target_crew_id,
         intent=intent,
         rumor_id=rumor_id,
+        rumor_response_mode=rumor_response_mode,
         idempotency_key=new_command_key("action-submit"),
     )
     typer.echo(response["action_id"])

@@ -144,6 +144,9 @@ def _shape_crew_legacy(legacy: dict[str, Any]) -> dict[str, Any]:
         "debts": legacy.get("debts", 0),
         "scars": list(legacy.get("scars", [])),
         "deal_conduct": _shape_deal_conduct(legacy.get("deal_conduct", {})),
+        "counterintelligence": _shape_counterintelligence(
+            legacy.get("counterintelligence", {})
+        ),
         "completed_contracts": [
             {
                 key: contract[key]
@@ -174,6 +177,20 @@ def _shape_deal_conduct(conduct: dict[str, Any]) -> dict[str, Any]:
         "declined_count": conduct.get("declined_count", 0),
         "open_count": conduct.get("open_count", 0),
         "reliability": conduct.get("reliability", "unproven"),
+    }
+
+
+def _shape_counterintelligence(counterintelligence: dict[str, Any]) -> dict[str, int]:
+    return {
+        "investigations_started": int(
+            counterintelligence.get("investigations_started", 0)
+        ),
+        "containments_started": int(
+            counterintelligence.get("containments_started", 0)
+        ),
+        "heat_from_containment": int(
+            counterintelligence.get("heat_from_containment", 0)
+        ),
     }
 
 
@@ -258,7 +275,9 @@ def _shape_rumor_response(payload: dict[str, Any]) -> dict[str, Any]:
             "source_id",
             "contract_id",
             "pressure",
+            "mode",
             "outcome",
+            "heat_delta",
             "summary",
         )
         if key in payload
@@ -295,7 +314,13 @@ def _shape_activity_event(event: dict[str, Any]) -> dict[str, Any]:
         action = payload.get("action", {})
         shaped["action"] = {
             key: action[key]
-            for key in ("action_id", "crew_id", "intent", "responds_to_rumor_id")
+            for key in (
+                "action_id",
+                "crew_id",
+                "intent",
+                "responds_to_rumor_id",
+                "rumor_response_mode",
+            )
             if key in action
         }
     elif event_type == "contract.phase.resolved":
@@ -312,7 +337,13 @@ def _shape_mutation_result(operation: str, result: dict[str, Any]) -> dict[str, 
     if operation == "submit_action":
         return {
             key: result[key]
-            for key in ("action_id", "crew_id", "intent", "responds_to_rumor_id")
+            for key in (
+                "action_id",
+                "crew_id",
+                "intent",
+                "responds_to_rumor_id",
+                "rumor_response_mode",
+            )
             if key in result
         }
     if operation in {
@@ -782,6 +813,13 @@ def build_crew_board_packet(board: dict[str, Any]) -> RenderPacket:
             f"Canceled: {legacy['deal_conduct']['canceled_count']}; "
             f"Declined: {legacy['deal_conduct']['declined_count']}; "
             f"Open: {legacy['deal_conduct']['open_count']}"
+        ),
+        "Counterintelligence:",
+        (
+            f"Investigations: {legacy['counterintelligence']['investigations_started']}; "
+            f"Containments: {legacy['counterintelligence']['containments_started']}; "
+            "Heat from containment: "
+            f"{legacy['counterintelligence']['heat_from_containment']}"
         ),
         "Completed contracts:",
     ]

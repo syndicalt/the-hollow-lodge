@@ -294,9 +294,13 @@ Status:
   sanitized activity record that an investigation or answer has started without
   revealing private chat bodies, artifact IDs, deal terms, or participant-only
   details.
+- Sixth social-pressure slice completed: rumor-linked actions now support an
+  explicit response mode. The default `investigate` path preserves prior
+  behavior, while deliberate `contain` counterintelligence records a sanitized
+  containment outcome and adds a visible crew heat cost.
 - Escrowed deal acceptance remains participant-scoped and server-enforced.
-- Deferred: richer cleanup/counterintelligence effects and deeper rumor
-  verification results beyond the initial response outcome.
+- Deferred: deeper rumor verification results beyond the initial response and
+  containment outcomes.
 
 Likely files:
 
@@ -581,6 +585,23 @@ hidden server context.
 Expected verification:
 
 - `pytest tests/server/test_action_routes.py tests/client/test_render_packets.py tests/client/test_codex_session.py tests/test_mcp_server.py -q`
+- `pytest -q`
+
+### Slice 19: Deliberate Rumor Containment
+
+Status: completed.
+
+Add an explicit `rumor_response_mode` to rumor-linked crew actions. Existing
+calls default to `investigate`; a confirmed action with
+`rumor_response_mode=contain` records a sanitized `containment_started` rumor
+response, adds a bounded crew heat cost, and surfaces counterintelligence
+counts on the crew board. CLI, Codex session, MCP, and API mutation paths all
+pass the mode through explicitly while preserving confirmation-first behavior.
+
+Expected verification:
+
+- `pytest tests/server/test_action_routes.py tests/server/test_crew_routes.py tests/server/test_crew_legacy_projection.py -q`
+- `pytest tests/client/test_api.py tests/client/test_codex_session.py tests/client/test_action_cli.py tests/client/test_render_packets.py tests/test_mcp_server.py -q`
 - `pytest -q`
 
 ## Completion Standard

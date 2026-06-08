@@ -2126,6 +2126,7 @@ class ActionService:
         intent: str,
         confirmed: bool,
         rumor_id: str | None = None,
+        rumor_response_mode: str = "investigate",
         idempotency_key: str,
     ) -> dict:
         with COMMAND_SERIALIZATION_LOCK, self._lock:
@@ -2138,6 +2139,11 @@ class ActionService:
                     or existing.payload["action"]["crew_id"] != crew_id
                     or existing.payload["action"]["intent"] != intent
                     or existing.payload["action"].get("responds_to_rumor_id") != rumor_id
+                    or existing.payload["action"].get(
+                        "rumor_response_mode",
+                        "investigate",
+                    )
+                    != rumor_response_mode
                 ):
                     raise ValueError("idempotency key conflict")
                 self._award_action_artifacts(
@@ -2152,6 +2158,8 @@ class ActionService:
                 raise ValueError("unconfirmed action was not submitted")
             if not self._crew_service.is_member(crew_id=crew_id, player_id=player_id):
                 raise PermissionError(crew_id)
+            if rumor_id is None and rumor_response_mode != "investigate":
+                raise ValueError("rumor response mode requires rumor_id")
             rumor: dict | None = None
             if rumor_id is not None:
                 rumor = self._require_visible_rumor(crew_id=crew_id, rumor_id=rumor_id)
@@ -2169,6 +2177,7 @@ class ActionService:
             }
             if rumor_id is not None:
                 action["responds_to_rumor_id"] = rumor_id
+                action["rumor_response_mode"] = rumor_response_mode
             self._event_store.append_command(
                 event_type="action.submitted",
                 actor_id=player_id,
@@ -2182,6 +2191,7 @@ class ActionService:
                     crew_id=crew_id,
                     action=action,
                     rumor=rumor,
+                    rumor_response_mode=rumor_response_mode,
                     idempotency_key=idempotency_key,
                 )
             self._award_action_artifacts(
@@ -2204,8 +2214,17 @@ class ActionService:
         crew_id: str,
         action: dict,
         rumor: dict,
+        rumor_response_mode: str,
         idempotency_key: str,
     ) -> None:
+        if rumor_response_mode == "contain":
+            outcome = "containment_started"
+            summary = "The crew started counterintelligence to contain a leaked rumor."
+            heat_delta = 1
+        else:
+            outcome = "investigation_started"
+            summary = "The crew committed an action to investigate or answer a leaked rumor."
+            heat_delta = 0
         payload = {
             "rumor_id": rumor["rumor_id"],
             "action_id": action["action_id"],
@@ -2213,8 +2232,10 @@ class ActionService:
             "source_type": rumor["source_type"],
             "source_id": rumor["source_id"],
             "pressure": rumor["pressure"],
-            "outcome": "investigation_started",
-            "summary": "The crew committed an action to investigate or answer a leaked rumor.",
+            "mode": rumor_response_mode,
+            "outcome": outcome,
+            "heat_delta": heat_delta,
+            "summary": summary,
         }
         if "contract_id" in rumor:
             payload["contract_id"] = rumor["contract_id"]

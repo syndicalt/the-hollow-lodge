@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+from typing import Literal
+
 from pydantic import BaseModel, Field
 from fastapi import APIRouter, Depends, Header, HTTPException, Request, status
 
@@ -17,6 +19,7 @@ class SubmitActionRequest(BaseModel):
     intent: str = Field(min_length=1)
     confirmed: bool
     rumor_id: str | None = Field(default=None, min_length=1)
+    rumor_response_mode: Literal["investigate", "contain"] = "investigate"
 
 
 class EditActionRequest(BaseModel):
@@ -37,6 +40,7 @@ def submit_action(
             intent=payload.intent,
             confirmed=payload.confirmed,
             rumor_id=payload.rumor_id,
+            rumor_response_mode=payload.rumor_response_mode,
             idempotency_key=idempotency_key,
         )
     except KeyError as exc:

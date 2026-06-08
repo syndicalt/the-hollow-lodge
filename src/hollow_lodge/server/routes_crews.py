@@ -105,6 +105,7 @@ def crew_board(
         crew_id=crew_id,
         contracts=active_contracts,
         deals=deals,
+        events=request.app.state.event_store.read(),
     )
     apply_crew_modifiers_to_contracts(
         contracts=shaped_contracts,

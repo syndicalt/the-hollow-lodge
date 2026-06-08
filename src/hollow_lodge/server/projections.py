@@ -53,6 +53,7 @@ def crew_legacy_from_contracts(
     crew_id: str,
     contracts: list[dict[str, Any]],
     deals: list[dict[str, Any]] | None = None,
+    events: list[GameEvent] | None = None,
 ) -> dict[str, Any]:
     completed_contracts: list[dict[str, Any]] = []
     reputation = 0
@@ -61,6 +62,10 @@ def crew_legacy_from_contracts(
     debts = 0
     scars: list[str] = []
     deal_conduct = deal_conduct_from_deals(crew_id=crew_id, deals=deals or [])
+    counterintelligence = counterintelligence_from_events(
+        crew_id=crew_id,
+        events=events or [],
+    )
 
     for contract in contracts:
         phase_result = contract.get("phase_result")
@@ -89,6 +94,7 @@ def crew_legacy_from_contracts(
         else:
             debts += 1
             scars.append(f"Bruised by {contract['title']}")
+    heat += counterintelligence["heat_from_containment"]
 
     future_opportunities = []
     for contract in contracts:
@@ -117,8 +123,36 @@ def crew_legacy_from_contracts(
         "debts": debts,
         "scars": scars,
         "deal_conduct": deal_conduct,
+        "counterintelligence": counterintelligence,
         "completed_contracts": completed_contracts,
         "future_opportunities": future_opportunities,
+    }
+
+
+def counterintelligence_from_events(
+    *,
+    crew_id: str,
+    events: list[GameEvent],
+) -> dict[str, int]:
+    investigations_started = 0
+    containments_started = 0
+    heat_from_containment = 0
+
+    for event in events:
+        if event.type != "contract.rumor.responded":
+            continue
+        if event.payload.get("crew_id") != crew_id:
+            continue
+        if event.payload.get("mode", "investigate") == "contain":
+            containments_started += 1
+            heat_from_containment += int(event.payload.get("heat_delta", 0))
+        else:
+            investigations_started += 1
+
+    return {
+        "investigations_started": investigations_started,
+        "containments_started": containments_started,
+        "heat_from_containment": heat_from_containment,
     }
 
 
