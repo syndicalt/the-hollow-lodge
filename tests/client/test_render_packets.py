@@ -92,6 +92,15 @@ def test_crew_board_packet_shows_packet_lead_and_dossier_status():
                 "packet_lead_player_id": "player_0001",
                 "claim": "",
                 "evidence_ids": [],
+                "artifact_citations": [
+                    {
+                        "player_id": "player_0001",
+                        "artifact_id": "artifact_ledger_rubric",
+                        "claim": "The ledger contradicts the public lot card.",
+                        "quote": "The last hand is redder and later than the binding.",
+                        "hidden_note": "server-only",
+                    }
+                ],
                 "member_contributions": [],
                 "server_notes": "hidden",
             },
@@ -101,6 +110,8 @@ def test_crew_board_packet_shows_packet_lead_and_dossier_status():
     assert packet.surface == "crew_board"
     assert "Crew Board: The Gilt Knives" in packet.player_markdown
     assert "Packet Lead: player_0001" in packet.player_markdown
+    assert "Artifact citations:" in packet.player_markdown
+    assert "- artifact_ledger_rubric: The ledger contradicts the public lot card." in packet.player_markdown
     assert "hidden" not in packet.player_markdown
     assert "hidden_truth" not in packet.player_markdown
     assert "server_notes" not in packet.player_markdown
@@ -108,6 +119,14 @@ def test_crew_board_packet_shows_packet_lead_and_dossier_status():
     assert "join_code" not in packet.agent_context["crew"]
     assert "hidden_truth" not in packet.agent_context["active_contracts"][0]
     assert "server_notes" not in packet.agent_context["dossier"]
+    assert packet.agent_context["dossier"]["artifact_citations"] == [
+        {
+            "player_id": "player_0001",
+            "artifact_id": "artifact_ledger_rubric",
+            "claim": "The ledger contradicts the public lot card.",
+            "quote": "The last hand is redder and later than the binding.",
+        }
+    ]
 
 
 def test_contract_board_agent_context_omits_hidden_upstream_fields():

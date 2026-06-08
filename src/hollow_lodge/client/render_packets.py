@@ -99,6 +99,14 @@ def _shape_dossier_contribution(contribution: dict[str, Any]) -> dict[str, Any]:
     }
 
 
+def _shape_artifact_citation(citation: dict[str, Any]) -> dict[str, Any]:
+    return {
+        key: citation[key]
+        for key in ("player_id", "artifact_id", "claim", "quote")
+        if key in citation
+    }
+
+
 def _shape_dossier(dossier: dict[str, Any]) -> dict[str, Any]:
     shaped = {
         key: dossier[key]
@@ -108,6 +116,7 @@ def _shape_dossier(dossier: dict[str, Any]) -> dict[str, Any]:
             "packet_lead_player_id",
             "claim",
             "evidence_ids",
+            "artifact_citations",
             "reasoning",
             "weaknesses",
             "provenance_concerns",
@@ -117,6 +126,10 @@ def _shape_dossier(dossier: dict[str, Any]) -> dict[str, Any]:
     shaped["member_contributions"] = [
         _shape_dossier_contribution(contribution)
         for contribution in dossier.get("member_contributions", [])
+    ]
+    shaped["artifact_citations"] = [
+        _shape_artifact_citation(citation)
+        for citation in dossier.get("artifact_citations", [])
     ]
     return shaped
 
@@ -191,6 +204,13 @@ def build_crew_board_packet(board: dict[str, Any]) -> RenderPacket:
     evidence_ids = dossier.get("evidence_ids", [])
     if evidence_ids:
         lines.extend(f"- {evidence_id}" for evidence_id in evidence_ids)
+    else:
+        lines.append("- none")
+    lines.append("Artifact citations:")
+    artifact_citations = dossier.get("artifact_citations", [])
+    if artifact_citations:
+        for citation in artifact_citations:
+            lines.append(f"- {citation['artifact_id']}: {citation['claim']}")
     else:
         lines.append("- none")
     lines.append("Contributions:")

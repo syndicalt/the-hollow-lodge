@@ -1031,6 +1031,24 @@ class ContractService:
         score_inputs: list[AuctionPreviewScoreInput] = []
         for crew_id in crew_ids:
             dossier = self._current_dossier_for_scoring(crew_id)
+            citation_artifact_ids = tuple(
+                citation["artifact_id"] for citation in dossier.artifact_citations
+            )
+            evidence_ids = tuple(dict.fromkeys((*dossier.evidence_ids, *citation_artifact_ids)))
+            citation_reasoning = "\n".join(
+                f"{citation['artifact_id']}: {citation['claim']}"
+                for citation in dossier.artifact_citations
+            )
+            reasoning = "\n".join(
+                part for part in (dossier.reasoning, citation_reasoning) if part
+            )
+            citation_quotes = "\n".join(
+                f"{citation['artifact_id']}: {citation['quote']}"
+                for citation in dossier.artifact_citations
+            )
+            provenance_concerns = "\n".join(
+                part for part in (dossier.provenance_concerns, citation_quotes) if part
+            )
             submitted_actions = [
                 action
                 for action in actions_by_crew.get(crew_id, [])
@@ -1040,14 +1058,14 @@ class ContractService:
                 AuctionPreviewScoreInput(
                     crew_id=crew_id,
                     claim=dossier.claim,
-                    evidence_ids=dossier.evidence_ids,
-                    reasoning=dossier.reasoning,
+                    evidence_ids=evidence_ids,
+                    reasoning=reasoning,
                     weaknesses=dossier.weaknesses,
-                    provenance_concerns=dossier.provenance_concerns,
+                    provenance_concerns=provenance_concerns,
                     exposed_assets=tuple(
                         dict.fromkeys(
                             (
-                                *dossier.evidence_ids,
+                                *evidence_ids,
                                 *(
                                     asset
                                     for action in submitted_actions
@@ -1074,6 +1092,7 @@ class ContractService:
             elif event.type in {
                 "proof.dossier.framing.updated",
                 "proof.dossier.contribution.added",
+                "artifact.dossier.cited",
                 "proof.packet_lead.replaced",
             }:
                 current = ProofDossier.model_validate(event.payload["dossier"])
@@ -1123,12 +1142,17 @@ class ProofService:
         event_store: JsonlEventStore,
         identity_service: IdentityService,
         crew_service: CrewService,
+        artifact_service: ArtifactService | None = None,
     ):
         self._event_store = event_store
         self._identity_service = identity_service
         self._crew_service = crew_service
+        self._artifact_service = artifact_service
         self._lock = threading.RLock()
         self._seed_starter_fragment()
+
+    def set_artifact_service(self, artifact_service: ArtifactService) -> None:
+        self._artifact_service = artifact_service
 
     def fragment_for_player(self, *, fragment_id: str, player_id: str) -> dict:
         fragment = self._visible_fragment(fragment_id=fragment_id, player_id=player_id)
@@ -1389,6 +1413,61 @@ class ProofService:
             )
             return updated.model_dump(mode="json")
 
+    def cite_artifact_in_dossier(
+        self,
+        *,
+        crew_id: str,
+        player_id: str,
+        artifact_id: str,
+        claim: str,
+        quote: str,
+        idempotency_key: str,
+    ) -> dict:
+        if not self._crew_service.is_member(crew_id=crew_id, player_id=player_id):
+            raise PermissionError("not a crew member")
+        with COMMAND_SERIALIZATION_LOCK, self._lock:
+            existing = self._event_by_idempotency_key(idempotency_key)
+            if existing is not None:
+                if (
+                    existing.type != "artifact.dossier.cited"
+                    or existing.actor_id != player_id
+                    or existing.payload["crew_id"] != crew_id
+                    or existing.payload["artifact_id"] != artifact_id
+                    or existing.payload["claim"] != claim
+                    or existing.payload["quote"] != quote
+                ):
+                    raise ValueError("idempotency key conflict")
+                return existing.payload["dossier"]
+            if self._auction_preview_locked():
+                raise ValueError("phase locked")
+            if self._artifact_service is None:
+                raise KeyError(artifact_id)
+            self._artifact_service.inspect_artifact(
+                artifact_id=artifact_id,
+                player_id=player_id,
+                crew_ids=self._crew_service.crew_ids_for_player(player_id),
+            )
+            updated = self._current_dossier(crew_id).with_artifact_citation(
+                player_id=player_id,
+                artifact_id=artifact_id,
+                claim=claim,
+                quote=quote,
+            )
+            self._event_store.append_command(
+                event_type="artifact.dossier.cited",
+                actor_id=player_id,
+                visibility=EventVisibility.crews([crew_id]),
+                payload={
+                    "crew_id": crew_id,
+                    "artifact_id": artifact_id,
+                    "claim": claim,
+                    "quote": quote,
+                    "dossier": updated.model_dump(mode="json"),
+                },
+                idempotency_key=idempotency_key,
+            )
+            return updated.model_dump(mode="json")
+
     def vote_packet_lead(
         self,
         *,
@@ -1450,6 +1529,7 @@ class ProofService:
             elif event.type in {
                 "proof.dossier.framing.updated",
                 "proof.dossier.contribution.added",
+                "artifact.dossier.cited",
                 "proof.packet_lead.replaced",
             }:
                 current = ProofDossier.model_validate(event.payload["dossier"])

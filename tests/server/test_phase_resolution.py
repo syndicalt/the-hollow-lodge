@@ -4,6 +4,7 @@ from hollow_lodge.server.app import create_app
 from hollow_lodge.domain.events import EventVisibility
 from hollow_lodge.server.services import ContractService
 from hollow_lodge.workflows.deterministic_oracle import DeterministicResolutionOracle
+from hollow_lodge.workflows.oracle_boundary import AuctionPreviewOraclePacket
 
 
 def register(client: TestClient, invite: str, name: str) -> dict[str, str]:
@@ -41,6 +42,15 @@ def setup_two_crews(tmp_path):
     gilt = create_crew(client, ada["token"], "crew-create-gilt", "The Gilt Knives")
     moth = create_crew(client, linus["token"], "crew-create-moth", "The Moth Choir")
     return client, ada, linus, gilt, moth
+
+
+class CapturingOracle:
+    def __init__(self):
+        self.packet: AuctionPreviewOraclePacket | None = None
+
+    def resolve_auction_preview(self, packet: AuctionPreviewOraclePacket):
+        self.packet = packet
+        return DeterministicResolutionOracle().resolve_auction_preview(packet)
 
 
 def submit_action(client: TestClient, player: dict, crew: dict, key: str, intent: str) -> dict:
@@ -103,6 +113,35 @@ def test_auction_preview_reveal_scores_crews_without_hidden_truth_leak(tmp_path)
     assert "occult clue may unlock alternate lane" in standings[1]["strengths"]
     assert "saint-bone forgery" not in str(reveal)
     assert "real debtor's omen" not in str(reveal)
+
+
+def test_artifact_citations_flow_into_oracle_scoring_packet(tmp_path):
+    oracle = CapturingOracle()
+    client = TestClient(
+        create_app(data_dir=tmp_path, invite_codes=["a"], resolution_oracle=oracle)
+    )
+    ada = register(client, "a", "Ada")
+    gilt = create_crew(client, ada["token"], "crew-create-gilt", "The Gilt Knives")
+    cite = client.post(
+        f"/proofs/dossiers/{gilt['crew_id']}/artifact-citations",
+        headers=command_auth(ada["token"], "cite-ledger"),
+        json={
+            "artifact_id": "artifact_ledger_rubric",
+            "claim": "The ledger contradicts the public lot card.",
+            "quote": "The last hand is redder and later than the binding.",
+        },
+    )
+
+    response = lock_preview(client, ada, "phase-lock-1")
+
+    assert cite.status_code == 201
+    assert response.status_code == 200
+    assert oracle.packet is not None
+    crew_packet = oracle.packet.crews[0]
+    assert "artifact_ledger_rubric" in crew_packet.evidence_ids
+    assert "artifact_ledger_rubric" in oracle.packet.allowed_evidence_ids
+    assert "The ledger contradicts the public lot card." in crew_packet.reasoning
+    assert "The last hand is redder and later than the binding." in crew_packet.provenance_concerns
 
 
 def test_phase_lock_replay_and_duplicate_lock_do_not_append_duplicate_reveals(tmp_path):

@@ -4,6 +4,7 @@ from pydantic import BaseModel, Field
 from fastapi import APIRouter, Depends, Header, HTTPException, Request, status
 
 from hollow_lodge.domain.identity import Player
+from hollow_lodge.server.artifact_service import ArtifactService
 from hollow_lodge.server.auth import current_player
 from hollow_lodge.server.services import ProofService
 
@@ -26,6 +27,12 @@ class DossierFramingRequest(BaseModel):
 class DossierContributionRequest(BaseModel):
     note: str = Field(min_length=1)
     evidence_ids: list[str] = Field(default_factory=list)
+
+
+class ArtifactCitationRequest(BaseModel):
+    artifact_id: str = Field(min_length=1)
+    claim: str = Field(min_length=1)
+    quote: str = Field(min_length=1)
 
 
 class PacketLeadVoteRequest(BaseModel):
@@ -151,6 +158,31 @@ def add_dossier_contribution(
         raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail=str(exc)) from exc
 
 
+@router.post("/dossiers/{crew_id}/artifact-citations", status_code=status.HTTP_201_CREATED)
+def cite_artifact_in_dossier(
+    crew_id: str,
+    payload: ArtifactCitationRequest,
+    request: Request,
+    idempotency_key: str = Header(..., alias="Idempotency-Key"),
+    player: Player = Depends(current_player),
+):
+    try:
+        return _proof_service(request).cite_artifact_in_dossier(
+            crew_id=crew_id,
+            player_id=player.player_id,
+            artifact_id=payload.artifact_id,
+            claim=payload.claim,
+            quote=payload.quote,
+            idempotency_key=idempotency_key,
+        )
+    except PermissionError as exc:
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="not a crew member") from exc
+    except KeyError as exc:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="artifact not found") from exc
+    except ValueError as exc:
+        raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail=str(exc)) from exc
+
+
 @router.post("/dossiers/{crew_id}/packet-lead/votes")
 def vote_packet_lead(
     crew_id: str,
@@ -173,10 +205,18 @@ def vote_packet_lead(
 
 
 def _proof_service(request: Request) -> ProofService:
+    if not hasattr(request.app.state, "artifact_service"):
+        request.app.state.artifact_service = ArtifactService(
+            event_store=request.app.state.event_store,
+        )
     if not hasattr(request.app.state, "proof_service"):
         request.app.state.proof_service = ProofService(
             event_store=request.app.state.event_store,
             identity_service=request.app.state.identity_service,
             crew_service=request.app.state.crew_service,
+            artifact_service=request.app.state.artifact_service,
         )
+    request.app.state.proof_service.set_artifact_service(
+        request.app.state.artifact_service,
+    )
     return request.app.state.proof_service

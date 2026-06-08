@@ -145,6 +145,7 @@ def _crew_board_dossier(dossier: dict) -> dict:
             "packet_lead_player_id",
             "claim",
             "evidence_ids",
+            "artifact_citations",
             "reasoning",
             "weaknesses",
             "provenance_concerns",

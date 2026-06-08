@@ -154,3 +154,98 @@ def test_handler_summary_cannot_create_official_provenance_result_events(tmp_pat
     assert denied.status_code == 405
     visible_after = client.get("/events", headers=auth(ada["token"])).text
     assert "proof.provenance.checked" not in visible_after
+
+
+def test_crew_member_can_cite_visible_artifact_in_dossier(tmp_path):
+    client = TestClient(create_app(data_dir=tmp_path, invite_codes=["a"]))
+    ada = register(client, "a", "Ada")
+    crew = client.post(
+        "/crews",
+        headers=command_auth(ada["token"], "crew-create"),
+        json={"name": "The Gilt Knives"},
+    ).json()
+
+    cited = client.post(
+        f"/proofs/dossiers/{crew['crew_id']}/artifact-citations",
+        headers=command_auth(ada["token"], "cite-ledger"),
+        json={
+            "artifact_id": "artifact_ledger_rubric",
+            "claim": "The ledger contradicts the public lot card.",
+            "quote": "The last hand is redder and later than the binding.",
+        },
+    )
+
+    assert cited.status_code == 201
+    assert cited.json()["artifact_citations"] == [
+        {
+            "player_id": ada["player_id"],
+            "artifact_id": "artifact_ledger_rubric",
+            "claim": "The ledger contradicts the public lot card.",
+            "quote": "The last hand is redder and later than the binding.",
+        }
+    ]
+    visible = client.get("/events", headers=auth(ada["token"])).json()["events"]
+    citation_event = [
+        event for event in visible if event["type"] == "artifact.dossier.cited"
+    ][0]
+    assert citation_event["payload"]["crew_id"] == crew["crew_id"]
+    assert citation_event["payload"]["artifact_id"] == "artifact_ledger_rubric"
+
+
+def test_citing_hidden_artifact_returns_404(tmp_path):
+    client = TestClient(create_app(data_dir=tmp_path, invite_codes=["a"]))
+    ada = register(client, "a", "Ada")
+    crew = client.post(
+        "/crews",
+        headers=command_auth(ada["token"], "crew-create"),
+        json={"name": "The Gilt Knives"},
+    ).json()
+
+    cited = client.post(
+        f"/proofs/dossiers/{crew['crew_id']}/artifact-citations",
+        headers=command_auth(ada["token"], "cite-hidden"),
+        json={
+            "artifact_id": "artifact_chapel_debt_mark",
+            "claim": "The chapel mark proves a concealed debt.",
+            "quote": "Marked under chapel seal.",
+        },
+    )
+
+    assert cited.status_code == 404
+    assert cited.json()["detail"] == "artifact not found"
+
+
+def test_artifact_citation_idempotency_conflict_rejects_changed_payload(tmp_path):
+    client = TestClient(create_app(data_dir=tmp_path, invite_codes=["a"]))
+    ada = register(client, "a", "Ada")
+    crew = client.post(
+        "/crews",
+        headers=command_auth(ada["token"], "crew-create"),
+        json={"name": "The Gilt Knives"},
+    ).json()
+    payload = {
+        "artifact_id": "artifact_ledger_rubric",
+        "claim": "The ledger contradicts the public lot card.",
+        "quote": "The last hand is redder and later than the binding.",
+    }
+
+    first = client.post(
+        f"/proofs/dossiers/{crew['crew_id']}/artifact-citations",
+        headers=command_auth(ada["token"], "cite-ledger"),
+        json=payload,
+    )
+    replay = client.post(
+        f"/proofs/dossiers/{crew['crew_id']}/artifact-citations",
+        headers=command_auth(ada["token"], "cite-ledger"),
+        json=payload,
+    )
+    conflict = client.post(
+        f"/proofs/dossiers/{crew['crew_id']}/artifact-citations",
+        headers=command_auth(ada["token"], "cite-ledger"),
+        json={**payload, "claim": "A different claim."},
+    )
+
+    assert first.status_code == 201
+    assert replay.status_code == 201
+    assert replay.json()["artifact_citations"] == first.json()["artifact_citations"]
+    assert conflict.status_code == 409

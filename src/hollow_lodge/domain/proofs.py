@@ -58,6 +58,7 @@ class ProofDossier(BaseModel):
     weaknesses: str = ""
     provenance_concerns: str = ""
     member_contributions: tuple[dict, ...] = ()
+    artifact_citations: tuple[dict, ...] = ()
 
     @classmethod
     def empty(
@@ -111,6 +112,28 @@ class ProofDossier(BaseModel):
                         "player_id": player_id,
                         "note": note,
                         "evidence_ids": list(evidence_ids),
+                    },
+                )
+            }
+        )
+
+    def with_artifact_citation(
+        self,
+        *,
+        player_id: str,
+        artifact_id: str,
+        claim: str,
+        quote: str,
+    ) -> ProofDossier:
+        return self.model_copy(
+            update={
+                "artifact_citations": (
+                    *self.artifact_citations,
+                    {
+                        "player_id": player_id,
+                        "artifact_id": artifact_id,
+                        "claim": claim,
+                        "quote": quote,
                     },
                 )
             }
