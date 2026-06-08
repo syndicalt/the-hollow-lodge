@@ -23,6 +23,57 @@ class RenderPacket(BaseModel):
     actions: list[RenderAction] = Field(default_factory=list)
 
 
+def _shape_campaign(campaign: dict[str, Any]) -> dict[str, Any] | None:
+    if not campaign:
+        return None
+    return {
+        key: campaign[key]
+        for key in ("campaign_id", "title")
+        if key in campaign
+    }
+
+
+def _shape_phase(phase: dict[str, Any]) -> dict[str, Any]:
+    return {
+        key: phase[key]
+        for key in ("name", "remaining_hours", "status")
+        if key in phase
+    }
+
+
+def _shape_phase_result(phase_result: dict[str, Any]) -> dict[str, Any]:
+    return {
+        "standings": [
+            {
+                key: standing[key]
+                for key in ("crew_id", "standing", "score")
+                if key in standing
+            }
+            for standing in phase_result.get("standings", [])
+        ]
+    }
+
+
+def _shape_contract(contract: dict[str, Any]) -> dict[str, Any]:
+    shaped = {
+        key: contract[key]
+        for key in ("contract_id", "title", "crew_heat", "proof_dossier_needs")
+        if key in contract
+    }
+    shaped["phase"] = _shape_phase(contract["phase"])
+    if "phase_result" in contract:
+        shaped["phase_result"] = _shape_phase_result(contract["phase_result"])
+    return shaped
+
+
+def _shape_proof_fragment(fragment: dict[str, Any]) -> dict[str, Any]:
+    return {
+        key: fragment[key]
+        for key in ("fragment_id", "summary")
+        if key in fragment
+    }
+
+
 def build_contract_board_packet(board: dict[str, Any]) -> RenderPacket:
     lines: list[str] = []
     campaign = board.get("campaign") or {}
@@ -50,8 +101,8 @@ def build_contract_board_packet(board: dict[str, Any]) -> RenderPacket:
         surface="contract_board",
         player_markdown="\n".join(lines).strip(),
         agent_context={
-            "campaign": campaign or None,
-            "contracts": contracts,
+            "campaign": _shape_campaign(campaign),
+            "contracts": [_shape_contract(contract) for contract in contracts],
             "visible_contract_count": len(contracts),
         },
         suggested_prompts=[
@@ -90,8 +141,14 @@ def build_inbox_packet(inbox: dict[str, Any]) -> RenderPacket:
         player_markdown="\n".join(lines),
         agent_context={
             "player_id": inbox["player_id"],
-            "active_contracts": active_contracts,
-            "incoming_proof_fragments": fragments,
+            "active_contracts": [
+                _shape_contract(contract)
+                for contract in active_contracts
+            ],
+            "incoming_proof_fragments": [
+                _shape_proof_fragment(fragment)
+                for fragment in fragments
+            ],
             "urgent_items": urgent_items,
         },
         suggested_prompts=[
