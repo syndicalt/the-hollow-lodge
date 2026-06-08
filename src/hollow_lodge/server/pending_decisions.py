@@ -29,6 +29,13 @@ def pending_decisions_for_player(
         for action in actions
         if action.get("status") == "submitted" and action.get("responds_to_rumor_id")
     }
+    answered_rumor_escalation_crew_ids = {
+        crew_id
+        for crew_id, actions in actions_by_crew.items()
+        for action in actions
+        if action.get("status") == "submitted"
+        and action.get("responds_to_rumor_escalation") is True
+    }
 
     for deal in deals:
         if deal.get("status") != "proposed":
@@ -73,7 +80,7 @@ def pending_decisions_for_player(
             crew_id=crew_id,
             legacy=crew_legacies.get(crew_id, {}),
         )
-        if escalation is not None:
+        if escalation is not None and crew_id not in answered_rumor_escalation_crew_ids:
             decisions.append(escalation)
 
         for rumor in rumors_by_crew.get(crew_id, []):

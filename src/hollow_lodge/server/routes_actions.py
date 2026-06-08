@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from typing import Literal
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, ConfigDict, Field
 from fastapi import APIRouter, Depends, Header, HTTPException, Request, status
 
 from hollow_lodge.domain.identity import Player
@@ -15,11 +15,15 @@ router = APIRouter(prefix="/actions", tags=["actions"])
 
 
 class SubmitActionRequest(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
     crew_id: str = Field(min_length=1)
     intent: str = Field(min_length=1)
     confirmed: bool
     rumor_id: str | None = Field(default=None, min_length=1)
     rumor_response_mode: Literal["investigate", "contain"] = "investigate"
+    responds_to_rumor_escalation: bool = False
+    rumor_escalation_mode: Literal["contain", "exploit", "integrate"] | None = None
 
 
 class EditActionRequest(BaseModel):
@@ -41,6 +45,8 @@ def submit_action(
             confirmed=payload.confirmed,
             rumor_id=payload.rumor_id,
             rumor_response_mode=payload.rumor_response_mode,
+            responds_to_rumor_escalation=payload.responds_to_rumor_escalation,
+            rumor_escalation_mode=payload.rumor_escalation_mode,
             idempotency_key=idempotency_key,
         )
     except KeyError as exc:

@@ -677,6 +677,16 @@ def act(
         "--rumor-response-mode",
         help="Rumor response mode for a rumor-linked action: investigate or contain.",
     ),
+    responds_to_rumor_escalation: bool = typer.Option(
+        False,
+        "--responds-to-rumor-escalation",
+        help="Mark this action as answering repeated credible rumor signals.",
+    ),
+    rumor_escalation_mode: str | None = typer.Option(
+        None,
+        "--rumor-escalation-mode",
+        help="Escalation response mode: contain, exploit, or integrate.",
+    ),
     config: Path = typer.Option(DEFAULT_CONFIG_PATH, "--config", help="Local config path."),
     local_log: Path = typer.Option(
         DEFAULT_LOCAL_LOG_PATH,
@@ -703,6 +713,8 @@ def act(
         intent=intent,
         rumor_id=rumor_id,
         rumor_response_mode=rumor_response_mode,
+        responds_to_rumor_escalation=responds_to_rumor_escalation,
+        rumor_escalation_mode=rumor_escalation_mode,
         idempotency_key=new_command_key("action-submit"),
     )
     typer.echo(response["action_id"])

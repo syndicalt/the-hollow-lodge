@@ -601,8 +601,11 @@ def test_submit_action_mutation_result_includes_safe_rumor_response_mode():
             "intent": "Contain the rumor.",
             "responds_to_rumor_id": "rumor_msg_000001",
             "rumor_response_mode": "contain",
+            "responds_to_rumor_escalation": True,
+            "rumor_escalation_mode": "exploit",
             "body": "The ledger proves our leverage.",
             "artifact_ids": ["artifact_ledger_rubric"],
+            "source_id": "msg_private_000001",
         },
     )
 
@@ -612,9 +615,12 @@ def test_submit_action_mutation_result_includes_safe_rumor_response_mode():
         "intent": "Contain the rumor.",
         "responds_to_rumor_id": "rumor_msg_000001",
         "rumor_response_mode": "contain",
+        "responds_to_rumor_escalation": True,
+        "rumor_escalation_mode": "exploit",
     }
     assert "artifact_ledger_rubric" not in str(packet.agent_context)
     assert "The ledger proves our leverage" not in str(packet.agent_context)
+    assert "msg_private_000001" not in str(packet.agent_context)
 
 
 def test_accept_deal_mutation_packet_renders_received_artifacts():
@@ -1373,6 +1379,29 @@ def test_activity_summary_packet_shapes_visible_events_without_server_only_field
                 "origin": "server",
                 "event_id": "evt_6",
                 "sequence": 6,
+                "type": "contract.rumor.escalated",
+                "payload": {
+                    "schema_version": 1,
+                    "action_id": "action_000002",
+                    "crew_id": "crew_0003",
+                    "mode": "exploit",
+                    "credible_count": 2,
+                    "assessment_counts": {"credible_artifact_signal": 2},
+                    "summary": (
+                        "The crew chose to exploit a repeated credible rumor pattern "
+                        "without exposing private sources."
+                    ),
+                    "source_id": "msg_000001",
+                    "source_type": "chat.message.created",
+                    "body": "The ledger proves our leverage. Keep quiet.",
+                    "artifact_ids": ["artifact_ledger_rubric"],
+                    "suspected_crew_ids": ["crew_0001", "crew_0002"],
+                },
+            },
+            {
+                "origin": "server",
+                "event_id": "evt_7",
+                "sequence": 7,
                 "type": "crew.legacy.delta.recorded",
                 "payload": {
                     "schema_version": 1,
@@ -1416,7 +1445,11 @@ def test_activity_summary_packet_shapes_visible_events_without_server_only_field
         "artifact signal, but not enough to expose the private source."
     ) in packet.player_markdown
     assert (
-        "6 legacy crew_0001: Strong lead on The Saint's False Finger: "
+        "6 rumor escalation action_000002: The crew chose to exploit a repeated "
+        "credible rumor pattern without exposing private sources."
+    ) in packet.player_markdown
+    assert (
+        "7 legacy crew_0001: Strong lead on The Saint's False Finger: "
         "reputation +2, heat +1, favors +1."
     ) in packet.player_markdown
     assert "server-only" not in packet.player_markdown
@@ -1425,13 +1458,14 @@ def test_activity_summary_packet_shapes_visible_events_without_server_only_field
     assert "Do not cite us." not in packet.player_markdown
     assert "The ledger proves our leverage" not in packet.player_markdown
     assert packet.agent_context == {
-        "visible_event_count": 6,
+        "visible_event_count": 7,
         "event_type_counts": {
             "chat.message.created": 1,
             "proof.fragment.transferred": 1,
             "contract.rumor.leaked": 1,
             "contract.rumor.responded": 1,
             "contract.rumor.verified": 1,
+            "contract.rumor.escalated": 1,
             "crew.legacy.delta.recorded": 1,
         },
         "recent_events": [
@@ -1507,6 +1541,22 @@ def test_activity_summary_packet_shapes_visible_events_without_server_only_field
             },
             {
                 "sequence": 6,
+                "type": "contract.rumor.escalated",
+                "rumor_escalation": {
+                    "schema_version": 1,
+                    "action_id": "action_000002",
+                    "crew_id": "crew_0003",
+                    "mode": "exploit",
+                    "credible_count": 2,
+                    "assessment_counts": {"credible_artifact_signal": 2},
+                    "summary": (
+                        "The crew chose to exploit a repeated credible rumor pattern "
+                        "without exposing private sources."
+                    ),
+                },
+            },
+            {
+                "sequence": 7,
                 "type": "crew.legacy.delta.recorded",
                 "legacy_delta": {
                     "schema_version": 1,

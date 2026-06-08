@@ -36,6 +36,7 @@ from hollow_lodge.server.projections import (
     contract_board_from_events,
     inbox_from_board,
     legacy_delta_for_standing,
+    rumor_memory_from_events,
 )
 from hollow_lodge.server.contract_seed import ContractSeed, PhaseReward
 from hollow_lodge.server.seed_data import STARTER_CAMPAIGN, STARTER_CONTRACT, STARTER_HIDDEN_TRUTH
@@ -2363,6 +2364,8 @@ class ActionService:
         confirmed: bool,
         rumor_id: str | None = None,
         rumor_response_mode: str = "investigate",
+        responds_to_rumor_escalation: bool = False,
+        rumor_escalation_mode: str | None = None,
         idempotency_key: str,
     ) -> dict:
         with COMMAND_SERIALIZATION_LOCK, self._lock:
@@ -2380,6 +2383,13 @@ class ActionService:
                         "investigate",
                     )
                     != rumor_response_mode
+                    or existing.payload["action"].get(
+                        "responds_to_rumor_escalation",
+                        False,
+                    )
+                    is not responds_to_rumor_escalation
+                    or existing.payload["action"].get("rumor_escalation_mode")
+                    != rumor_escalation_mode
                 ):
                     raise ValueError("idempotency key conflict")
                 if rumor_id is not None:
@@ -2390,6 +2400,16 @@ class ActionService:
                         action=existing.payload["action"],
                         rumor=rumor,
                         rumor_response_mode=rumor_response_mode,
+                        idempotency_key=idempotency_key,
+                    )
+                if responds_to_rumor_escalation:
+                    escalation = self._require_rumor_escalation(crew_id=crew_id)
+                    self._append_rumor_escalation_outcome(
+                        player_id=player_id,
+                        crew_id=crew_id,
+                        action=existing.payload["action"],
+                        mode=rumor_escalation_mode or "integrate",
+                        escalation=escalation,
                         idempotency_key=idempotency_key,
                     )
                 self._award_action_artifacts(
@@ -2406,9 +2426,14 @@ class ActionService:
                 raise PermissionError(crew_id)
             if rumor_id is None and rumor_response_mode != "investigate":
                 raise ValueError("rumor response mode requires rumor_id")
+            if rumor_escalation_mode is not None and not responds_to_rumor_escalation:
+                raise ValueError("rumor escalation mode requires escalation response")
             rumor: dict | None = None
             if rumor_id is not None:
                 rumor = self._require_visible_rumor(crew_id=crew_id, rumor_id=rumor_id)
+            escalation: dict | None = None
+            if responds_to_rumor_escalation:
+                escalation = self._require_rumor_escalation(crew_id=crew_id)
             action_number = self._submitted_action_count(crew_id) + 1
             frame = NormalizedAction.from_intent(
                 intent=intent,
@@ -2424,6 +2449,9 @@ class ActionService:
             if rumor_id is not None:
                 action["responds_to_rumor_id"] = rumor_id
                 action["rumor_response_mode"] = rumor_response_mode
+            if responds_to_rumor_escalation:
+                action["responds_to_rumor_escalation"] = True
+                action["rumor_escalation_mode"] = rumor_escalation_mode or "integrate"
             self._event_store.append_command(
                 event_type="action.submitted",
                 actor_id=player_id,
@@ -2440,12 +2468,42 @@ class ActionService:
                     rumor_response_mode=rumor_response_mode,
                     idempotency_key=idempotency_key,
                 )
+            if escalation is not None:
+                self._append_rumor_escalation_outcome(
+                    player_id=player_id,
+                    crew_id=crew_id,
+                    action=action,
+                    mode=action["rumor_escalation_mode"],
+                    escalation=escalation,
+                    idempotency_key=idempotency_key,
+                )
             self._award_action_artifacts(
                 action=action,
                 player_id=player_id,
                 crew_id=crew_id,
             )
             return action
+
+    def _require_rumor_escalation(self, *, crew_id: str) -> dict:
+        memory = rumor_memory_from_events(
+            crew_id=crew_id,
+            events=self._event_store.read(),
+        )
+        assessment_counts = {
+            str(assessment): int(count)
+            for assessment, count in memory.get("assessment_counts", {}).items()
+        }
+        credible_count = sum(
+            count
+            for assessment, count in assessment_counts.items()
+            if assessment.startswith("credible_")
+        )
+        if credible_count < 2:
+            raise ValueError("rumor escalation requires repeated credible signals")
+        return {
+            "credible_count": credible_count,
+            "assessment_counts": dict(sorted(assessment_counts.items())),
+        }
 
     def _require_visible_rumor(self, *, crew_id: str, rumor_id: str) -> dict:
         for rumor in visible_rumors_for_crew(self._event_store, crew_id):
@@ -2500,6 +2558,33 @@ class ActionService:
                 rumor=rumor,
                 idempotency_key=idempotency_key,
             )
+
+    def _append_rumor_escalation_outcome(
+        self,
+        *,
+        player_id: str,
+        crew_id: str,
+        action: dict,
+        mode: str,
+        escalation: dict,
+        idempotency_key: str,
+    ) -> None:
+        payload = {
+            "schema_version": 1,
+            "action_id": action["action_id"],
+            "crew_id": crew_id,
+            "mode": mode,
+            "credible_count": int(escalation["credible_count"]),
+            "assessment_counts": dict(escalation["assessment_counts"]),
+            "summary": self._rumor_escalation_summary(mode),
+        }
+        self._event_store.append_command(
+            event_type="contract.rumor.escalated",
+            actor_id=player_id,
+            visibility=EventVisibility.crews([crew_id]),
+            payload=payload,
+            idempotency_key=f"{idempotency_key}:rumor-escalation",
+        )
 
     def _append_rumor_verification_result(
         self,
@@ -2557,6 +2642,22 @@ class ActionService:
                 "The investigation found a rumor signal, but not enough to "
                 "expose the private source."
             ),
+        )
+
+    def _rumor_escalation_summary(self, mode: str) -> str:
+        if mode == "contain":
+            return (
+                "The crew chose to contain a repeated credible rumor pattern "
+                "without exposing private sources."
+            )
+        if mode == "exploit":
+            return (
+                "The crew chose to exploit a repeated credible rumor pattern "
+                "without exposing private sources."
+            )
+        return (
+            "The crew chose to integrate a repeated credible rumor pattern into "
+            "contract strategy without exposing private sources."
         )
 
     def edit_action(

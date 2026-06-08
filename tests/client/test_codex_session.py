@@ -134,6 +134,8 @@ class FakeApi:
         idempotency_key: str,
         rumor_id: str | None = None,
         rumor_response_mode: str | None = None,
+        responds_to_rumor_escalation: bool = False,
+        rumor_escalation_mode: str | None = None,
     ):
         self.calls.append(
             (
@@ -144,6 +146,8 @@ class FakeApi:
                     "idempotency_key": idempotency_key,
                     "rumor_id": rumor_id,
                     "rumor_response_mode": rumor_response_mode,
+                    "responds_to_rumor_escalation": responds_to_rumor_escalation,
+                    "rumor_escalation_mode": rumor_escalation_mode,
                 },
             )
         )
@@ -152,6 +156,10 @@ class FakeApi:
             result["responds_to_rumor_id"] = rumor_id
         if rumor_response_mode is not None:
             result["rumor_response_mode"] = rumor_response_mode
+        if responds_to_rumor_escalation:
+            result["responds_to_rumor_escalation"] = True
+        if rumor_escalation_mode is not None:
+            result["rumor_escalation_mode"] = rumor_escalation_mode
         return result
 
     def add_dossier_evidence(
@@ -620,6 +628,8 @@ def test_codex_session_preview_submit_action_does_not_call_mutating_api(tmp_path
         confirm=False,
         rumor_id="rumor_msg_000001",
         rumor_response_mode="contain",
+        responds_to_rumor_escalation=True,
+        rumor_escalation_mode="exploit",
     )
 
     assert packet.surface == "mutation"
@@ -629,6 +639,8 @@ def test_codex_session_preview_submit_action_does_not_call_mutating_api(tmp_path
         "intent": "Inspect the red ledger.",
         "rumor_id": "rumor_msg_000001",
         "rumor_response_mode": "contain",
+        "responds_to_rumor_escalation": True,
+        "rumor_escalation_mode": "exploit",
     }
     assert fake_api.calls == []
 
@@ -657,6 +669,8 @@ def test_codex_session_confirm_submit_action_calls_api_with_active_crew(tmp_path
         confirm=True,
         rumor_id="rumor_msg_000001",
         rumor_response_mode="contain",
+        responds_to_rumor_escalation=True,
+        rumor_escalation_mode="exploit",
     )
 
     assert packet.agent_context["mutation"] is True
@@ -666,6 +680,8 @@ def test_codex_session_confirm_submit_action_calls_api_with_active_crew(tmp_path
         "intent": "Inspect the red ledger.",
         "responds_to_rumor_id": "rumor_msg_000001",
         "rumor_response_mode": "contain",
+        "responds_to_rumor_escalation": True,
+        "rumor_escalation_mode": "exploit",
     }
     assert fake_api.calls == [
         (
@@ -676,6 +692,8 @@ def test_codex_session_confirm_submit_action_calls_api_with_active_crew(tmp_path
                 "idempotency_key": "action-submit.fixed",
                 "rumor_id": "rumor_msg_000001",
                 "rumor_response_mode": "contain",
+                "responds_to_rumor_escalation": True,
+                "rumor_escalation_mode": "exploit",
             },
         ),
         "visible_events",

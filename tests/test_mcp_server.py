@@ -158,12 +158,16 @@ def test_submit_action_mcp_call_passes_confirmation_to_session(monkeypatch):
             crew_id: str | None = None,
             rumor_id: str | None = None,
             rumor_response_mode: str | None = None,
+            responds_to_rumor_escalation: bool = False,
+            rumor_escalation_mode: str | None = None,
         ) -> RenderPacket:
             assert intent == "Inspect the ledger."
             assert confirm is False
             assert crew_id is None
             assert rumor_id == "rumor_msg_000001"
             assert rumor_response_mode == "contain"
+            assert responds_to_rumor_escalation is True
+            assert rumor_escalation_mode == "exploit"
             return packet
 
     monkeypatch.setattr(mcp_server, "_session", lambda: StubSession())
@@ -176,6 +180,8 @@ def test_submit_action_mcp_call_passes_confirmation_to_session(monkeypatch):
                 "confirm": False,
                 "rumor_id": "rumor_msg_000001",
                 "rumor_response_mode": "contain",
+                "responds_to_rumor_escalation": True,
+                "rumor_escalation_mode": "exploit",
             },
         )
     )

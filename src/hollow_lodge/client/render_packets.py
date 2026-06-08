@@ -483,6 +483,32 @@ def _shape_rumor_verification(payload: dict[str, Any]) -> dict[str, Any]:
     }
 
 
+def _shape_rumor_escalation(payload: dict[str, Any]) -> dict[str, Any]:
+    shaped = {
+        key: payload[key]
+        for key in (
+            "schema_version",
+            "action_id",
+            "crew_id",
+            "mode",
+            "credible_count",
+            "assessment_counts",
+            "summary",
+        )
+        if key in payload
+    }
+    if "credible_count" in shaped:
+        shaped["credible_count"] = int(shaped["credible_count"])
+    if "assessment_counts" in shaped:
+        shaped["assessment_counts"] = {
+            str(assessment): int(count)
+            for assessment, count in sorted(
+                dict(shaped["assessment_counts"]).items()
+            )
+        }
+    return shaped
+
+
 def _shape_activity_event(event: dict[str, Any]) -> dict[str, Any]:
     sequence = int(event["sequence"])
     event_type = event["type"]
@@ -519,6 +545,8 @@ def _shape_activity_event(event: dict[str, Any]) -> dict[str, Any]:
                 "intent",
                 "responds_to_rumor_id",
                 "rumor_response_mode",
+                "responds_to_rumor_escalation",
+                "rumor_escalation_mode",
             )
             if key in action
         }
@@ -531,6 +559,8 @@ def _shape_activity_event(event: dict[str, Any]) -> dict[str, Any]:
         shaped["rumor_response"] = _shape_rumor_response(payload)
     elif event_type == "contract.rumor.verified":
         shaped["rumor_verification"] = _shape_rumor_verification(payload)
+    elif event_type == "contract.rumor.escalated":
+        shaped["rumor_escalation"] = _shape_rumor_escalation(payload)
     elif event_type == "crew.legacy.delta.recorded":
         shaped["legacy_delta"] = _shape_legacy_delta(payload)
     return shaped
@@ -546,6 +576,8 @@ def _shape_mutation_result(operation: str, result: dict[str, Any]) -> dict[str, 
                 "intent",
                 "responds_to_rumor_id",
                 "rumor_response_mode",
+                "responds_to_rumor_escalation",
+                "rumor_escalation_mode",
             )
             if key in result
         }
@@ -656,6 +688,11 @@ def _render_activity_event(event: dict[str, Any]) -> str:
     if event_type == "contract.rumor.verified":
         return (
             f"{sequence} rumor verification {payload.get('action_id')}: "
+            f"{payload.get('summary')}"
+        )
+    if event_type == "contract.rumor.escalated":
+        return (
+            f"{sequence} rumor escalation {payload.get('action_id')}: "
             f"{payload.get('summary')}"
         )
     if event_type == "crew.legacy.delta.recorded":

@@ -715,6 +715,143 @@ def test_rumor_action_replay_checks_rumor_reference_and_cancel_reopens_decision(
     assert len(verification_events) == 1
 
 
+def test_rumor_escalation_action_records_safe_outcome_and_reopens_after_cancel(tmp_path):
+    client = TestClient(create_app(data_dir=tmp_path, invite_codes=["a", "b", "c"]))
+    ada = register(client, "a", "Ada")
+    grace = register(client, "b", "Grace")
+    linus = register(client, "c", "Linus")
+    gilt = create_crew(client, ada["token"])
+    moth = client.post(
+        "/crews",
+        headers=command_auth(grace["token"], "crew-create-moth"),
+        json={"name": "The Moth Choir"},
+    ).json()
+    ash = client.post(
+        "/crews",
+        headers=command_auth(linus["token"], "crew-create-ash"),
+        json={"name": "The Ash Keys"},
+    ).json()
+    for index in range(2):
+        client.post(
+            "/chat/crew-to-crew",
+            headers=command_auth(ada["token"], f"chat-gilt-moth-ledger-{index}"),
+            json={
+                "sender_crew_id": gilt["crew_id"],
+                "recipient_crew_id": moth["crew_id"],
+                "body": f"The ledger proves our leverage. Keep quiet. {index}",
+                "artifact_ids": ["artifact_ledger_rubric"],
+            },
+        )
+        client.post(
+            "/actions",
+            headers=command_auth(linus["token"], f"action-investigate-rumor-{index}"),
+            json={
+                "crew_id": ash["crew_id"],
+                "intent": "Quietly verify the artifact rumor through the auction clerk.",
+                "confirmed": True,
+                "rumor_id": f"rumor_msg_00000{index + 1}",
+            },
+        )
+    before = client.get(f"/crews/{ash['crew_id']}/board", headers=auth(linus["token"]))
+    payload = {
+        "crew_id": ash["crew_id"],
+        "intent": "Exploit the repeated rumor pattern by folding it into our auction strategy.",
+        "confirmed": True,
+        "responds_to_rumor_escalation": True,
+        "rumor_escalation_mode": "exploit",
+    }
+
+    submitted = client.post(
+        "/actions",
+        headers=command_auth(linus["token"], "action-escalate-rumors"),
+        json=payload,
+    )
+    replay = client.post(
+        "/actions",
+        headers=command_auth(linus["token"], "action-escalate-rumors"),
+        json=payload,
+    )
+    conflict = client.post(
+        "/actions",
+        headers=command_auth(linus["token"], "action-escalate-rumors"),
+        json={**payload, "rumor_escalation_mode": "contain"},
+    )
+    after_answer = client.get(f"/crews/{ash['crew_id']}/board", headers=auth(linus["token"]))
+    canceled = client.delete(
+        f"/actions/{submitted.json()['action_id']}",
+        headers=command_auth(linus["token"], "action-cancel-escalation"),
+    )
+    after_cancel = client.get(f"/crews/{ash['crew_id']}/board", headers=auth(linus["token"]))
+    events = client.get("/events", headers=auth(linus["token"])).json()["events"]
+    escalations = [
+        event["payload"]
+        for event in events
+        if event["type"] == "contract.rumor.escalated"
+    ]
+
+    assert any(
+        decision["kind"] == "rumor_escalation"
+        for decision in before.json()["pending_decisions"]
+    )
+    assert submitted.status_code == 201
+    assert submitted.json()["responds_to_rumor_escalation"] is True
+    assert submitted.json()["rumor_escalation_mode"] == "exploit"
+    assert replay.status_code == 201
+    assert replay.json() == submitted.json()
+    assert conflict.status_code == 409
+    assert not any(
+        decision["kind"] == "rumor_escalation"
+        for decision in after_answer.json()["pending_decisions"]
+    )
+    assert canceled.status_code == 200
+    assert any(
+        decision["kind"] == "rumor_escalation"
+        for decision in after_cancel.json()["pending_decisions"]
+    )
+    assert escalations == [
+        {
+            "schema_version": 1,
+            "action_id": submitted.json()["action_id"],
+            "crew_id": ash["crew_id"],
+            "mode": "exploit",
+            "credible_count": 2,
+            "assessment_counts": {"credible_artifact_signal": 2},
+            "summary": (
+                "The crew chose to exploit a repeated credible rumor pattern "
+                "without exposing private sources."
+            ),
+        }
+    ]
+    escalation_text = str(escalations)
+    assert "msg_000001" not in escalation_text
+    assert "chat.message.created" not in escalation_text
+    assert "The ledger proves our leverage" not in escalation_text
+    assert "artifact_ledger_rubric" not in escalation_text
+    assert gilt["crew_id"] not in escalation_text
+    assert moth["crew_id"] not in escalation_text
+
+
+def test_rumor_escalation_action_requires_current_credible_escalation(tmp_path):
+    client = TestClient(create_app(data_dir=tmp_path, invite_codes=["a"]))
+    ada = register(client, "a", "Ada")
+    crew = create_crew(client, ada["token"])
+
+    response = client.post(
+        "/actions",
+        headers=command_auth(ada["token"], "action-escalate-without-signal"),
+        json={
+            "crew_id": crew["crew_id"],
+            "intent": "Exploit a rumor pattern that is not there.",
+            "confirmed": True,
+            "responds_to_rumor_escalation": True,
+            "rumor_escalation_mode": "exploit",
+        },
+    )
+
+    assert response.status_code == 409
+    assert response.json()["detail"] == "rumor escalation requires repeated credible signals"
+
+
 def test_deal_rumor_investigation_preserves_contract_id_without_terms(tmp_path):
     app = create_app(data_dir=tmp_path, invite_codes=["a", "b", "c"])
     client = TestClient(app)

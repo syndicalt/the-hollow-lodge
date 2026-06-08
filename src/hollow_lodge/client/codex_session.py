@@ -108,6 +108,8 @@ class CodexGameSession:
         crew_id: str | None = None,
         rumor_id: str | None = None,
         rumor_response_mode: str | None = None,
+        responds_to_rumor_escalation: bool = False,
+        rumor_escalation_mode: str | None = None,
     ) -> RenderPacket:
         target_crew_id = self._target_crew_id(crew_id)
         if not confirm:
@@ -116,6 +118,10 @@ class CodexGameSession:
                 preview_fields["rumor_id"] = rumor_id
             if rumor_response_mode is not None:
                 preview_fields["rumor_response_mode"] = rumor_response_mode
+            if responds_to_rumor_escalation:
+                preview_fields["responds_to_rumor_escalation"] = True
+            if rumor_escalation_mode is not None:
+                preview_fields["rumor_escalation_mode"] = rumor_escalation_mode
             return build_mutation_result_packet(
                 operation="submit_action",
                 confirmed=False,
@@ -126,6 +132,8 @@ class CodexGameSession:
             intent=intent,
             rumor_id=rumor_id,
             rumor_response_mode=rumor_response_mode,
+            responds_to_rumor_escalation=responds_to_rumor_escalation,
+            rumor_escalation_mode=rumor_escalation_mode,
             idempotency_key=new_command_key("action-submit"),
         )
         self.sync()

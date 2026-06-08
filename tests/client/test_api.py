@@ -454,6 +454,8 @@ def test_api_submits_action_with_rumor_reference(monkeypatch):
         intent="Verify the rumor quietly.",
         rumor_id="rumor_msg_000001",
         rumor_response_mode="contain",
+        responds_to_rumor_escalation=True,
+        rumor_escalation_mode="exploit",
         idempotency_key="action-submit-key",
     )
 
@@ -474,6 +476,8 @@ def test_api_submits_action_with_rumor_reference(monkeypatch):
                 "confirmed": True,
                 "rumor_id": "rumor_msg_000001",
                 "rumor_response_mode": "contain",
+                "responds_to_rumor_escalation": True,
+                "rumor_escalation_mode": "exploit",
             },
             "timeout": 10,
         },

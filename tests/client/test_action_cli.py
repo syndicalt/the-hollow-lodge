@@ -18,6 +18,8 @@ class FakeApi:
         idempotency_key: str,
         rumor_id: str | None = None,
         rumor_response_mode: str | None = None,
+        responds_to_rumor_escalation: bool = False,
+        rumor_escalation_mode: str | None = None,
     ):
         self.calls.append(
             (
@@ -28,12 +30,18 @@ class FakeApi:
                     "idempotency_key": idempotency_key,
                     "rumor_id": rumor_id,
                     "rumor_response_mode": rumor_response_mode,
+                    "responds_to_rumor_escalation": responds_to_rumor_escalation,
+                    "rumor_escalation_mode": rumor_escalation_mode,
                 },
             )
         )
         result = {"action_id": "action_000001", "status": "submitted"}
         if rumor_id is not None:
             result["responds_to_rumor_id"] = rumor_id
+        if responds_to_rumor_escalation:
+            result["responds_to_rumor_escalation"] = True
+        if rumor_escalation_mode is not None:
+            result["rumor_escalation_mode"] = rumor_escalation_mode
         return result
 
     def edit_action(self, *, action_id: str, intent: str, idempotency_key: str):
@@ -128,6 +136,9 @@ def test_act_command_confirms_and_submits(tmp_path, monkeypatch):
             "rumor_msg_000001",
             "--rumor-response-mode",
             "contain",
+            "--responds-to-rumor-escalation",
+            "--rumor-escalation-mode",
+            "exploit",
             "--config",
             str(config_path),
             "--local-log",
@@ -146,6 +157,8 @@ def test_act_command_confirms_and_submits(tmp_path, monkeypatch):
                 "idempotency_key": "action-submit-key",
                 "rumor_id": "rumor_msg_000001",
                 "rumor_response_mode": "contain",
+                "responds_to_rumor_escalation": True,
+                "rumor_escalation_mode": "exploit",
             },
         )
     ]
