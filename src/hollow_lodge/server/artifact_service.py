@@ -1,6 +1,8 @@
 from __future__ import annotations
 
+from dataclasses import dataclass
 import threading
+from typing import Any
 
 from hollow_lodge.domain.artifacts import ArtifactCopy
 from hollow_lodge.domain.events import EventVisibility
@@ -10,6 +12,17 @@ from hollow_lodge.server.artifact_seed import (
     STARTER_ARTIFACT_GRAPH,
     STARTER_PUBLIC_ARTIFACT_IDS,
 )
+
+
+@dataclass(frozen=True)
+class _PlannedDealCopy:
+    surface: dict[str, Any]
+    public_actor_id: str
+    public_visibility: EventVisibility
+    public_payload: dict[str, Any]
+    public_idempotency_key: str
+    internal_payload: dict[str, Any]
+    internal_idempotency_key: str
 
 
 class ArtifactService:
@@ -151,48 +164,29 @@ class ArtifactService:
             if replay is not None:
                 return replay
 
-            artifact = STARTER_ARTIFACT_GRAPH.artifact_by_id(source_artifact_id)
-            if artifact.copy_policy == "sealed":
-                raise ValueError("artifact cannot be transferred")
-
-            artifact_copy = ArtifactCopy.from_deal_source(
-                source_artifact_id=artifact.artifact_id,
-                copy_artifact_id=(
-                    f"{artifact.artifact_id}.dealcopy."
-                    f"{deal_id}.{recipient_crew_id}.{self._next_deal_copy_number()}"
-                ),
-                contract_id=artifact.contract_id,
+            planned = self._plan_deal_copy(
+                source_artifact_id=source_artifact_id,
                 source_crew_id=source_crew_id,
                 recipient_crew_id=recipient_crew_id,
+                actor_id=actor_id,
                 deal_id=deal_id,
-                title=artifact.title,
-                public_summary=artifact.public_summary,
+                idempotency_key=idempotency_key,
             )
-            surface = artifact_copy.surface_view()
             self._event_store.append_command(
                 event_type="artifact.deal_copied",
-                actor_id=actor_id,
-                visibility=EventVisibility.crews([source_crew_id, recipient_crew_id]),
-                payload={
-                    "deal_id": deal_id,
-                    "source_crew_id": source_crew_id,
-                    "recipient_crew_id": recipient_crew_id,
-                    "source_artifact_id": artifact.artifact_id,
-                    "surface": surface,
-                },
-                idempotency_key=idempotency_key,
+                actor_id=planned.public_actor_id,
+                visibility=planned.public_visibility,
+                payload=planned.public_payload,
+                idempotency_key=planned.public_idempotency_key,
             )
             self._event_store.append_command(
                 event_type="artifact.deal_copied.internal",
                 actor_id="server",
                 visibility=EventVisibility.server_only(),
-                payload={
-                    "deal_copy_idempotency_key": idempotency_key,
-                    "artifact_copy": artifact_copy.model_dump(mode="json"),
-                },
-                idempotency_key=f"{idempotency_key}.internal",
+                payload=planned.internal_payload,
+                idempotency_key=planned.internal_idempotency_key,
             )
-            return surface
+            return planned.surface
 
     def preflight_copy_artifact_for_deal(
         self,
@@ -200,9 +194,11 @@ class ArtifactService:
         source_artifact_id: str,
         source_crew_id: str,
         recipient_crew_id: str,
+        actor_id: str,
         deal_id: str,
         idempotency_key: str,
-    ) -> None:
+        copy_number: int | None = None,
+    ) -> dict:
         with self._lock:
             self._matching_deal_copy_replay(
                 idempotency_key=idempotency_key,
@@ -211,9 +207,34 @@ class ArtifactService:
                 recipient_crew_id=recipient_crew_id,
                 deal_id=deal_id,
             )
-            artifact = STARTER_ARTIFACT_GRAPH.artifact_by_id(source_artifact_id)
-            if artifact.copy_policy == "sealed":
-                raise ValueError("artifact cannot be transferred")
+            planned = self._plan_deal_copy(
+                source_artifact_id=source_artifact_id,
+                source_crew_id=source_crew_id,
+                recipient_crew_id=recipient_crew_id,
+                actor_id=actor_id,
+                deal_id=deal_id,
+                idempotency_key=idempotency_key,
+                copy_number=copy_number,
+            )
+            self._preflight_command_idempotency(
+                idempotency_key=planned.public_idempotency_key,
+                event_type="artifact.deal_copied",
+                actor_id=planned.public_actor_id,
+                visibility=planned.public_visibility,
+                payload=planned.public_payload,
+            )
+            self._preflight_command_idempotency(
+                idempotency_key=planned.internal_idempotency_key,
+                event_type="artifact.deal_copied.internal",
+                actor_id="server",
+                visibility=EventVisibility.server_only(),
+                payload=planned.internal_payload,
+            )
+            return planned.surface
+
+    def next_deal_copy_number(self) -> int:
+        with self._lock:
+            return self._next_deal_copy_number()
 
     def grant_artifact_access(
         self,
@@ -347,6 +368,75 @@ class ArtifactService:
                 raise ValueError("idempotency key conflict")
             return event.payload["surface"]
         return None
+
+    def _plan_deal_copy(
+        self,
+        *,
+        source_artifact_id: str,
+        source_crew_id: str,
+        recipient_crew_id: str,
+        actor_id: str,
+        deal_id: str,
+        idempotency_key: str,
+        copy_number: int | None = None,
+    ) -> _PlannedDealCopy:
+        artifact = STARTER_ARTIFACT_GRAPH.artifact_by_id(source_artifact_id)
+        if artifact.copy_policy == "sealed":
+            raise ValueError("artifact cannot be transferred")
+
+        artifact_copy = ArtifactCopy.from_deal_source(
+            source_artifact_id=artifact.artifact_id,
+            copy_artifact_id=(
+                f"{artifact.artifact_id}.dealcopy."
+                f"{deal_id}.{recipient_crew_id}.{copy_number or self._next_deal_copy_number()}"
+            ),
+            contract_id=artifact.contract_id,
+            source_crew_id=source_crew_id,
+            recipient_crew_id=recipient_crew_id,
+            deal_id=deal_id,
+            title=artifact.title,
+            public_summary=artifact.public_summary,
+        )
+        surface = artifact_copy.surface_view()
+        return _PlannedDealCopy(
+            surface=surface,
+            public_actor_id=actor_id,
+            public_visibility=EventVisibility.crews([source_crew_id, recipient_crew_id]),
+            public_payload={
+                "deal_id": deal_id,
+                "source_crew_id": source_crew_id,
+                "recipient_crew_id": recipient_crew_id,
+                "source_artifact_id": artifact.artifact_id,
+                "surface": surface,
+            },
+            public_idempotency_key=idempotency_key,
+            internal_payload={
+                "deal_copy_idempotency_key": idempotency_key,
+                "artifact_copy": artifact_copy.model_dump(mode="json"),
+            },
+            internal_idempotency_key=f"{idempotency_key}.internal",
+        )
+
+    def _preflight_command_idempotency(
+        self,
+        *,
+        idempotency_key: str,
+        event_type: str,
+        actor_id: str,
+        visibility: EventVisibility,
+        payload: dict[str, Any],
+    ) -> None:
+        for event in self._event_store.read():
+            if event.idempotency_key != idempotency_key:
+                continue
+            if (
+                event.type != event_type
+                or event.actor_id != actor_id
+                or event.visibility != visibility
+                or event.payload != payload
+            ):
+                raise ValueError("idempotency key conflict")
+            return
 
     def _next_transfer_number(self) -> int:
         return 1 + sum(

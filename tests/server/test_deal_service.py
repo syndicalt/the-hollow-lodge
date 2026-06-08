@@ -238,6 +238,59 @@ def test_accept_internal_copy_preflight_conflict_does_not_append_accepted(tmp_pa
     assert not any(event.type == "deal.accepted" for event in app.state.event_store.read())
 
 
+def test_accept_internal_copy_payload_conflict_does_not_append_accepted(tmp_path):
+    app = create_app(data_dir=tmp_path, invite_codes=["a", "b"])
+    client = TestClient(app)
+    ada = register(client, "a", "Ada")
+    bela = register(client, "b", "Bela")
+    gilt = create_crew(client, ada["token"], "Gilt Knives", "crew-gilt")
+    moth = create_crew(client, bela["token"], "Moth Lanterns", "crew-moth")
+    deal = app.state.deal_service.propose(
+        contract_id="contract_false_finger",
+        proposer_crew_id=gilt["crew_id"],
+        recipient_crew_id=moth["crew_id"],
+        offered_artifact_ids=["artifact_ledger_rubric"],
+        requested_artifact_ids=[],
+        soft_terms=[],
+        expires_phase=None,
+        proposer_player_id=ada["player_id"],
+        idempotency_key="deal-propose-internal-payload-preflight",
+    )
+    app.state.event_store.append_command(
+        event_type="artifact.deal_copied.internal",
+        actor_id="server",
+        visibility=EventVisibility.server_only(),
+        payload={
+            "deal_copy_idempotency_key": "deal-accept.recipient.0",
+            "artifact_copy": {
+                "artifact_id": "artifact_wrong.dealcopy.deal_999999.crew_wrong.999",
+                "source_artifact_id": "artifact_wrong",
+                "contract_id": "contract_false_finger",
+                "title": "Wrong Artifact",
+                "public_summary": "This is not the planned deal copy.",
+                "source_chain": [
+                    "artifact:artifact_wrong",
+                    "deal:deal_999999",
+                    "crew-transfer:crew_wrong->crew_other",
+                ],
+                "visible_flags": ["copy"],
+                "contamination_flags": [],
+            },
+        },
+        idempotency_key="deal-accept.recipient.0.internal",
+    )
+
+    with pytest.raises(ValueError, match="idempotency key conflict"):
+        app.state.deal_service.accept(
+            deal_id=deal["deal_id"],
+            actor_player_id=bela["player_id"],
+            idempotency_key="deal-accept",
+        )
+
+    assert app.state.deal_service.list_for_player(ada["player_id"])[0]["status"] == "proposed"
+    assert not any(event.type == "deal.accepted" for event in app.state.event_store.read())
+
+
 def test_accept_fulfilled_preflight_conflict_does_not_append_accepted(tmp_path):
     app = create_app(data_dir=tmp_path, invite_codes=["a", "b"])
     client = TestClient(app)

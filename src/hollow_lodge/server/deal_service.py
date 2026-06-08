@@ -109,6 +109,7 @@ class DealService:
             )
             self._preflight_accepted_deal_fulfillment(
                 deal=deal,
+                actor_player_id=actor_player_id,
                 idempotency_key=idempotency_key,
             )
 
@@ -234,62 +235,66 @@ class DealService:
         self,
         *,
         deal: dict,
+        actor_player_id: str,
         idempotency_key: str,
     ) -> None:
+        next_copy_number = self._artifact_service.next_deal_copy_number()
+        recipient_received: list[str] = []
         for index, artifact_id in enumerate(deal["offered_artifact_ids"]):
-            self._artifact_service.preflight_copy_artifact_for_deal(
+            surface = self._artifact_service.preflight_copy_artifact_for_deal(
                 source_artifact_id=artifact_id,
                 source_crew_id=deal["proposer_crew_id"],
                 recipient_crew_id=deal["recipient_crew_id"],
+                actor_id=actor_player_id,
                 deal_id=deal["deal_id"],
                 idempotency_key=f"{idempotency_key}.recipient.{index}",
+                copy_number=next_copy_number,
             )
-            self._preflight_deal_copy_internal_key(
-                idempotency_key=f"{idempotency_key}.recipient.{index}.internal",
-                copy_idempotency_key=f"{idempotency_key}.recipient.{index}",
-            )
+            recipient_received.append(surface["artifact_id"])
+            next_copy_number += 1
+        proposer_received: list[str] = []
         for index, artifact_id in enumerate(deal["requested_artifact_ids"]):
-            self._artifact_service.preflight_copy_artifact_for_deal(
+            surface = self._artifact_service.preflight_copy_artifact_for_deal(
                 source_artifact_id=artifact_id,
                 source_crew_id=deal["recipient_crew_id"],
                 recipient_crew_id=deal["proposer_crew_id"],
+                actor_id=actor_player_id,
                 deal_id=deal["deal_id"],
                 idempotency_key=f"{idempotency_key}.proposer.{index}",
+                copy_number=next_copy_number,
             )
-            self._preflight_deal_copy_internal_key(
-                idempotency_key=f"{idempotency_key}.proposer.{index}.internal",
-                copy_idempotency_key=f"{idempotency_key}.proposer.{index}",
-            )
+            proposer_received.append(surface["artifact_id"])
+            next_copy_number += 1
         self._preflight_deal_fulfilled_key(
             idempotency_key=f"{idempotency_key}.fulfilled",
-            deal_id=deal["deal_id"],
+            actor_id=actor_player_id,
+            visibility=EventVisibility.crews(
+                [deal["proposer_crew_id"], deal["recipient_crew_id"]]
+            ),
+            payload={
+                "deal_id": deal["deal_id"],
+                "proposer_received_artifact_ids": proposer_received,
+                "recipient_received_artifact_ids": recipient_received,
+            },
         )
-
-    def _preflight_deal_copy_internal_key(
-        self,
-        *,
-        idempotency_key: str,
-        copy_idempotency_key: str,
-    ) -> None:
-        existing = self._event_by_idempotency_key(idempotency_key)
-        if existing is None:
-            return
-        if (
-            existing.type != "artifact.deal_copied.internal"
-            or existing.payload.get("deal_copy_idempotency_key") != copy_idempotency_key
-        ):
-            raise ValueError("idempotency key conflict")
 
     def _preflight_deal_fulfilled_key(
         self,
         *,
         idempotency_key: str,
-        deal_id: str,
+        actor_id: str,
+        visibility: EventVisibility,
+        payload: dict[str, Any],
     ) -> None:
         existing = self._event_by_idempotency_key(idempotency_key)
         if existing is None:
             return
-        if existing.type != "deal.fulfilled" or existing.payload.get("deal_id") != deal_id:
+        if (
+            existing.type != "deal.fulfilled"
+            or existing.actor_id != actor_id
+            or existing.visibility != visibility
+            or existing.payload != payload
+        ):
             raise ValueError("idempotency key conflict")
 
     def _next_deal_id(self) -> str:
