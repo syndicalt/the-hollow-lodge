@@ -318,6 +318,8 @@ Expected verification:
 
 ### Slice 5: Admin Onboarding Completion
 
+Status: completed in `9be279b`.
+
 Complete the access-key request flow with approval and invite creation, then
 update the installer/site text when the hosted path is actually usable.
 
