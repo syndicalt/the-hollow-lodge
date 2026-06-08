@@ -160,6 +160,9 @@ class HollowLodgeApi:
     def artifacts(self) -> dict[str, Any]:
         return self._get("/artifacts")
 
+    def deals(self) -> dict[str, Any]:
+        return self._get("/deals")
+
     def artifact(self, *, artifact_id: str) -> dict[str, Any]:
         return self._get(f"/artifacts/{artifact_id}")
 
@@ -180,6 +183,53 @@ class HollowLodgeApi:
         return self._post(
             f"/artifacts/{artifact_id}/transfer",
             json={"recipient_player_id": recipient_player_id},
+            idempotency_key=idempotency_key,
+        )
+
+    def propose_deal(
+        self,
+        *,
+        contract_id: str,
+        proposer_crew_id: str,
+        recipient_crew_id: str,
+        offered_artifact_ids: list[str] | tuple[str, ...],
+        requested_artifact_ids: list[str] | tuple[str, ...],
+        soft_terms: list[str] | tuple[str, ...],
+        expires_phase: str | None,
+        idempotency_key: str,
+    ) -> dict[str, Any]:
+        return self._post(
+            "/deals",
+            json={
+                "contract_id": contract_id,
+                "proposer_crew_id": proposer_crew_id,
+                "recipient_crew_id": recipient_crew_id,
+                "offered_artifact_ids": list(offered_artifact_ids),
+                "requested_artifact_ids": list(requested_artifact_ids),
+                "soft_terms": list(soft_terms),
+                "expires_phase": expires_phase,
+            },
+            idempotency_key=idempotency_key,
+        )
+
+    def accept_deal(self, *, deal_id: str, idempotency_key: str) -> dict[str, Any]:
+        return self._post(
+            f"/deals/{deal_id}/accept",
+            json={},
+            idempotency_key=idempotency_key,
+        )
+
+    def decline_deal(self, *, deal_id: str, idempotency_key: str) -> dict[str, Any]:
+        return self._post(
+            f"/deals/{deal_id}/decline",
+            json={},
+            idempotency_key=idempotency_key,
+        )
+
+    def cancel_deal(self, *, deal_id: str, idempotency_key: str) -> dict[str, Any]:
+        return self._post(
+            f"/deals/{deal_id}/cancel",
+            json={},
             idempotency_key=idempotency_key,
         )
 

@@ -42,10 +42,12 @@ dossier_app = typer.Typer(help="Manage the crew proof dossier.", no_args_is_help
 packet_lead_app = typer.Typer(help="Manage Packet Lead votes.", no_args_is_help=True)
 admin_app = typer.Typer(help="Manage Lodge administration.", no_args_is_help=True)
 codex_app = typer.Typer(help="Configure Codex integration.", no_args_is_help=True)
+deal_app = typer.Typer(help="Manage escrowed artifact deals.", no_args_is_help=True)
 app.add_typer(dossier_app, name="dossier")
 app.add_typer(packet_lead_app, name="packet-lead")
 app.add_typer(admin_app, name="admin")
 app.add_typer(codex_app, name="codex")
+app.add_typer(deal_app, name="deal")
 
 
 @app.callback()
@@ -453,6 +455,100 @@ def act(
         idempotency_key=new_command_key("action-submit"),
     )
     typer.echo(response["action_id"])
+
+
+@deal_app.command("list")
+def deal_list(
+    config: Path = typer.Option(DEFAULT_CONFIG_PATH, "--config", help="Local config path."),
+) -> None:
+    """List visible escrowed artifact deals."""
+    response = _api_from_config(load_config(config)).deals()
+    deals = response.get("deals", [])
+    if not deals:
+        typer.echo("no deals")
+        return
+    for deal in deals:
+        typer.echo(f"{deal['deal_id']} {deal['status']}")
+
+
+@deal_app.command("propose")
+def deal_propose(
+    from_crew: str | None = typer.Option(
+        None,
+        "--from-crew",
+        help="Proposing crew id; defaults to active crew.",
+    ),
+    to_crew: str = typer.Option(..., "--to-crew", help="Recipient crew id."),
+    offer: list[str] = typer.Option(..., "--offer", help="Offered artifact id."),
+    request: list[str] = typer.Option(..., "--request", help="Requested artifact id."),
+    soft_term: list[str] | None = typer.Option(None, "--soft-term", help="Non-binding soft term."),
+    contract_id: str = typer.Option(
+        "contract_false_finger",
+        "--contract-id",
+        help="Contract id for the deal.",
+    ),
+    expires_phase: str | None = typer.Option(
+        None,
+        "--expires-phase",
+        help="Phase after which the deal expires.",
+    ),
+    config: Path = typer.Option(DEFAULT_CONFIG_PATH, "--config", help="Local config path."),
+) -> None:
+    """Propose an escrowed artifact deal."""
+    current = load_config(config)
+    proposer_crew_id = from_crew or current.active_crew_id
+    if proposer_crew_id is None:
+        raise typer.BadParameter("from crew required when no active crew is configured")
+    response = _api_from_config(current).propose_deal(
+        contract_id=contract_id,
+        proposer_crew_id=proposer_crew_id,
+        recipient_crew_id=to_crew,
+        offered_artifact_ids=offer,
+        requested_artifact_ids=request,
+        soft_terms=soft_term or [],
+        expires_phase=expires_phase,
+        idempotency_key=new_command_key("deal-propose"),
+    )
+    typer.echo(f"{response['deal_id']} {response['status']}")
+
+
+@deal_app.command("accept")
+def deal_accept(
+    deal_id: str = typer.Argument(..., help="Deal id."),
+    config: Path = typer.Option(DEFAULT_CONFIG_PATH, "--config", help="Local config path."),
+) -> None:
+    """Accept an escrowed artifact deal."""
+    response = _api_from_config(load_config(config)).accept_deal(
+        deal_id=deal_id,
+        idempotency_key=new_command_key("deal-accept"),
+    )
+    typer.echo(f"{response['deal_id']} {response['status']}")
+
+
+@deal_app.command("decline")
+def deal_decline(
+    deal_id: str = typer.Argument(..., help="Deal id."),
+    config: Path = typer.Option(DEFAULT_CONFIG_PATH, "--config", help="Local config path."),
+) -> None:
+    """Decline an escrowed artifact deal."""
+    response = _api_from_config(load_config(config)).decline_deal(
+        deal_id=deal_id,
+        idempotency_key=new_command_key("deal-decline"),
+    )
+    typer.echo(f"{response['deal_id']} {response['status']}")
+
+
+@deal_app.command("cancel")
+def deal_cancel(
+    deal_id: str = typer.Argument(..., help="Deal id."),
+    config: Path = typer.Option(DEFAULT_CONFIG_PATH, "--config", help="Local config path."),
+) -> None:
+    """Cancel an escrowed artifact deal."""
+    response = _api_from_config(load_config(config)).cancel_deal(
+        deal_id=deal_id,
+        idempotency_key=new_command_key("deal-cancel"),
+    )
+    typer.echo(f"{response['deal_id']} {response['status']}")
 
 
 @dossier_app.callback(invoke_without_command=True)
