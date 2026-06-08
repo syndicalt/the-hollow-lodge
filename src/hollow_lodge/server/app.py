@@ -64,9 +64,9 @@ def create_app(
         event_store=event_store,
         crew_service=crew_service,
     )
-    app.state.artifact_service = ArtifactService(event_store=event_store)
 
     if data_dir is not None:
+        app.state.artifact_service = ArtifactService(event_store=event_store)
         app.state.contract_service = ContractService(
             event_store=event_store,
             resolution_oracle=resolved_oracle,
