@@ -23,8 +23,36 @@ class FakeApi:
         self.calls.append(("deals", {}))
         return {
             "deals": [
-                {"deal_id": "deal_000001", "status": "proposed"},
-                {"deal_id": "deal_000002", "status": "fulfilled"},
+                {
+                    "deal_id": "deal_000001",
+                    "contract_id": "contract_false_finger",
+                    "proposer_crew_id": "crew_0001",
+                    "recipient_crew_id": "crew_0002",
+                    "status": "proposed",
+                    "offered_artifact_ids": ["artifact_ledger_rubric"],
+                    "requested_artifact_ids": ["artifact_chapel_debt_mark"],
+                    "soft_terms": ["Do not cite us."],
+                    "expires_phase": "Auction Preview",
+                    "proposer_received_artifact_ids": [],
+                    "recipient_received_artifact_ids": [],
+                },
+                {
+                    "deal_id": "deal_000002",
+                    "contract_id": "contract_false_finger",
+                    "proposer_crew_id": "crew_0001",
+                    "recipient_crew_id": "crew_0002",
+                    "status": "fulfilled",
+                    "offered_artifact_ids": ["artifact_ledger_rubric"],
+                    "requested_artifact_ids": ["artifact_chapel_debt_mark"],
+                    "soft_terms": [],
+                    "expires_phase": None,
+                    "proposer_received_artifact_ids": [
+                        "artifact_chapel_debt_mark.dealcopy.deal_000002.crew_0001.2"
+                    ],
+                    "recipient_received_artifact_ids": [
+                        "artifact_ledger_rubric.dealcopy.deal_000002.crew_0002.1"
+                    ],
+                },
             ]
         }
 
@@ -113,6 +141,41 @@ def test_deal_list_calls_api_and_prints_deal_id_and_status(tmp_path, monkeypatch
     assert result.exit_code == 0
     assert "deal_000001 proposed" in result.output
     assert "deal_000002 fulfilled" in result.output
+    assert created_clients[0].calls == [("deals", {})]
+
+
+def test_deal_show_prints_full_terms(tmp_path, monkeypatch):
+    created_clients: list[FakeApi] = []
+    config = _write_config(tmp_path)
+
+    monkeypatch.setattr(cli, "HollowLodgeApi", _fake_client_factory(created_clients))
+
+    result = runner.invoke(app, ["deal", "show", "deal_000001", "--config", str(config)])
+
+    assert result.exit_code == 0
+    assert "deal_000001 proposed: crew_0001 offers artifact_ledger_rubric for artifact_chapel_debt_mark" in result.output
+    assert "Soft term: Do not cite us." in result.output
+    assert "Expires: Auction Preview" in result.output
+    assert created_clients[0].calls == [("deals", {})]
+
+
+def test_deal_preview_accept_prints_consequences(tmp_path, monkeypatch):
+    created_clients: list[FakeApi] = []
+    config = _write_config(tmp_path, active_crew_id="crew_0002")
+
+    monkeypatch.setattr(cli, "HollowLodgeApi", _fake_client_factory(created_clients))
+
+    result = runner.invoke(
+        app,
+        ["deal", "preview-accept", "deal_000001", "--config", str(config)],
+    )
+
+    assert result.exit_code == 0
+    assert "Acceptance preview: deal_000001" in result.output
+    assert "Your crew gives: artifact_chapel_debt_mark" in result.output
+    assert "Your crew receives: artifact_ledger_rubric" in result.output
+    assert "Soft terms are recorded but not enforced by the server." in result.output
+    assert "This preview does not accept the deal." in result.output
     assert created_clients[0].calls == [("deals", {})]
 
 

@@ -25,6 +25,8 @@ from hollow_lodge.client.paths import (
 )
 from hollow_lodge.client.render import render_contract_board, render_crew_board, render_inbox
 from hollow_lodge.client.render_packets import (
+    build_deal_acceptance_preview_packet,
+    build_deals_packet,
     build_contract_board_packet,
     build_crew_board_packet,
     build_inbox_packet,
@@ -471,6 +473,34 @@ def deal_list(
         typer.echo(f"{deal['deal_id']} {deal['status']}")
 
 
+@deal_app.command("show")
+def deal_show(
+    deal_id: str = typer.Argument(..., help="Deal id."),
+    config: Path = typer.Option(DEFAULT_CONFIG_PATH, "--config", help="Local config path."),
+) -> None:
+    """Show full escrowed artifact deal terms."""
+    deal = _deal_by_id(_api_from_config(load_config(config)).deals(), deal_id)
+    typer.echo(build_deals_packet({"deals": [deal]}).player_markdown)
+
+
+@deal_app.command("preview-accept")
+def deal_preview_accept(
+    deal_id: str = typer.Argument(..., help="Deal id."),
+    config: Path = typer.Option(DEFAULT_CONFIG_PATH, "--config", help="Local config path."),
+) -> None:
+    """Preview consequences of accepting an escrowed artifact deal."""
+    current = load_config(config)
+    deal = _deal_by_id(_api_from_config(current).deals(), deal_id)
+    viewer_crew_ids = [current.active_crew_id] if current.active_crew_id else []
+    packet = build_deal_acceptance_preview_packet(
+        {
+            "deal": deal,
+            "viewer_crew_ids": viewer_crew_ids,
+        }
+    )
+    typer.echo(packet.player_markdown)
+
+
 @deal_app.command("propose")
 def deal_propose(
     from_crew: str | None = typer.Option(
@@ -625,6 +655,13 @@ def _target_crew_id(config: ClientConfig, crew_id: str | None) -> str:
     if target_crew_id is None:
         raise typer.BadParameter("crew id required when no active crew is configured")
     return target_crew_id
+
+
+def _deal_by_id(response: dict, deal_id: str) -> dict:
+    for deal in response.get("deals", []):
+        if deal["deal_id"] == deal_id:
+            return deal
+    raise typer.BadParameter("deal not found")
 
 
 def _echo_packet(packet, *, as_json: bool) -> None:
