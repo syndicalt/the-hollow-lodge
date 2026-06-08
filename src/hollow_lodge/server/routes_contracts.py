@@ -21,7 +21,9 @@ def contracts(
     request: Request,
     player: Player = Depends(current_player),
 ):
-    return _contract_service(request).board_for_player(player.player_id)
+    payload = _contract_service(request).board_for_player(player.player_id)
+    payload["visible_artifacts"] = _visible_artifacts_for_player(request, player.player_id)
+    return payload
 
 
 @router.get("/inbox")
@@ -31,6 +33,7 @@ def inbox(
 ):
     payload = _contract_service(request).inbox_for_player(player.player_id)
     payload["display_name"] = player.display_name
+    payload["visible_artifacts"] = _visible_artifacts_for_player(request, player.player_id)
     return payload
 
 
@@ -71,3 +74,10 @@ def _contract_service(request: Request) -> ContractService:
             request.app.state.artifact_service,
         )
     return request.app.state.contract_service
+
+
+def _visible_artifacts_for_player(request: Request, player_id: str) -> list[dict]:
+    return request.app.state.artifact_service.visible_artifacts_for_player(
+        player_id,
+        crew_ids=request.app.state.crew_service.crew_ids_for_player(player_id),
+    )["artifacts"]

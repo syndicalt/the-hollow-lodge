@@ -97,6 +97,7 @@ def crew_board(
             for contract in active_contracts
         ],
         "dossier": _crew_board_dossier(dossier),
+        "visible_artifacts": _visible_artifacts_for_player(request, player.player_id),
     }
 
 
@@ -180,6 +181,13 @@ def _contract_service(request: Request) -> ContractService:
             request.app.state.artifact_service,
         )
     return request.app.state.contract_service
+
+
+def _visible_artifacts_for_player(request: Request, player_id: str) -> list[dict]:
+    return request.app.state.artifact_service.visible_artifacts_for_player(
+        player_id,
+        crew_ids=request.app.state.crew_service.crew_ids_for_player(player_id),
+    )["artifacts"]
 
 
 def _proof_service(request: Request) -> ProofService:

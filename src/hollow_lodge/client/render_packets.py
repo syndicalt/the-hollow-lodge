@@ -76,6 +76,14 @@ def _shape_proof_fragment(fragment: dict[str, Any]) -> dict[str, Any]:
     }
 
 
+def _shape_artifact(artifact: dict[str, Any]) -> dict[str, Any]:
+    return {
+        key: artifact[key]
+        for key in ("artifact_id", "title", "kind", "public_summary")
+        if key in artifact
+    }
+
+
 def _shape_crew(crew: dict[str, Any]) -> dict[str, Any]:
     return {
         key: crew[key]
@@ -157,12 +165,24 @@ def build_contract_board_packet(board: dict[str, Any]) -> RenderPacket:
                     f"- {standing['crew_id']}: {standing['standing']} ({standing['score']})"
                 )
         lines.append("")
+    visible_artifacts = board.get("visible_artifacts", [])
+    if visible_artifacts:
+        lines.append("Visible artifacts:")
+        lines.extend(
+            f"- {artifact['artifact_id']}: {artifact['title']}"
+            for artifact in visible_artifacts[:5]
+        )
+        lines.append("")
     return RenderPacket(
         surface="contract_board",
         player_markdown="\n".join(lines).strip(),
         agent_context={
             "campaign": _shape_campaign(campaign),
             "contracts": [_shape_contract(contract) for contract in contracts],
+            "visible_artifacts": [
+                _shape_artifact(artifact)
+                for artifact in board.get("visible_artifacts", [])
+            ],
             "visible_contract_count": len(contracts),
         },
         suggested_prompts=[
@@ -191,6 +211,15 @@ def build_crew_board_packet(board: dict[str, Any]) -> RenderPacket:
     ]
     if active_contracts:
         lines.extend(f"- {contract['title']}" for contract in active_contracts)
+    else:
+        lines.append("- none")
+    visible_artifacts = board.get("visible_artifacts", [])
+    lines.extend(["", "Artifacts:"])
+    if visible_artifacts:
+        lines.extend(
+            f"- {artifact['artifact_id']}: {artifact['title']}"
+            for artifact in visible_artifacts
+        )
     else:
         lines.append("- none")
     lines.extend(
@@ -231,6 +260,10 @@ def build_crew_board_packet(board: dict[str, Any]) -> RenderPacket:
                 for contract in active_contracts
             ],
             "dossier": _shape_dossier(dossier),
+            "visible_artifacts": [
+                _shape_artifact(artifact)
+                for artifact in board.get("visible_artifacts", [])
+            ],
             "urgent_items": [],
         },
         suggested_prompts=[
@@ -270,6 +303,14 @@ def build_inbox_packet(inbox: dict[str, Any]) -> RenderPacket:
         lines.extend(f"- {fragment['fragment_id']}: {fragment['summary']}" for fragment in fragments)
     else:
         lines.append("incoming proof fragments: none")
+    artifacts = inbox.get("visible_artifacts", [])
+    if artifacts:
+        lines.append("")
+        lines.append("visible artifacts:")
+        lines.extend(
+            f"- {artifact['artifact_id']}: {artifact['title']}"
+            for artifact in artifacts[:5]
+        )
     urgent_items = [
         {"kind": "proof_fragment", "fragment_id": fragment["fragment_id"]}
         for fragment in fragments
@@ -283,6 +324,10 @@ def build_inbox_packet(inbox: dict[str, Any]) -> RenderPacket:
         "incoming_proof_fragments": [
             _shape_proof_fragment(fragment)
             for fragment in fragments
+        ],
+        "visible_artifacts": [
+            _shape_artifact(artifact)
+            for artifact in inbox.get("visible_artifacts", [])
         ],
         "urgent_items": urgent_items,
     }

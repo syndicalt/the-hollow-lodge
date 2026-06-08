@@ -27,6 +27,15 @@ INBOX = {
     "player_id": "player_0001",
     "active_contracts": BOARD["contracts"],
     "incoming_proof_fragments": [],
+    "visible_artifacts": [
+        {
+            "artifact_id": "artifact_lot_card",
+            "title": "Auction Lot Card",
+            "kind": "lot_card",
+            "public_summary": "A vellum card attributes the reliquary finger.",
+            "hidden_note": "server-only",
+        }
+    ],
 }
 
 
@@ -51,7 +60,17 @@ def test_inbox_packet_prioritizes_actionable_items_for_codex():
     assert packet.surface == "inbox"
     assert "Inbox: player_0001" in packet.player_markdown
     assert "incoming proof fragments: none" in packet.player_markdown
+    assert "visible artifacts:" in packet.player_markdown
+    assert "- artifact_lot_card: Auction Lot Card" in packet.player_markdown
     assert packet.agent_context["player_id"] == "player_0001"
+    assert packet.agent_context["visible_artifacts"] == [
+        {
+            "artifact_id": "artifact_lot_card",
+            "title": "Auction Lot Card",
+            "kind": "lot_card",
+            "public_summary": "A vellum card attributes the reliquary finger.",
+        }
+    ]
     assert packet.agent_context["urgent_items"] == []
     assert packet.suggested_prompts == [
         "Open the contract board",
@@ -104,6 +123,15 @@ def test_crew_board_packet_shows_packet_lead_and_dossier_status():
                 "member_contributions": [],
                 "server_notes": "hidden",
             },
+            "visible_artifacts": [
+                {
+                    "artifact_id": "artifact_lot_card",
+                    "title": "Auction Lot Card",
+                    "kind": "lot_card",
+                    "public_summary": "A vellum card attributes the reliquary finger.",
+                    "hidden_note": "server-only",
+                }
+            ],
         }
     )
 
@@ -112,6 +140,8 @@ def test_crew_board_packet_shows_packet_lead_and_dossier_status():
     assert "Packet Lead: player_0001" in packet.player_markdown
     assert "Artifact citations:" in packet.player_markdown
     assert "- artifact_ledger_rubric: The ledger contradicts the public lot card." in packet.player_markdown
+    assert "Artifacts:" in packet.player_markdown
+    assert "- artifact_lot_card: Auction Lot Card" in packet.player_markdown
     assert "hidden" not in packet.player_markdown
     assert "hidden_truth" not in packet.player_markdown
     assert "server_notes" not in packet.player_markdown
@@ -125,6 +155,14 @@ def test_crew_board_packet_shows_packet_lead_and_dossier_status():
             "artifact_id": "artifact_ledger_rubric",
             "claim": "The ledger contradicts the public lot card.",
             "quote": "The last hand is redder and later than the binding.",
+        }
+    ]
+    assert packet.agent_context["visible_artifacts"] == [
+        {
+            "artifact_id": "artifact_lot_card",
+            "title": "Auction Lot Card",
+            "kind": "lot_card",
+            "public_summary": "A vellum card attributes the reliquary finger.",
         }
     ]
 
@@ -190,6 +228,7 @@ def test_contract_board_agent_context_omits_hidden_upstream_fields():
                 },
             }
         ],
+        "visible_artifacts": [],
         "visible_contract_count": 1,
     }
 
@@ -249,6 +288,7 @@ def test_inbox_agent_context_omits_hidden_upstream_fields_and_serializes_actions
                     "summary": "A chipped reliquary seal.",
                 }
             ],
+            "visible_artifacts": [],
             "urgent_items": [{"kind": "proof_fragment", "fragment_id": "fragment_0001"}],
         },
         "suggested_prompts": [

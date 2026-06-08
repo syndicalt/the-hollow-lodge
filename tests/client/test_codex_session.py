@@ -28,6 +28,14 @@ class FakeApi:
             "player_id": "player_0001",
             "active_contracts": [],
             "incoming_proof_fragments": [],
+            "visible_artifacts": [
+                {
+                    "artifact_id": "artifact_lot_card",
+                    "title": "Auction Lot Card",
+                    "kind": "lot_card",
+                    "public_summary": "Public lot card.",
+                }
+            ],
         }
 
     def contracts(self):
@@ -55,6 +63,14 @@ class FakeApi:
                 "evidence_ids": [],
                 "member_contributions": [],
             },
+            "visible_artifacts": [
+                {
+                    "artifact_id": "artifact_lot_card",
+                    "title": "Auction Lot Card",
+                    "kind": "lot_card",
+                    "public_summary": "Public lot card.",
+                }
+            ],
         }
 
     def artifacts(self):
@@ -119,6 +135,7 @@ def test_codex_session_syncs_before_rendering_inbox(tmp_path):
     assert fake_api.calls == ["visible_events", "inbox"]
     assert packet.surface == "inbox"
     assert "Inbox: player_0001" in packet.player_markdown
+    assert "artifact_lot_card: Auction Lot Card" in packet.player_markdown
     assert "chat.message.created" in log_path.read_text()
 
 
@@ -163,6 +180,7 @@ def test_codex_session_uses_active_crew_for_crew_board(tmp_path):
 
     assert packet.surface == "crew_board"
     assert packet.agent_context["crew"]["crew_id"] == "crew_0001"
+    assert packet.agent_context["visible_artifacts"][0]["artifact_id"] == "artifact_lot_card"
 
 
 def test_codex_session_crew_board_accepts_explicit_crew_override(tmp_path):
