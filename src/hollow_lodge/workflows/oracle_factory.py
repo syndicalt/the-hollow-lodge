@@ -7,6 +7,12 @@ from hollow_lodge.workflows.oracle_boundary import ResolutionOracle
 from hollow_lodge.workflows.openai_oracle import OpenAIResolutionOracle
 
 
+def _openai_client(api_key: str):
+    from openai import OpenAI
+
+    return OpenAI(api_key=api_key)
+
+
 def _timeout_seconds_from_env() -> float:
     raw = os.environ.get("HOLLOW_LODGE_ORACLE_TIMEOUT_SECONDS", "20")
     try:
@@ -27,10 +33,9 @@ def resolution_oracle_from_env() -> ResolutionOracle:
         api_key = os.environ.get("HOLLOW_LODGE_OPENAI_API_KEY")
         if not api_key:
             return DeterministicResolutionOracle()
-        from openai import OpenAI
 
         return OpenAIResolutionOracle(
-            client=OpenAI(api_key=api_key),
+            client=_openai_client(api_key),
             model=os.environ.get("HOLLOW_LODGE_ORACLE_MODEL", "gpt-4.1-mini"),
             timeout_seconds=timeout_seconds,
         )
