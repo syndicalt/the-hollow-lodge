@@ -9,7 +9,14 @@ from datetime import UTC, datetime, timedelta
 from hollow_lodge.domain.crews import Crew
 from hollow_lodge.domain.events import EventVisibility
 from hollow_lodge.domain.chat import ChatMessage
-from hollow_lodge.domain.identity import AccessKeyRequest, Player, generate_token, hash_token
+from hollow_lodge.domain.identity import (
+    AccessKeyRequest,
+    Invite,
+    Player,
+    generate_invite_code,
+    generate_token,
+    hash_token,
+)
 from hollow_lodge.domain.proofs import ProofDossier, ProofFragment
 from hollow_lodge.domain.scoring import AuctionPreviewScoreInput, score_auction_preview
 from hollow_lodge.domain.actions import NormalizedAction
@@ -22,6 +29,7 @@ from hollow_lodge.server.auth import authenticate_token
 
 JOIN_CODE_BYTES = 18
 REGISTRATION_REPLAY_TTL = timedelta(minutes=15)
+INVITE_REPLAY_TTL = timedelta(minutes=15)
 SIDE_ACTION_LIMIT_PER_PHASE = 1
 COMMAND_SERIALIZATION_LOCK = threading.RLock()
 STARTER_FRAGMENT = ProofFragment(
@@ -36,11 +44,14 @@ class IdentityService:
     def __init__(self, *, invite_codes: list[str], event_store: JsonlEventStore):
         self._unused_invites = set(invite_codes)
         self._used_invites: set[str] = set()
+        self._invites: dict[str, Invite] = {}
+        self._invite_replays: dict[str, str] = {}
         self._players: dict[str, Player] = {}
         self._key_requests: dict[str, AccessKeyRequest] = {}
         self._registration_replays: dict[str, tuple[Player, str]] = {}
         self._event_store = event_store
         self._registration_replay_path = event_store.path.with_suffix(".registration-replays.json")
+        self._invite_replay_path = event_store.path.with_suffix(".invite-replays.json")
         self._lock = threading.RLock()
         self._rebuild_from_events()
 
@@ -71,7 +82,8 @@ class IdentityService:
                 raise ValueError("registration replay token unavailable")
             if invite_code in self._used_invites:
                 raise ValueError("invite already used")
-            if invite_code not in self._unused_invites:
+            invite = self._invite_by_code(invite_code)
+            if invite_code not in self._unused_invites and invite is None:
                 raise ValueError("invalid invite")
             player_id = f"player_{len(self._players) + 1:04d}"
             token = generate_token()
@@ -80,8 +92,14 @@ class IdentityService:
                 display_name=display_name,
                 token_hash=hash_token(token),
             )
-            self._unused_invites.remove(invite_code)
+            self._unused_invites.discard(invite_code)
             self._used_invites.add(invite_code)
+            if invite is not None:
+                self._invites[invite.invite_id] = Invite(
+                    invite_id=invite.invite_id,
+                    invite_hash=invite.invite_hash,
+                    used=True,
+                )
             self._players[player_id] = player
             self._event_store.append_command(
                 event_type="identity.player.registered",
@@ -97,6 +115,35 @@ class IdentityService:
             )
             self._remember_registration_replay(idempotency_key, player, token)
             return player, token
+
+    def create_invite(self, *, idempotency_key: str) -> str:
+        with self._lock:
+            existing = self._event_by_idempotency_key(idempotency_key)
+            if idempotency_key in self._invite_replays:
+                self._ensure_invite_replay_matches(existing)
+                return self._invite_replays[idempotency_key]
+            if existing is not None:
+                self._ensure_invite_replay_matches(existing)
+                if idempotency_key in self._invite_replays:
+                    return self._invite_replays[idempotency_key]
+                raise ValueError("invite replay code unavailable")
+            invite_id = f"invite_{len(self._invites) + 1:04d}"
+            invite_code = generate_invite_code()
+            invite_hash = hash_token(invite_code)
+            self._invites[invite_id] = Invite(invite_id=invite_id, invite_hash=invite_hash)
+            self._event_store.append_command(
+                event_type="identity.invite.created",
+                actor_id="admin",
+                visibility=EventVisibility.server_only(),
+                payload={
+                    "invite_id": invite_id,
+                    "invite_hash": invite_hash,
+                    "used": False,
+                },
+                idempotency_key=idempotency_key,
+            )
+            self._remember_invite_replay(idempotency_key, invite_code)
+            return invite_code
 
     def request_access_key(
         self,
@@ -162,6 +209,7 @@ class IdentityService:
 
     def _rebuild_from_events(self) -> None:
         replay_tokens = self._load_registration_replay_tokens(now=datetime.now(UTC))
+        replay_invites = self._load_invite_replay_codes(now=datetime.now(UTC))
         for event in self._event_store.read():
             if event.type == "identity.player.registered":
                 invite_code = event.payload["invite_code"]
@@ -179,6 +227,23 @@ class IdentityService:
                             self._players[event.payload["player_id"]],
                             token,
                         )
+                invite = self._invite_by_code(invite_code)
+                if invite is not None:
+                    self._invites[invite.invite_id] = Invite(
+                        invite_id=invite.invite_id,
+                        invite_hash=invite.invite_hash,
+                        used=True,
+                    )
+            elif event.type == "identity.invite.created":
+                self._invites[event.payload["invite_id"]] = Invite(
+                    invite_id=event.payload["invite_id"],
+                    invite_hash=event.payload["invite_hash"],
+                    used=event.payload["used"],
+                )
+                if event.idempotency_key is not None:
+                    invite_code = replay_invites.get(event.idempotency_key)
+                    if invite_code is not None:
+                        self._invite_replays[event.idempotency_key] = invite_code
             elif event.type == "identity.token.revoked":
                 player = self._players[event.payload["player_id"]]
                 self._players[player.player_id] = Player(
@@ -225,6 +290,17 @@ class IdentityService:
         if event.payload["display_name"] != display_name or event.payload.get("contact") != contact:
             raise ValueError("idempotency key conflict")
 
+    def _ensure_invite_replay_matches(self, event) -> None:
+        if event is None or event.type != "identity.invite.created":
+            raise ValueError("idempotency key conflict")
+
+    def _invite_by_code(self, invite_code: str) -> Invite | None:
+        invite_hash = hash_token(invite_code)
+        for invite in self._invites.values():
+            if not invite.used and secrets.compare_digest(invite.invite_hash, invite_hash):
+                return invite
+        return None
+
     def _remember_registration_replay(
         self,
         idempotency_key: str,
@@ -258,6 +334,36 @@ class IdentityService:
             created_at = datetime.fromisoformat(str(value["created_at"]).replace("Z", "+00:00"))
             if now - created_at <= REGISTRATION_REPLAY_TTL:
                 valid[str(key)] = str(value["token"])
+        return valid
+
+    def _remember_invite_replay(self, idempotency_key: str, invite_code: str) -> None:
+        self._invite_replays[idempotency_key] = invite_code
+        now = datetime.now(UTC)
+        replay_invites = self._load_invite_replay_codes(now=now)
+        replay_invites[idempotency_key] = {
+            "created_at": now.isoformat().replace("+00:00", "Z"),
+            "invite_code": invite_code,
+        }
+        self._invite_replay_path.parent.mkdir(parents=True, exist_ok=True)
+        flags = os.O_WRONLY | os.O_CREAT | os.O_TRUNC
+        fd = os.open(self._invite_replay_path, flags, 0o600)
+        with os.fdopen(fd, "w", encoding="utf-8") as handle:
+            json.dump(replay_invites, handle, sort_keys=True)
+            handle.write("\n")
+        os.chmod(self._invite_replay_path, 0o600)
+
+    def _load_invite_replay_codes(self, *, now: datetime) -> dict[str, str]:
+        if not self._invite_replay_path.exists():
+            return {}
+        with self._invite_replay_path.open(encoding="utf-8") as handle:
+            raw = json.load(handle)
+        valid: dict[str, str] = {}
+        for key, value in raw.items():
+            if not isinstance(value, dict):
+                continue
+            created_at = datetime.fromisoformat(str(value["created_at"]).replace("Z", "+00:00"))
+            if now - created_at <= INVITE_REPLAY_TTL:
+                valid[str(key)] = str(value["invite_code"])
         return valid
 
 

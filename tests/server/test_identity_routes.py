@@ -237,3 +237,62 @@ def test_access_key_request_survives_app_recreation_from_event_log(tmp_path):
     assert first.status_code == 202
     assert replay.status_code == 202
     assert replay.json() == first.json()
+
+
+def test_admin_invite_creation_requires_admin_token(tmp_path, monkeypatch):
+    monkeypatch.setenv("HOLLOW_LODGE_ADMIN_TOKEN", "admin-secret")
+    client = TestClient(create_app(data_dir=tmp_path, invite_codes=[]))
+
+    missing = client.post(
+        "/identity/admin/invites",
+        headers={"Idempotency-Key": "invite-create-1"},
+    )
+    wrong = client.post(
+        "/identity/admin/invites",
+        headers={"Idempotency-Key": "invite-create-1", "X-Hollow-Lodge-Admin-Token": "bad"},
+    )
+
+    assert missing.status_code == 401
+    assert wrong.status_code == 401
+
+
+def test_admin_invite_creation_issues_redeemable_invite(tmp_path, monkeypatch):
+    monkeypatch.setenv("HOLLOW_LODGE_ADMIN_TOKEN", "admin-secret")
+    client = TestClient(create_app(data_dir=tmp_path, invite_codes=[]))
+
+    invite = client.post(
+        "/identity/admin/invites",
+        headers={"Idempotency-Key": "invite-create-1", "X-Hollow-Lodge-Admin-Token": "admin-secret"},
+    )
+
+    assert invite.status_code == 201
+    invite_code = invite.json()["invite_code"]
+    assert invite_code.startswith("lodge_")
+    assert invite_code not in (tmp_path / "server-events.jsonl").read_text(encoding="utf-8")
+
+    registered = client.post(
+        "/identity/register",
+        json={"invite_code": invite_code, "display_name": "Ada"},
+        headers={"Idempotency-Key": "register-ada"},
+    )
+
+    assert registered.status_code == 201
+    assert registered.json()["display_name"] == "Ada"
+
+
+def test_admin_invite_creation_replays_by_idempotency_key(tmp_path, monkeypatch):
+    monkeypatch.setenv("HOLLOW_LODGE_ADMIN_TOKEN", "admin-secret")
+    client = TestClient(create_app(data_dir=tmp_path, invite_codes=[]))
+
+    first = client.post(
+        "/identity/admin/invites",
+        headers={"Idempotency-Key": "invite-create-1", "X-Hollow-Lodge-Admin-Token": "admin-secret"},
+    )
+    replay = client.post(
+        "/identity/admin/invites",
+        headers={"Idempotency-Key": "invite-create-1", "X-Hollow-Lodge-Admin-Token": "admin-secret"},
+    )
+
+    assert first.status_code == 201
+    assert replay.status_code == 201
+    assert replay.json() == first.json()

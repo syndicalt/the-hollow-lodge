@@ -56,6 +56,18 @@ class FakeApi:
             "status": "pending",
         }
 
+    def create_invite(self, *, admin_token: str, idempotency_key: str):
+        self.calls.append(
+            (
+                "create_invite",
+                {
+                    "admin_token": admin_token,
+                    "idempotency_key": idempotency_key,
+                },
+            )
+        )
+        return {"invite_code": "lodge_invite_0001"}
+
     def create_crew(self, *, name: str, idempotency_key: str):
         self.calls.append(("create_crew", {"name": name, "idempotency_key": idempotency_key}))
         return {"crew_id": "crew_0001", "join_code": "join-secret"}
@@ -439,6 +451,44 @@ def test_onboard_defaults_to_official_server_for_access_request(tmp_path, monkey
     assert result.exit_code == 0
     assert cli.DEFAULT_SERVER_URL == "https://server.thehollowlodge.com"
     assert created_clients[0].server_url == cli.DEFAULT_SERVER_URL
+
+
+def test_admin_invite_create_command_uses_admin_token_without_player_auth(tmp_path, monkeypatch):
+    runner = CliRunner()
+    created_clients: list[FakeApi] = []
+
+    def fake_client(**kwargs):
+        client = FakeApi(**kwargs)
+        created_clients.append(client)
+        return client
+
+    monkeypatch.setattr(cli, "HollowLodgeApi", fake_client)
+    monkeypatch.setattr(cli, "new_command_key", lambda prefix: f"{prefix}-key")
+
+    result = runner.invoke(
+        cli.app,
+        [
+            "admin",
+            "invite-create",
+            "--server",
+            "http://testserver",
+            "--admin-token",
+            "admin-secret",
+        ],
+    )
+
+    assert result.exit_code == 0
+    assert result.output == "lodge_invite_0001\n"
+    assert created_clients[0].token is None
+    assert created_clients[0].calls == [
+        (
+            "create_invite",
+            {
+                "admin_token": "admin-secret",
+                "idempotency_key": "admin-invite-create-key",
+            },
+        )
+    ]
 
 
 def test_crew_commands_use_saved_config(tmp_path, monkeypatch):

@@ -35,8 +35,10 @@ app = typer.Typer(
 )
 dossier_app = typer.Typer(help="Manage the crew proof dossier.", no_args_is_help=False)
 packet_lead_app = typer.Typer(help="Manage Packet Lead votes.", no_args_is_help=True)
+admin_app = typer.Typer(help="Manage Lodge administration.", no_args_is_help=True)
 app.add_typer(dossier_app, name="dossier")
 app.add_typer(packet_lead_app, name="packet-lead")
+app.add_typer(admin_app, name="admin")
 
 
 @app.callback()
@@ -137,6 +139,28 @@ def onboard(
         ),
     )
     typer.echo(f"pending {response['request_id']}")
+
+
+@admin_app.command("invite-create")
+def admin_invite_create(
+    server: str = typer.Option(
+        DEFAULT_SERVER_URL,
+        "--server",
+        help="Authoritative server URL. Defaults to the official Lodge.",
+    ),
+    admin_token: str = typer.Option(
+        ...,
+        "--admin-token",
+        envvar="HOLLOW_LODGE_ADMIN_TOKEN",
+        help="Server admin token.",
+    ),
+) -> None:
+    """Create a one-use invite code."""
+    response = HollowLodgeApi(server_url=server).create_invite(
+        admin_token=admin_token,
+        idempotency_key=new_command_key("admin-invite-create"),
+    )
+    typer.echo(response["invite_code"])
 
 
 @app.command("crew-create")

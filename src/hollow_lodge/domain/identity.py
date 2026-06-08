@@ -7,6 +7,7 @@ from dataclasses import dataclass
 
 
 TOKEN_BYTES = 32
+INVITE_BYTES = 18
 
 
 @dataclass(frozen=True)
@@ -25,8 +26,19 @@ class AccessKeyRequest:
     status: str = "pending"
 
 
+@dataclass(frozen=True)
+class Invite:
+    invite_id: str
+    invite_hash: str
+    used: bool = False
+
+
 def generate_token() -> str:
     return secrets.token_urlsafe(TOKEN_BYTES)
+
+
+def generate_invite_code() -> str:
+    return f"lodge_{secrets.token_urlsafe(INVITE_BYTES)}"
 
 
 def hash_token(token: str) -> str:

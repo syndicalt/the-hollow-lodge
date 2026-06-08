@@ -43,6 +43,19 @@ class HollowLodgeApi:
             authenticated=False,
         )
 
+    def create_invite(self, *, admin_token: str, idempotency_key: str) -> dict[str, Any]:
+        response = httpx.post(
+            f"{self.server_url}/identity/admin/invites",
+            headers={
+                "Idempotency-Key": idempotency_key,
+                "X-Hollow-Lodge-Admin-Token": admin_token,
+            },
+            json={},
+            timeout=10,
+        )
+        response.raise_for_status()
+        return response.json()
+
     def create_crew(self, *, name: str, idempotency_key: str) -> dict[str, Any]:
         return self._post(
             "/crews",

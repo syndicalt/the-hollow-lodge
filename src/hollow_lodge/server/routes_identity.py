@@ -1,5 +1,8 @@
 from __future__ import annotations
 
+import os
+import secrets
+
 from pydantic import BaseModel, Field
 from fastapi import APIRouter, Depends, Header, HTTPException, Request, status
 
@@ -24,6 +27,10 @@ class AccessKeyRequestResponse(BaseModel):
     request_id: str
     display_name: str
     status: str
+
+
+class InviteResponse(BaseModel):
+    invite_code: str
 
 
 class RegisterResponse(BaseModel):
@@ -90,6 +97,31 @@ def request_access_key(
         display_name=key_request.display_name,
         status=key_request.status,
     )
+
+
+@router.post(
+    "/admin/invites",
+    response_model=InviteResponse,
+    status_code=status.HTTP_201_CREATED,
+)
+def create_invite(
+    request: Request,
+    idempotency_key: str = Header(..., alias="Idempotency-Key"),
+    admin_token: str | None = Header(None, alias="X-Hollow-Lodge-Admin-Token"),
+) -> InviteResponse:
+    expected = os.environ.get("HOLLOW_LODGE_ADMIN_TOKEN")
+    if not expected or not admin_token or not secrets.compare_digest(expected, admin_token):
+        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="admin token required")
+    try:
+        invite_code = request.app.state.identity_service.create_invite(
+            idempotency_key=idempotency_key,
+        )
+    except ValueError as exc:
+        message = str(exc)
+        if message in {"idempotency key conflict", "invite replay code unavailable"}:
+            raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail=message) from exc
+        raise
+    return InviteResponse(invite_code=invite_code)
 
 
 @router.get("/me", response_model=MeResponse)
