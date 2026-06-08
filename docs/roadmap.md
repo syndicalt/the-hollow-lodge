@@ -349,6 +349,8 @@ Expected verification:
 
 ### Slice 7: CLI Reachability Gaps
 
+Status: completed in `b48170f`.
+
 Expose server-supported operations that are currently hard to reach from the
 CLI: proof fragment transfer, artifact dossier citation, full dossier framing
 fields, action edit/cancel, and phase lock/resolve preview.
