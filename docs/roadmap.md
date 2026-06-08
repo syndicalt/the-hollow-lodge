@@ -158,8 +158,13 @@ Status:
 - First activation/rendering slice completed: a second data-defined contract can
   be validated, activated by admin command/API, shown on Codex contract-board
   and inbox surfaces, and expose only its public starting artifact.
-- Deferred: generic phase resolution and full smoke playthroughs for every
-  shipped non-starter contract.
+- Second-contract phase-resolution smoke completed: `The Ash Window` can be
+  activated as data, unlock its own hidden artifact through a crew action,
+  resolve its phase through the existing lock route, and render the resolved
+  state through Codex surfaces.
+- Deferred: richer lifecycle transitions beyond activation/resolution, generic
+  phase reward configuration, and full smoke playthroughs for every future
+  shipped contract.
 
 Proof gate:
 
@@ -386,6 +391,20 @@ Expected verification:
 - `pytest tests/server/test_contract_seed_pipeline.py tests/server/test_contract_seed.py tests/server/test_artifact_routes.py -q`
 - `pytest tests/client/test_cli_commands.py tests/client/test_api.py -q`
 - `pytest tests/e2e/test_codex_render_surfaces.py -q`
+
+### Slice 9: Seeded Contract Resolution Smoke
+
+Status: completed.
+
+Generalize the starter phase-resolution path enough for an activated contract
+seed to play through a short loop: action unlocks use the seed's artifact graph,
+oracle packets use the seed's hidden truth, artifact graph, scoring hints, and
+phase name, and Codex contract-board rendering shows the public resolved state.
+
+Expected verification:
+
+- `pytest tests/server/test_phase_resolution.py tests/server/test_action_routes.py tests/server/test_artifact_routes.py -q`
+- `pytest tests/e2e/test_contract_content_pipeline.py -q`
 
 ## Completion Standard
 

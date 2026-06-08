@@ -39,7 +39,7 @@ class ArtifactService:
     ) -> dict:
         visible_ids = self._visible_artifact_ids(player_id, crew_ids=crew_ids)
         visible = {"contract_id": "multiple", "artifacts": [], "edges": []}
-        for graph, _ in self._seeded_graphs().values():
+        for graph, _ in self.seeded_graphs().values():
             graph_slice = graph.visible_slice(visible_ids)
             visible["artifacts"].extend(graph_slice["artifacts"])
             visible["edges"].extend(graph_slice["edges"])
@@ -289,7 +289,7 @@ class ArtifactService:
         crew_ids: list[str] | tuple[str, ...] = (),
     ) -> set[str]:
         visible_ids: set[str] = set()
-        for _, public_artifact_ids in self._seeded_graphs().values():
+        for _, public_artifact_ids in self.seeded_graphs().values():
             visible_ids.update(public_artifact_ids)
         principals = [Principal.player(player_id)]
         principals.extend(Principal.crew(crew_id) for crew_id in crew_ids)
@@ -331,14 +331,17 @@ class ArtifactService:
         return None
 
     def _artifact_by_id(self, artifact_id: str):
-        for graph, _ in self._seeded_graphs().values():
+        for graph, _ in self.seeded_graphs().values():
             try:
                 return graph.artifact_by_id(artifact_id)
             except KeyError:
                 continue
         raise KeyError(artifact_id)
 
-    def _seeded_graphs(self) -> dict[str, tuple[ArtifactGraph, tuple[str, ...]]]:
+    def graph_for_contract(self, contract_id: str) -> ArtifactGraph:
+        return self.seeded_graphs()[contract_id][0]
+
+    def seeded_graphs(self) -> dict[str, tuple[ArtifactGraph, tuple[str, ...]]]:
         graphs: dict[str, tuple[ArtifactGraph, tuple[str, ...]]] = {
             STARTER_ARTIFACT_GRAPH.contract_id: (
                 STARTER_ARTIFACT_GRAPH,

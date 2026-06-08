@@ -81,6 +81,26 @@ def lock_preview(client: TestClient, player: dict, key: str, hours_elapsed: int 
     )
 
 
+def activate_ash_window(client: TestClient) -> None:
+    response = client.post(
+        "/contracts/admin/activate",
+        headers={
+            "Idempotency-Key": "activate-ash-window",
+            "X-Hollow-Lodge-Admin-Token": "admin-secret",
+        },
+        json={"seed": "tests/fixtures/ash_window_contract.json"},
+    )
+    assert response.status_code == 201
+
+
+def lock_ash_window(client: TestClient, player: dict, key: str, hours_elapsed: int = 4):
+    return client.post(
+        "/contracts/contract_ash_window/phases/auction-preview/lock",
+        headers=command_auth(player["token"], key),
+        json={"hours_elapsed": hours_elapsed},
+    )
+
+
 def test_auction_preview_reveal_scores_crews_without_hidden_truth_leak(tmp_path):
     client, ada, linus, gilt, moth = setup_two_crews(tmp_path)
     set_claim(client, ada, gilt, "claim-gilt", "The finger is likely a false relic.")
@@ -113,6 +133,78 @@ def test_auction_preview_reveal_scores_crews_without_hidden_truth_leak(tmp_path)
     assert "occult clue may unlock alternate lane" in standings[1]["strengths"]
     assert "saint-bone forgery" not in str(reveal)
     assert "real debtor's omen" not in str(reveal)
+
+
+def test_activated_contract_phase_resolves_with_seed_truth_and_reveal_bounds(tmp_path, monkeypatch):
+    monkeypatch.setenv("HOLLOW_LODGE_ADMIN_TOKEN", "admin-secret")
+    oracle = CapturingOracle()
+    client = TestClient(
+        create_app(
+            data_dir=tmp_path,
+            invite_codes=["a", "b"],
+            resolution_oracle=oracle,
+        )
+    )
+    activate_ash_window(client)
+    ada = register(client, "a", "Ada")
+    linus = register(client, "b", "Linus")
+    gilt = create_crew(client, ada["token"], "crew-create-gilt", "The Gilt Knives")
+    moth = create_crew(client, linus["token"], "crew-create-moth", "The Moth Choir")
+    set_claim(client, ada, gilt, "claim-gilt", "The window proves an impossible fire chronology.")
+    submit_action(
+        client,
+        ada,
+        gilt,
+        "action-gilt",
+        "Compare the ash notice timestamp with the soot cooling pattern.",
+    )
+    set_claim(client, linus, moth, "claim-moth", "The ash notice is just auction theater.")
+    submit_action(
+        client,
+        linus,
+        moth,
+        "action-moth",
+        "Interview the witness about the recovered window frame.",
+    )
+
+    response = lock_ash_window(client, ada, "phase-lock-ash")
+    board = client.get("/contracts", headers=auth(ada["token"]))
+    events = client.get("/events", headers=auth(ada["token"]))
+
+    assert response.status_code == 200
+    reveal = response.json()
+    assert reveal["contract_id"] == "contract_ash_window"
+    assert reveal["phase"] == "Cinder Preview"
+    assert reveal["status"] == "resolved"
+    assert reveal["contract_state"] == [
+        "Fire chronology is now suspect.",
+        "Residual soot points toward another lead.",
+    ]
+    assert oracle.packet is not None
+    assert oracle.packet.contract_id == "contract_ash_window"
+    assert oracle.packet.phase == "Cinder Preview"
+    assert oracle.packet.hidden_truth_summary == (
+        "The window is a cinder oracle that shows fires before they are set."
+    )
+    assert oracle.packet.rubric_hooks == (
+        "fire chronology",
+        "material residue",
+        "witness leverage",
+    )
+    assert "artifact_ash_notice" in oracle.packet.allowed_evidence_ids
+    assert "artifact_soot_sample" in oracle.packet.allowed_evidence_ids
+    rendered = {
+        contract["contract_id"]: contract
+        for contract in board.json()["contracts"]
+    }
+    assert rendered["contract_ash_window"]["phase"]["status"] == "resolved"
+    assert rendered["contract_ash_window"]["phase_result"]["contract_state"] == [
+        "Fire chronology is now suspect.",
+        "Residual soot points toward another lead.",
+    ]
+    assert "cinder oracle" not in str(reveal)
+    assert "cinder oracle" not in board.text
+    assert "contract.hidden_truth.seeded" not in events.text
 
 
 def test_artifact_citations_flow_into_oracle_scoring_packet(tmp_path):

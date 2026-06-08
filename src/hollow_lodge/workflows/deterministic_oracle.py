@@ -16,12 +16,17 @@ _PUBLIC_REVEAL_STRINGS_BY_SCORER_CLUE = {
 }
 
 
-def _safe_public_reveals(revealed_clues: tuple[str, ...]) -> tuple[str, ...]:
+def _safe_public_reveals(
+    revealed_clues: tuple[str, ...],
+    *,
+    allowed_reveal_strings: tuple[str, ...],
+) -> tuple[str, ...]:
+    allowed_reveals = set(allowed_reveal_strings)
     return tuple(
         public_reveal
         for clue in revealed_clues
         if (public_reveal := _PUBLIC_REVEAL_STRINGS_BY_SCORER_CLUE.get(clue))
-        is not None
+        is not None and public_reveal in allowed_reveals
     )
 
 
@@ -82,14 +87,14 @@ class DeterministicResolutionOracle:
                     strengths=score.strengths,
                     weaknesses=score.weaknesses,
                     penalties=score.penalties,
-                    revealed_clues=_safe_public_reveals(score.revealed_clues),
+                    revealed_clues=_safe_public_reveals(
+                        score.revealed_clues,
+                        allowed_reveal_strings=packet.allowed_reveal_strings,
+                    ),
                 )
                 for score in scores
             ),
-            contract_state=(
-                "Auction house provenance is now suspect.",
-                "Rival alternate clue paths remain open.",
-            ),
+            contract_state=tuple(packet.allowed_reveal_strings[:2]),
             narration="The auction preview resolves from submitted proof packets.",
             validation_warnings=(),
         )

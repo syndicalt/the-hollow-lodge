@@ -50,7 +50,7 @@ def _shape_phase(phase: dict[str, Any]) -> dict[str, Any]:
 
 
 def _shape_phase_result(phase_result: dict[str, Any]) -> dict[str, Any]:
-    return {
+    shaped = {
         "standings": [
             {
                 key: standing[key]
@@ -60,6 +60,9 @@ def _shape_phase_result(phase_result: dict[str, Any]) -> dict[str, Any]:
             for standing in phase_result.get("standings", [])
         ]
     }
+    if "contract_state" in phase_result:
+        shaped["contract_state"] = list(phase_result["contract_state"])
+    return shaped
 
 
 def _shape_contract(contract: dict[str, Any]) -> dict[str, Any]:
@@ -569,6 +572,8 @@ def build_contract_board_packet(board: dict[str, Any]) -> RenderPacket:
         lines.extend(f"- {need}" for need in contract.get("proof_dossier_needs", []))
         if "phase_result" in contract:
             lines.append("Phase result:")
+            for state in contract["phase_result"].get("contract_state", []):
+                lines.append(f"- {state}")
             for standing in contract["phase_result"].get("standings", []):
                 lines.append(
                     f"- {standing['crew_id']}: {standing['standing']} ({standing['score']})"

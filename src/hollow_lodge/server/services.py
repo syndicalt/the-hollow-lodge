@@ -7,6 +7,8 @@ import secrets
 import threading
 from datetime import UTC, datetime, timedelta
 
+from hollow_lodge.domain.artifact_graph import ArtifactGraph
+from hollow_lodge.domain.contracts import Contract, HiddenTruth
 from hollow_lodge.domain.crews import Crew
 from hollow_lodge.domain.events import EventVisibility
 from hollow_lodge.domain.chat import ChatMessage
@@ -23,7 +25,7 @@ from hollow_lodge.domain.scoring import AuctionPreviewScoreInput
 from hollow_lodge.domain.actions import NormalizedAction
 from hollow_lodge.eventlog.jsonl_store import JsonlEventStore
 from hollow_lodge.eventlog.visibility import Principal
-from hollow_lodge.server.artifact_seed import STARTER_ARTIFACT_GRAPH
+from hollow_lodge.server.artifact_seed import STARTER_ARTIFACT_GRAPH, STARTER_PUBLIC_ARTIFACT_IDS
 from hollow_lodge.server.artifact_service import ArtifactService
 from hollow_lodge.server.artifact_unlocks import (
     action_unlock_candidates,
@@ -902,7 +904,10 @@ class ContractService:
                 event_type="contract.hidden_truth.seeded",
                 actor_id=actor_id,
                 visibility=EventVisibility.server_only(),
-                payload=seed.hidden_truth.model_dump(mode="json"),
+                payload={
+                    **seed.hidden_truth.model_dump(mode="json"),
+                    "contract_id": seed.contract.contract_id,
+                },
                 idempotency_key=f"{idempotency_key}.hidden-truth",
             )
             self._event_store.append_command(
@@ -947,8 +952,8 @@ class ContractService:
         hours_elapsed: int,
         idempotency_key: str,
     ) -> dict:
-        if contract_id != STARTER_CONTRACT.contract_id:
-            raise KeyError(contract_id)
+        contract = self._contract_by_id(contract_id)
+        phase_name = contract.phase.name
         with COMMAND_SERIALIZATION_LOCK, self._lock:
             existing = self._event_by_idempotency_key(idempotency_key)
             if existing is not None:
@@ -956,21 +961,31 @@ class ContractService:
                     existing.type != "contract.phase.resolved"
                     or existing.actor_id != actor_id
                     or existing.payload["contract_id"] != contract_id
-                    or existing.payload["phase"] != "Auction Preview"
+                    or existing.payload["phase"] != phase_name
                     or existing.payload["hours_elapsed"] != hours_elapsed
                 ):
                     raise ValueError("idempotency key conflict")
                 return existing.payload["reveal"]
-            resolved = self._resolved_auction_preview()
+            resolved = self._resolved_auction_preview(
+                contract_id=contract_id,
+                phase=phase_name,
+            )
             if resolved is not None:
                 self._award_auction_preview_phase_rewards(
                     contract_id=contract_id,
+                    phase=phase_name,
                     reveal=resolved,
                 )
                 return resolved
-            if hours_elapsed < STARTER_CONTRACT.phase.remaining_hours and self._meaningful_action_count() < 2:
+            if (
+                hours_elapsed < contract.phase.remaining_hours
+                and self._meaningful_action_count(contract_id=contract_id, phase=phase_name) < 2
+            ):
                 raise ValueError("phase still active")
-            locked = self._locked_auction_preview()
+            locked = self._locked_auction_preview(
+                contract_id=contract_id,
+                phase=phase_name,
+            )
             lock_hours_elapsed = hours_elapsed
             if locked is None:
                 self._event_store.append_command(
@@ -979,21 +994,24 @@ class ContractService:
                     visibility=EventVisibility.public(),
                     payload={
                         "contract_id": contract_id,
-                        "phase": "Auction Preview",
+                        "phase": phase_name,
                         "hours_elapsed": hours_elapsed,
                     },
                     idempotency_key=f"phase-lock.{contract_id}.auction-preview",
                 )
             else:
                 lock_hours_elapsed = locked["hours_elapsed"]
-            reveal = self._build_auction_preview_reveal(contract_id=contract_id)
+            reveal = self._build_auction_preview_reveal(
+                contract_id=contract_id,
+                phase=phase_name,
+            )
             self._event_store.append_command(
                 event_type="contract.phase.resolved",
                 actor_id=actor_id,
                 visibility=EventVisibility.public(),
                 payload={
                     "contract_id": contract_id,
-                    "phase": "Auction Preview",
+                    "phase": phase_name,
                     "hours_elapsed": lock_hours_elapsed,
                     "reveal": reveal,
                 },
@@ -1001,6 +1019,7 @@ class ContractService:
             )
             self._award_auction_preview_phase_rewards(
                 contract_id=contract_id,
+                phase=phase_name,
                 reveal=reveal,
             )
             return reveal
@@ -1035,12 +1054,12 @@ class ContractService:
                 return event
         return None
 
-    def _resolved_auction_preview(self) -> dict | None:
+    def _resolved_auction_preview(self, *, contract_id: str, phase: str) -> dict | None:
         for event in self._event_store.read():
             if (
                 event.type in {"contract.phase.locked", "contract.phase.resolved"}
-                and event.payload["contract_id"] == STARTER_CONTRACT.contract_id
-                and event.payload["phase"] == "Auction Preview"
+                and event.payload["contract_id"] == contract_id
+                and event.payload["phase"] == phase
             ):
                 if event.type == "contract.phase.locked":
                     continue
@@ -1051,9 +1070,12 @@ class ContractService:
         self,
         *,
         contract_id: str,
+        phase: str,
         reveal: dict,
     ) -> None:
         if self._artifact_service is None:
+            return
+        if contract_id != STARTER_CONTRACT.contract_id:
             return
         reward_artifact_id = auction_preview_phase_reward_artifact_id(reveal)
         standings = reveal.get("standings", [])
@@ -1075,7 +1097,7 @@ class ContractService:
             visibility=EventVisibility.crews([leader_crew_id]),
             payload={
                 "contract_id": contract_id,
-                "phase": "Auction Preview",
+                "phase": phase,
                 "crew_id": leader_crew_id,
                 "artifact_id": reward_artifact_id,
                 "reason": "Leader follow-up from auction preview resolution.",
@@ -1099,40 +1121,44 @@ class ContractService:
                 return True
         return False
 
-    def _locked_auction_preview(self) -> dict | None:
+    def _locked_auction_preview(self, *, contract_id: str, phase: str) -> dict | None:
         for event in self._event_store.read():
             if (
                 event.type == "contract.phase.locked"
-                and event.payload["contract_id"] == STARTER_CONTRACT.contract_id
-                and event.payload["phase"] == "Auction Preview"
+                and event.payload["contract_id"] == contract_id
+                and event.payload["phase"] == phase
             ):
                 return event.payload
         return None
 
-    def _completed_auction_preview_oracle_audit(self, *, contract_id: str):
+    def _completed_auction_preview_oracle_audit(self, *, contract_id: str, phase: str):
         for event in reversed(self._event_store.read()):
             if (
                 event.type == "oracle.resolution.completed"
                 and event.payload["contract_id"] == contract_id
-                and event.payload["phase"] == "Auction Preview"
+                and event.payload["phase"] == phase
             ):
                 return event
         return None
 
-    def _failed_auction_preview_oracle_audit(self, *, contract_id: str):
+    def _failed_auction_preview_oracle_audit(self, *, contract_id: str, phase: str):
         for event in reversed(self._event_store.read()):
             if (
                 event.type == "oracle.resolution.failed"
                 and event.payload["contract_id"] == contract_id
-                and event.payload["phase"] == "Auction Preview"
+                and event.payload["phase"] == phase
             ):
                 return event
         return None
 
-    def _build_auction_preview_reveal(self, *, contract_id: str) -> dict:
-        packet = self._build_auction_preview_packet(contract_id=contract_id)
+    def _build_auction_preview_reveal(self, *, contract_id: str, phase: str | None = None) -> dict:
+        resolved_phase = phase or self._contract_by_id(contract_id).phase.name
+        packet = self._build_auction_preview_packet(contract_id=contract_id, phase=resolved_phase)
         input_packet_hash = self._oracle_packet_hash(packet)
-        completed_audit = self._completed_auction_preview_oracle_audit(contract_id=contract_id)
+        completed_audit = self._completed_auction_preview_oracle_audit(
+            contract_id=contract_id,
+            phase=resolved_phase,
+        )
         if completed_audit is not None and completed_audit.payload.get("accepted_output") is not None:
             if completed_audit.payload.get("input_packet_hash") != input_packet_hash:
                 raise ValueError("oracle completed audit hash mismatch")
@@ -1144,6 +1170,7 @@ class ContractService:
             )
             return self._auction_preview_reveal_from_oracle_result(
                 contract_id=contract_id,
+                phase=resolved_phase,
                 result=result,
             )
         self._event_store.append_command(
@@ -1152,7 +1179,7 @@ class ContractService:
             visibility=EventVisibility.server_only(),
             payload={
                 "contract_id": contract_id,
-                "phase": "Auction Preview",
+                "phase": resolved_phase,
                 "input_packet_hash": input_packet_hash,
             },
             idempotency_key=f"oracle.resolution.{contract_id}.auction-preview.requested",
@@ -1165,7 +1192,10 @@ class ContractService:
         except Exception as exc:
             fallback = True
             fallback_reason = exc.__class__.__name__
-            failed_audit = self._failed_auction_preview_oracle_audit(contract_id=contract_id)
+            failed_audit = self._failed_auction_preview_oracle_audit(
+                contract_id=contract_id,
+                phase=resolved_phase,
+            )
             if failed_audit is not None:
                 fallback_reason = failed_audit.payload.get("fallback_reason") or fallback_reason
             else:
@@ -1175,7 +1205,7 @@ class ContractService:
                     visibility=EventVisibility.server_only(),
                     payload={
                         "contract_id": contract_id,
-                        "phase": "Auction Preview",
+                        "phase": resolved_phase,
                         "input_packet_hash": input_packet_hash,
                         "fallback_reason": fallback_reason,
                     },
@@ -1188,7 +1218,7 @@ class ContractService:
             visibility=EventVisibility.server_only(),
             payload={
                 "contract_id": contract_id,
-                "phase": "Auction Preview",
+                "phase": resolved_phase,
                 "provider": result.provider.provider,
                 "model": result.provider.model,
                 "prompt_version": result.provider.prompt_version,
@@ -1201,10 +1231,21 @@ class ContractService:
         )
         return self._auction_preview_reveal_from_oracle_result(
             contract_id=contract_id,
+            phase=resolved_phase,
             result=result,
         )
 
-    def _build_auction_preview_packet(self, *, contract_id: str) -> AuctionPreviewOraclePacket:
+    def _build_auction_preview_packet(
+        self,
+        *,
+        contract_id: str,
+        phase: str | None = None,
+    ) -> AuctionPreviewOraclePacket:
+        contract = self._contract_by_id(contract_id)
+        phase_name = phase or contract.phase.name
+        hidden_truth = self._hidden_truth_for_contract(contract_id)
+        graph = self._artifact_graph_for_contract(contract_id)
+        scoring_hints = self._scoring_hints_for_contract(contract_id)
         score_inputs = self._auction_preview_score_inputs()
         allowed_evidence_ids = tuple(
             dict.fromkeys(
@@ -1212,9 +1253,9 @@ class ContractService:
                     STARTER_FRAGMENT.fragment_id,
                     *(
                         artifact.artifact_id
-                        for artifact in STARTER_ARTIFACT_GRAPH.artifacts
+                        for artifact in graph.artifacts
                     ),
-                    *(asset.asset_id for asset in STARTER_CONTRACT.evidence_assets),
+                    *(asset.asset_id for asset in contract.evidence_assets),
                     *(
                         evidence_id
                         for score_input in score_inputs
@@ -1230,13 +1271,20 @@ class ContractService:
         )
         return AuctionPreviewOraclePacket(
             contract_id=contract_id,
-            phase="Auction Preview",
-            hidden_truth_summary=STARTER_HIDDEN_TRUTH.summary,
-            allowed_reveal_strings=(
-                "Auction house provenance is now suspect.",
-                "Rival alternate clue paths remain open.",
+            phase=phase_name,
+            hidden_truth_summary=hidden_truth.summary,
+            allowed_reveal_strings=tuple(
+                scoring_hints.get(
+                    "allowed_reveal_strings",
+                    (
+                        "Auction house provenance is now suspect.",
+                        "Rival alternate clue paths remain open.",
+                    ),
+                )
             ),
-            rubric_hooks=STARTER_CONTRACT.proof_dossier_needs,
+            rubric_hooks=tuple(
+                scoring_hints.get("rubric_hooks", contract.proof_dossier_needs)
+            ),
             crews=tuple(
                 AuctionPreviewCrewPacket(
                     crew_id=score_input.crew_id,
@@ -1258,10 +1306,61 @@ class ContractService:
             score_max=100,
         )
 
+    def _contract_by_id(self, contract_id: str) -> Contract:
+        for event in reversed(self._event_store.read()):
+            if (
+                event.type == "contract.board.published"
+                and event.payload["contract_id"] == contract_id
+            ):
+                return Contract.model_validate(event.payload)
+        raise KeyError(contract_id)
+
+    def _hidden_truth_for_contract(self, contract_id: str) -> HiddenTruth:
+        for event in reversed(self._event_store.read()):
+            if event.type != "contract.hidden_truth.seeded":
+                continue
+            if event.payload.get("contract_id") == contract_id:
+                return HiddenTruth.model_validate(event.payload)
+            if (
+                contract_id == STARTER_CONTRACT.contract_id
+                and event.payload.get("truth_id") == STARTER_HIDDEN_TRUTH.truth_id
+            ):
+                return STARTER_HIDDEN_TRUTH
+        if contract_id == STARTER_CONTRACT.contract_id:
+            return STARTER_HIDDEN_TRUTH
+        raise KeyError(contract_id)
+
+    def _artifact_graph_for_contract(self, contract_id: str) -> ArtifactGraph:
+        if self._artifact_service is not None:
+            return self._artifact_service.graph_for_contract(contract_id)
+        if contract_id == STARTER_CONTRACT.contract_id:
+            return STARTER_ARTIFACT_GRAPH
+        for event in reversed(self._event_store.read()):
+            if event.type != "artifact.graph.seeded":
+                continue
+            payload = event.payload
+            graph_payload = payload.get("graph", payload)
+            graph = ArtifactGraph.model_validate(graph_payload)
+            if graph.contract_id == contract_id:
+                return graph
+        raise KeyError(contract_id)
+
+    def _scoring_hints_for_contract(self, contract_id: str) -> dict:
+        for event in reversed(self._event_store.read()):
+            if event.type != "artifact.graph.seeded":
+                continue
+            payload = event.payload
+            graph_payload = payload.get("graph", payload)
+            graph = ArtifactGraph.model_validate(graph_payload)
+            if graph.contract_id == contract_id:
+                return dict(payload.get("scoring_hints", {}))
+        return {}
+
     def _auction_preview_reveal_from_oracle_result(
         self,
         *,
         contract_id: str,
+        phase: str = "Auction Preview",
         result: AuctionPreviewOracleResult,
     ) -> dict:
         standings = [
@@ -1278,7 +1377,7 @@ class ContractService:
         ]
         return {
             "contract_id": contract_id,
-            "phase": "Auction Preview",
+            "phase": phase,
             "status": "resolved",
             "standings": standings,
             "contract_state": list(result.contract_state),
@@ -1349,8 +1448,16 @@ class ContractService:
     def _known_edges_for_artifacts(self, artifact_ids: tuple[str, ...]) -> tuple[dict, ...]:
         if len(artifact_ids) < 2:
             return ()
-        visible = STARTER_ARTIFACT_GRAPH.visible_slice(set(artifact_ids))
-        return tuple(visible["edges"])
+        known_edges: list[dict] = []
+        graphs = (
+            self._artifact_service.seeded_graphs().values()
+            if self._artifact_service is not None
+            else ((STARTER_ARTIFACT_GRAPH, ()),)
+        )
+        for graph, _ in graphs:
+            visible = graph.visible_slice(set(artifact_ids))
+            known_edges.extend(visible["edges"])
+        return tuple(known_edges)
 
     def _current_dossier_for_scoring(self, crew_id: str) -> ProofDossier:
         current: ProofDossier | None = None
@@ -1384,18 +1491,43 @@ class ContractService:
             by_crew.setdefault(action["crew_id"], []).append(action)
         return by_crew
 
-    def _meaningful_action_count(self) -> int:
+    def _meaningful_action_count(self, *, contract_id: str, phase: str) -> int:
         return sum(
             1
             for actions in self._current_actions_by_crew().values()
             for action in actions
-            if action["status"] == "submitted" and self._is_meaningful_auction_preview_action(action)
+            if action["status"] == "submitted"
+            and self._is_meaningful_auction_preview_action(
+                action,
+                contract_id=contract_id,
+                phase=phase,
+            )
         )
 
-    def _is_meaningful_auction_preview_action(self, action: dict) -> bool:
+    def _is_meaningful_auction_preview_action(
+        self,
+        action: dict,
+        *,
+        contract_id: str,
+        phase: str,
+    ) -> bool:
+        exposed_assets = set(action["exposed_assets"])
+        if exposed_assets & {"fragment_starter_ledger", "asset_door_omen"}:
+            return True
+        graph = self._artifact_graph_for_contract(contract_id)
+        if self._artifact_service is not None:
+            visible = set(self._artifact_service.seeded_graphs()[contract_id][1])
+        else:
+            visible = set(STARTER_PUBLIC_ARTIFACT_IDS)
         return bool(
-            set(action["exposed_assets"])
-            & {"fragment_starter_ledger", "asset_door_omen"}
+            action_unlock_candidates(
+                graph=graph,
+                contract_id=contract_id,
+                phase=phase,
+                intent=action["intent"],
+                exposed_assets=action.get("exposed_assets", ()),
+                already_visible_artifact_ids=visible,
+            )
         )
 
     def _crew_ids(self) -> list[str]:
@@ -2037,25 +2169,38 @@ class ActionService:
         already_visible_artifact_ids = {
             artifact["artifact_id"] for artifact in visible["artifacts"]
         }
-        candidates = action_unlock_candidates(
-            graph=STARTER_ARTIFACT_GRAPH,
-            contract_id=STARTER_CONTRACT.contract_id,
-            phase="Auction Preview",
-            intent=action["intent"],
-            exposed_assets=action.get("exposed_assets", ()),
-            already_visible_artifact_ids=already_visible_artifact_ids,
-        )
-        for candidate in candidates:
-            self._artifact_service.grant_artifact_access(
-                artifact_id=candidate.artifact_id,
-                actor_id="server",
-                player_ids=[],
-                crew_ids=[crew_id],
-                reason=candidate.award_reason,
-                idempotency_key=(
-                    f"artifact.award.{action['action_id']}.{candidate.artifact_id}"
-                ),
+        for graph, _ in self._artifact_service.seeded_graphs().values():
+            phase = self._contract_phase_name(graph.contract_id)
+            candidates = action_unlock_candidates(
+                graph=graph,
+                contract_id=graph.contract_id,
+                phase=phase,
+                intent=action["intent"],
+                exposed_assets=action.get("exposed_assets", ()),
+                already_visible_artifact_ids=already_visible_artifact_ids,
             )
+            for candidate in candidates:
+                self._artifact_service.grant_artifact_access(
+                    artifact_id=candidate.artifact_id,
+                    actor_id="server",
+                    player_ids=[],
+                    crew_ids=[crew_id],
+                    reason=candidate.award_reason,
+                    idempotency_key=(
+                        f"artifact.award.{action['action_id']}.{candidate.artifact_id}"
+                    ),
+                )
+
+    def _contract_phase_name(self, contract_id: str) -> str:
+        if contract_id == STARTER_CONTRACT.contract_id:
+            return STARTER_CONTRACT.phase.name
+        for event in reversed(self._event_store.read()):
+            if (
+                event.type == "contract.board.published"
+                and event.payload["contract_id"] == contract_id
+            ):
+                return event.payload["phase"]["name"]
+        return "Auction Preview"
 
     def _auction_preview_locked(self) -> bool:
         return any(

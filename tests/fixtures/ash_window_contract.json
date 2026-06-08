@@ -81,6 +81,10 @@
   },
   "public_artifact_ids": ["artifact_ash_notice"],
   "scoring_hints": {
-    "rubric_hooks": ["fire chronology", "material residue", "witness leverage"]
+    "rubric_hooks": ["fire chronology", "material residue", "witness leverage"],
+    "allowed_reveal_strings": [
+      "Fire chronology is now suspect.",
+      "Residual soot points toward another lead."
+    ]
   }
 }

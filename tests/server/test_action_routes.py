@@ -31,6 +31,18 @@ def create_crew(client: TestClient, token: str) -> dict:
     return response.json()
 
 
+def activate_ash_window(client: TestClient) -> None:
+    response = client.post(
+        "/contracts/admin/activate",
+        headers={
+            "Idempotency-Key": "activate-ash-window",
+            "X-Hollow-Lodge-Admin-Token": "admin-secret",
+        },
+        json={"seed": "tests/fixtures/ash_window_contract.json"},
+    )
+    assert response.status_code == 201
+
+
 def join_crew(client: TestClient, token: str, crew: dict, key: str) -> None:
     response = client.post(
         f"/crews/{crew['crew_id']}/join",
@@ -64,6 +76,38 @@ def test_confirmed_action_is_private_until_result(tmp_path):
     grace_events = client.get("/events", headers=auth(grace["token"])).text
     assert "action.submitted" in ada_events
     assert "action.submitted" not in grace_events
+
+
+def test_seeded_contract_action_unlocks_artifact_from_its_own_graph(tmp_path, monkeypatch):
+    monkeypatch.setenv("HOLLOW_LODGE_ADMIN_TOKEN", "admin-secret")
+    client = TestClient(create_app(data_dir=tmp_path, invite_codes=["a"]))
+    activate_ash_window(client)
+    ada = register(client, "a", "Ada")
+    crew = create_crew(client, ada["token"])
+
+    submitted = client.post(
+        "/actions",
+        headers=command_auth(ada["token"], "action-soot"),
+        json={
+            "crew_id": crew["crew_id"],
+            "intent": "Follow the ash notice into the soot cooling pattern.",
+            "confirmed": True,
+        },
+    )
+    artifacts = client.get("/artifacts", headers=auth(ada["token"]))
+    inspect_hidden = client.get(
+        "/artifacts/artifact_soot_sample",
+        headers=auth(ada["token"]),
+    )
+    events = client.get("/events", headers=auth(ada["token"]))
+
+    assert submitted.status_code == 201
+    assert inspect_hidden.status_code == 200
+    assert "artifact_soot_sample" in {
+        artifact["artifact_id"] for artifact in artifacts.json()["artifacts"]
+    }
+    assert "future-burn" not in artifacts.text
+    assert "contract.hidden_truth.seeded" not in events.text
 
 
 def test_action_submit_replay_rejects_same_key_with_different_payload(tmp_path):
