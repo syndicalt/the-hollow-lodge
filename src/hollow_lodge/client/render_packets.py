@@ -92,6 +92,7 @@ def _shape_unlock_status(status: dict[str, Any]) -> dict[str, Any]:
                 for key in (
                     "scope",
                     "metric",
+                    "required_contract_id",
                     "minimum",
                     "current",
                     "label",

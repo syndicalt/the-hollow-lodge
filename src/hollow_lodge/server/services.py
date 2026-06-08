@@ -981,6 +981,7 @@ class ContractService:
                     "lifecycle_status": "active",
                 }
             self._validate_arc_previous_contract(seed.contract)
+            self._validate_completed_contract_unlock_targets(seed)
             self._event_store.append_command(
                 event_type="campaign.seeded",
                 actor_id=actor_id,
@@ -1219,6 +1220,30 @@ class ContractService:
         raise ValueError(
             "arc previous contract must reference an existing contract in the same campaign"
         )
+
+    def _validate_completed_contract_unlock_targets(self, seed: ContractSeed) -> None:
+        required_contract_ids = {
+            requirement.required_contract_id
+            for requirement in seed.unlock_requirements
+            if requirement.metric == "completed_contract"
+        }
+        if not required_contract_ids:
+            return
+        published_contracts = [
+            Contract.model_validate(event.payload)
+            for event in self._event_store.read()
+            if event.type == "contract.board.published"
+        ]
+        for required_contract_id in required_contract_ids:
+            if any(
+                published.contract_id == required_contract_id
+                and published.campaign_id == seed.contract.campaign_id
+                for published in published_contracts
+            ):
+                continue
+            raise ValueError(
+                "completed_contract unlock must reference an existing contract in the same campaign"
+            )
 
     def _activation_seed_payload_matches(
         self,

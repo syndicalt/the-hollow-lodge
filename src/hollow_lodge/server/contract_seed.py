@@ -28,10 +28,29 @@ class ContractUnlockRequirement(BaseModel):
         "reputation",
         "favors",
         "deal_conduct_score",
+        "completed_contract",
     ]
+    required_contract_id: str | None = Field(default=None, min_length=1)
     minimum: int = Field(ge=0)
     label: str = Field(min_length=1)
     description: str = Field(min_length=1)
+
+    @model_validator(mode="after")
+    def validate_required_contract_target(self) -> ContractUnlockRequirement:
+        if self.metric == "completed_contract":
+            if self.required_contract_id is None:
+                raise ValueError(
+                    "completed_contract unlock requires required_contract_id"
+                )
+            if self.minimum < 1:
+                raise ValueError(
+                    "completed_contract unlock minimum must be at least 1"
+                )
+        elif self.required_contract_id is not None:
+            raise ValueError(
+                "required_contract_id only applies to completed_contract unlocks"
+            )
+        return self
 
 
 class ContractSeed(BaseModel):

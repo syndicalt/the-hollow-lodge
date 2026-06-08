@@ -46,6 +46,26 @@ def test_contract_seed_accepts_data_defined_unlock_requirements():
     assert seed.unlock_requirements[0].minimum == 2
 
 
+def test_contract_seed_accepts_completed_contract_unlock_requirement():
+    raw = json.loads(FIXTURE.read_text(encoding="utf-8"))
+    raw["unlock_requirements"] = [
+        {
+            "scope": "crew",
+            "metric": "completed_contract",
+            "required_contract_id": "contract_false_finger",
+            "minimum": 1,
+            "label": "Complete The Saint's False Finger",
+            "description": "Finish the prior contract before following this lead.",
+        }
+    ]
+
+    seed = ContractSeed.model_validate(raw)
+
+    assert seed.unlock_requirements[0].metric == "completed_contract"
+    assert seed.unlock_requirements[0].required_contract_id == "contract_false_finger"
+    assert seed.unlock_requirements[0].minimum == 1
+
+
 def test_contract_seed_accepts_public_campaign_arc_metadata():
     raw = json.loads(FIXTURE.read_text(encoding="utf-8"))
     raw["contract"]["arc"] = {
@@ -109,6 +129,56 @@ def test_contract_seed_rejects_unsupported_unlock_metric():
     ]
 
     with pytest.raises(ValueError):
+        ContractSeed.model_validate(raw)
+
+
+def test_contract_seed_rejects_completed_contract_requirement_without_target():
+    raw = json.loads(FIXTURE.read_text(encoding="utf-8"))
+    raw["unlock_requirements"] = [
+        {
+            "scope": "crew",
+            "metric": "completed_contract",
+            "minimum": 1,
+            "label": "Complete prior contract",
+            "description": "Missing target contract should be rejected.",
+        }
+    ]
+
+    with pytest.raises(ValueError, match="completed_contract unlock requires required_contract_id"):
+        ContractSeed.model_validate(raw)
+
+
+def test_contract_seed_rejects_zero_minimum_for_completed_contract_requirement():
+    raw = json.loads(FIXTURE.read_text(encoding="utf-8"))
+    raw["unlock_requirements"] = [
+        {
+            "scope": "crew",
+            "metric": "completed_contract",
+            "required_contract_id": "contract_false_finger",
+            "minimum": 0,
+            "label": "Complete prior contract",
+            "description": "Completion gates must require at least one completion.",
+        }
+    ]
+
+    with pytest.raises(ValueError, match="completed_contract unlock minimum must be at least 1"):
+        ContractSeed.model_validate(raw)
+
+
+def test_contract_seed_rejects_required_contract_on_numeric_unlock_metric():
+    raw = json.loads(FIXTURE.read_text(encoding="utf-8"))
+    raw["unlock_requirements"] = [
+        {
+            "scope": "crew",
+            "metric": "reputation",
+            "required_contract_id": "contract_false_finger",
+            "minimum": 2,
+            "label": "Reputation 2+",
+            "description": "Numeric requirements should not carry contract targets.",
+        }
+    ]
+
+    with pytest.raises(ValueError, match="required_contract_id only applies"):
         ContractSeed.model_validate(raw)
 
 

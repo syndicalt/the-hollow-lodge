@@ -281,6 +281,261 @@ def test_legacy_locked_contract_is_visible_but_not_actionable_until_crew_qualifi
     assert "hidden_truth" not in visible_events.text
 
 
+def test_completed_contract_unlock_requires_crew_completion_before_actionable(
+    tmp_path,
+    monkeypatch,
+):
+    monkeypatch.setenv("HOLLOW_LODGE_ADMIN_TOKEN", "admin-secret")
+    seed = json.loads(Path("tests/fixtures/ash_window_contract.json").read_text(encoding="utf-8"))
+    seed["unlock_requirements"] = [
+        {
+            "scope": "crew",
+            "metric": "completed_contract",
+            "required_contract_id": "contract_false_finger",
+            "minimum": 1,
+            "label": "Complete The Saint's False Finger",
+            "description": "Finish the prior contract before following this lead.",
+            "hidden_truth": "server-only",
+        }
+    ]
+    client = TestClient(create_app(data_dir=tmp_path, invite_codes=["a"]))
+    ada = register(client, "a", "Ada")
+    crew = client.post(
+        "/crews",
+        headers={
+            **auth(ada["token"]),
+            "Idempotency-Key": "crew-create",
+        },
+        json={"name": "The Gilt Knives"},
+    ).json()
+
+    activated = client.post(
+        "/contracts/admin/activate",
+        headers={
+            "Idempotency-Key": "activate-completion-locked-ash-window",
+            "X-Hollow-Lodge-Admin-Token": "admin-secret",
+        },
+        json={"seed": seed},
+    )
+    contracts_before = client.get("/contracts", headers=auth(ada["token"]))
+    inbox_before = client.get("/inbox", headers=auth(ada["token"]))
+    crew_before = client.get(f"/crews/{crew['crew_id']}/board", headers=auth(ada["token"]))
+
+    assert activated.status_code == 201
+    locked = {
+        contract["contract_id"]: contract
+        for contract in contracts_before.json()["contracts"]
+    }["contract_ash_window"]
+    assert locked["unlock_status"] == {
+        "state": "locked",
+        "requirements": [
+            {
+                "scope": "crew",
+                "metric": "completed_contract",
+                "required_contract_id": "contract_false_finger",
+                "minimum": 1,
+                "current": 0,
+                "label": "Complete The Saint's False Finger",
+                "description": "Finish the prior contract before following this lead.",
+                "satisfied": False,
+            }
+        ],
+    }
+    assert "hidden_truth" not in contracts_before.text
+    assert "contract_ash_window" not in {
+        contract["contract_id"]
+        for contract in inbox_before.json()["active_contracts"]
+    }
+    assert "contract_ash_window" not in {
+        contract["contract_id"]
+        for contract in crew_before.json()["active_contracts"]
+    }
+
+    client.post(
+        "/actions",
+        headers={
+            **auth(ada["token"]),
+            "Idempotency-Key": "action-ledger",
+        },
+        json={
+            "crew_id": crew["crew_id"],
+            "intent": "Inspect the red ledger timestamp for forged provenance.",
+            "confirmed": True,
+        },
+    )
+    client.patch(
+        f"/proofs/dossiers/{crew['crew_id']}/framing",
+        headers={
+            **auth(ada["token"]),
+            "Idempotency-Key": "claim-ledger",
+        },
+        json={"claim": "The finger is a false relic with forged provenance."},
+    )
+    resolved = client.post(
+        "/contracts/contract_false_finger/phases/auction-preview/lock",
+        headers={
+            **auth(ada["token"]),
+            "Idempotency-Key": "phase-lock",
+        },
+        json={"hours_elapsed": 6},
+    )
+    contracts_after = client.get("/contracts", headers=auth(ada["token"]))
+    inbox_after = client.get("/inbox", headers=auth(ada["token"]))
+    crew_after = client.get(f"/crews/{crew['crew_id']}/board", headers=auth(ada["token"]))
+    visible_events = client.get("/events", headers=auth(ada["token"]))
+
+    assert resolved.status_code == 200
+    unlocked = {
+        contract["contract_id"]: contract
+        for contract in contracts_after.json()["contracts"]
+    }["contract_ash_window"]
+    assert unlocked["unlock_status"]["state"] == "unlocked"
+    assert unlocked["unlock_status"]["requirements"][0]["current"] == 1
+    assert unlocked["unlock_status"]["requirements"][0]["satisfied"] is True
+    assert "contract_ash_window" in {
+        contract["contract_id"]
+        for contract in inbox_after.json()["active_contracts"]
+    }
+    assert "contract_ash_window" in {
+        contract["contract_id"]
+        for contract in crew_after.json()["active_contracts"]
+    }
+    assert "unlock_requirements" not in visible_events.text
+    assert "hidden_truth" not in visible_events.text
+
+
+def test_completed_contract_unlock_rejects_missing_required_contract(
+    tmp_path,
+    monkeypatch,
+):
+    monkeypatch.setenv("HOLLOW_LODGE_ADMIN_TOKEN", "admin-secret")
+    seed = json.loads(Path("tests/fixtures/ash_window_contract.json").read_text(encoding="utf-8"))
+    seed["unlock_requirements"] = [
+        {
+            "scope": "crew",
+            "metric": "completed_contract",
+            "required_contract_id": "contract_missing",
+            "minimum": 1,
+            "label": "Complete missing prior contract",
+            "description": "Bad authoring should not create unreachable locks.",
+        }
+    ]
+    client = TestClient(create_app(data_dir=tmp_path, invite_codes=["a"]))
+
+    rejected = client.post(
+        "/contracts/admin/activate",
+        headers={
+            "Idempotency-Key": "activate-missing-completion-lock",
+            "X-Hollow-Lodge-Admin-Token": "admin-secret",
+        },
+        json={"seed": seed},
+    )
+    event_log = (tmp_path / "server-events.jsonl").read_text(encoding="utf-8")
+
+    assert rejected.status_code == 422
+    assert rejected.json()["detail"] == (
+        "completed_contract unlock must reference an existing contract in the same campaign"
+    )
+    assert "contract_ash_window" not in event_log
+
+
+def test_completed_contract_unlock_is_scoped_to_the_acting_crew(
+    tmp_path,
+    monkeypatch,
+):
+    monkeypatch.setenv("HOLLOW_LODGE_ADMIN_TOKEN", "admin-secret")
+    seed = json.loads(Path("tests/fixtures/ash_window_contract.json").read_text(encoding="utf-8"))
+    seed["unlock_requirements"] = [
+        {
+            "scope": "crew",
+            "metric": "completed_contract",
+            "required_contract_id": "contract_false_finger",
+            "minimum": 1,
+            "label": "Complete The Saint's False Finger",
+            "description": "Finish the prior contract before following this lead.",
+        }
+    ]
+    client = TestClient(create_app(data_dir=tmp_path, invite_codes=["a", "b"]))
+    ada = register(client, "a", "Ada")
+    ada_crew = client.post(
+        "/crews",
+        headers={
+            **auth(ada["token"]),
+            "Idempotency-Key": "ada-crew-create",
+        },
+        json={"name": "The Gilt Knives"},
+    ).json()
+
+    activated = client.post(
+        "/contracts/admin/activate",
+        headers={
+            "Idempotency-Key": "activate-completion-locked-ash-window",
+            "X-Hollow-Lodge-Admin-Token": "admin-secret",
+        },
+        json={"seed": seed},
+    )
+    client.post(
+        "/actions",
+        headers={
+            **auth(ada["token"]),
+            "Idempotency-Key": "ada-action-ledger",
+        },
+        json={
+            "crew_id": ada_crew["crew_id"],
+            "intent": "Inspect the red ledger timestamp for forged provenance.",
+            "confirmed": True,
+        },
+    )
+    client.patch(
+        f"/proofs/dossiers/{ada_crew['crew_id']}/framing",
+        headers={
+            **auth(ada["token"]),
+            "Idempotency-Key": "ada-claim-ledger",
+        },
+        json={"claim": "The finger is a false relic with forged provenance."},
+    )
+    resolved = client.post(
+        "/contracts/contract_false_finger/phases/auction-preview/lock",
+        headers={
+            **auth(ada["token"]),
+            "Idempotency-Key": "phase-lock",
+        },
+        json={"hours_elapsed": 6},
+    )
+    bert = register(client, "b", "Bert")
+    bert_crew = client.post(
+        "/crews",
+        headers={
+            **auth(bert["token"]),
+            "Idempotency-Key": "bert-crew-create",
+        },
+        json={"name": "The Brass Choir"},
+    ).json()
+    bert_contracts = client.get("/contracts", headers=auth(bert["token"]))
+    bert_inbox = client.get("/inbox", headers=auth(bert["token"]))
+    bert_board = client.get(
+        f"/crews/{bert_crew['crew_id']}/board",
+        headers=auth(bert["token"]),
+    )
+
+    assert activated.status_code == 201
+    assert resolved.status_code == 200
+    ash_for_bert = {
+        contract["contract_id"]: contract
+        for contract in bert_contracts.json()["contracts"]
+    }["contract_ash_window"]
+    assert ash_for_bert["unlock_status"]["state"] == "locked"
+    assert ash_for_bert["unlock_status"]["requirements"][0]["current"] == 0
+    assert "contract_ash_window" not in {
+        contract["contract_id"]
+        for contract in bert_inbox.json()["active_contracts"]
+    }
+    assert "contract_ash_window" not in {
+        contract["contract_id"]
+        for contract in bert_board.json()["active_contracts"]
+    }
+
+
 def test_contract_activation_replay_rejects_different_unlock_requirements(
     tmp_path,
     monkeypatch,

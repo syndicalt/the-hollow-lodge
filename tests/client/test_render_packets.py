@@ -125,6 +125,57 @@ def test_contract_board_packet_renders_locked_contract_requirements():
     }
 
 
+def test_contract_board_packet_renders_completed_contract_unlock_requirement():
+    packet = build_contract_board_packet(
+        {
+            "campaign": BOARD["campaign"],
+            "contracts": [
+                {
+                    **BOARD["contracts"][0],
+                    "contract_id": "contract_ash_window",
+                    "title": "The Ash Window",
+                    "phase": {"name": "Cinder Preview", "remaining_hours": 4},
+                    "proof_dossier_needs": ["fire chronology"],
+                    "unlock_status": {
+                        "state": "locked",
+                        "requirements": [
+                            {
+                                "scope": "crew",
+                                "metric": "completed_contract",
+                                "required_contract_id": "contract_false_finger",
+                                "minimum": 1,
+                                "current": 0,
+                                "label": "Complete The Saint's False Finger",
+                                "description": "Finish the prior contract before following this lead.",
+                                "satisfied": False,
+                                "hidden_truth": "server-only",
+                            }
+                        ],
+                    },
+                }
+            ],
+        }
+    )
+
+    assert "- Complete The Saint's False Finger: 0/1" in packet.player_markdown
+    assert "server-only" not in packet.player_markdown
+    assert packet.agent_context["contracts"][0]["unlock_status"] == {
+        "state": "locked",
+        "requirements": [
+            {
+                "scope": "crew",
+                "metric": "completed_contract",
+                "required_contract_id": "contract_false_finger",
+                "minimum": 1,
+                "current": 0,
+                "label": "Complete The Saint's False Finger",
+                "description": "Finish the prior contract before following this lead.",
+                "satisfied": False,
+            }
+        ],
+    }
+
+
 def test_contract_board_packet_renders_campaign_arc_metadata_without_hidden_fields():
     packet = build_contract_board_packet(
         {

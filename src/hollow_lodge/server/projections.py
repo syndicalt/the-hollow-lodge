@@ -237,7 +237,7 @@ def _unlock_status_for_contract(
             _shape_unlock_requirement(
                 requirement,
                 current=_unlock_metric_value(
-                    requirement.metric,
+                    requirement,
                     crew_legacy_from_contracts(
                         crew_id=crew_id,
                         contracts=contracts,
@@ -265,7 +265,7 @@ def _shape_unlock_requirement(
     *,
     current: int,
 ) -> dict[str, Any]:
-    return {
+    shaped = {
         "scope": requirement.scope,
         "metric": requirement.metric,
         "minimum": requirement.minimum,
@@ -274,13 +274,27 @@ def _shape_unlock_requirement(
         "description": requirement.description,
         "satisfied": current >= requirement.minimum,
     }
+    if requirement.required_contract_id is not None:
+        shaped["required_contract_id"] = requirement.required_contract_id
+    return shaped
 
 
-def _unlock_metric_value(metric: str, legacy: dict[str, Any]) -> int:
+def _unlock_metric_value(
+    requirement: ContractUnlockRequirement,
+    legacy: dict[str, Any],
+) -> int:
+    metric = requirement.metric
     if metric in {"reputation", "favors"}:
         return int(legacy.get(metric, 0))
     if metric == "deal_conduct_score":
         return int(legacy.get("deal_conduct", {}).get("score", 0))
+    if metric == "completed_contract":
+        return int(
+            any(
+                completed.get("contract_id") == requirement.required_contract_id
+                for completed in legacy.get("completed_contracts", [])
+            )
+        )
     return 0
 
 

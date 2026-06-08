@@ -273,6 +273,9 @@ Status:
   public arc links whose previous contract is not already published in the same
   campaign, preventing broken multi-contract campaign chains before seed events
   are appended.
+- Completed-contract unlocks completed: contract seeds can now require a crew
+  to have completed a specific prior contract, with safe crew-scoped
+  `unlock_status` projection and no raw unlock requirements in visible events.
 - Deferred: multi-day campaign arc authoring, deeper death/legacy inheritance,
   and richer long-term unlock paths.
 
@@ -801,6 +804,25 @@ Expected verification:
 
 - `pytest tests/server/test_contract_seed.py::test_contract_activation_rejects_arc_previous_contract_that_is_not_published tests/server/test_contract_seed.py::test_failed_arc_previous_validation_leaves_idempotency_key_reusable tests/server/test_contract_seed.py::test_contract_activation_rejects_arc_previous_contract_from_other_campaign -q`
 - `pytest tests/server/test_contract_seed.py tests/server/test_contract_seed_pipeline.py tests/server/test_crew_routes.py::test_crew_board_shapes_contracts_and_dossier_at_server_boundary tests/client/test_render_packets.py::test_contract_board_packet_renders_campaign_arc_metadata_without_hidden_fields -q`
+- `pytest -q`
+
+### Slice 29: Completed-Contract Unlock Requirements
+
+Status: completed.
+
+Add the first contract-specific long-term unlock path. Contract seeds can now
+declare a crew-scoped `completed_contract` unlock requirement with an explicit
+`required_contract_id`. The server validates that target against already
+published contracts in the same campaign, stores the raw requirement only in
+server-only seed events, and projects a safe `unlock_status` with the target id,
+current completion value, and satisfaction flag. Follow-up contracts stay out of
+inbox and crew-board work queues until that specific crew has completed the
+required prior contract.
+
+Expected verification:
+
+- `pytest tests/server/test_contract_seed_pipeline.py::test_contract_seed_accepts_completed_contract_unlock_requirement tests/server/test_contract_seed_pipeline.py::test_contract_seed_rejects_completed_contract_requirement_without_target tests/server/test_contract_seed_pipeline.py::test_contract_seed_rejects_zero_minimum_for_completed_contract_requirement tests/server/test_contract_seed_pipeline.py::test_contract_seed_rejects_required_contract_on_numeric_unlock_metric tests/server/test_contract_seed.py::test_completed_contract_unlock_requires_crew_completion_before_actionable tests/server/test_contract_seed.py::test_completed_contract_unlock_rejects_missing_required_contract tests/server/test_contract_seed.py::test_completed_contract_unlock_is_scoped_to_the_acting_crew tests/client/test_render_packets.py::test_contract_board_packet_renders_completed_contract_unlock_requirement -q`
+- `pytest tests/server/test_contract_seed_pipeline.py tests/server/test_contract_seed.py tests/server/test_crew_routes.py tests/server/test_crew_legacy_projection.py tests/client/test_render_packets.py tests/e2e/test_contract_content_pipeline.py tests/e2e/test_codex_render_surfaces.py -q`
 - `pytest -q`
 
 ## Completion Standard
