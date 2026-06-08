@@ -7,6 +7,7 @@ from hollow_lodge.client.api import HollowLodgeApi, new_command_key
 from hollow_lodge.client.config import ClientConfig, load_config, save_config
 from hollow_lodge.client.handler import normalize_action_draft
 from hollow_lodge.client.local_log import LocalEventLog
+from hollow_lodge.client.paths import DEFAULT_CONFIG_PATH, DEFAULT_LOCAL_LOG_PATH
 from hollow_lodge.client.render_packets import (
     build_contract_board_packet,
     build_crew_board_packet,
@@ -23,10 +24,6 @@ dossier_app = typer.Typer(help="Manage the crew proof dossier.", no_args_is_help
 packet_lead_app = typer.Typer(help="Manage Packet Lead votes.", no_args_is_help=True)
 app.add_typer(dossier_app, name="dossier")
 app.add_typer(packet_lead_app, name="packet-lead")
-
-
-DEFAULT_CONFIG_PATH = Path.home() / ".config" / "hollow-lodge" / "config.json"
-DEFAULT_LOCAL_LOG_PATH = Path.home() / ".local" / "state" / "hollow-lodge" / "local.jsonl"
 
 
 @app.callback()

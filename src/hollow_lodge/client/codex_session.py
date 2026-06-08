@@ -3,9 +3,9 @@ from __future__ import annotations
 from pathlib import Path
 
 from hollow_lodge.client.api import HollowLodgeApi
-from hollow_lodge.client.cli import DEFAULT_CONFIG_PATH, DEFAULT_LOCAL_LOG_PATH
 from hollow_lodge.client.config import ClientConfig, load_config
 from hollow_lodge.client.local_log import LocalEventLog
+from hollow_lodge.client.paths import DEFAULT_CONFIG_PATH, DEFAULT_LOCAL_LOG_PATH
 from hollow_lodge.client.render_packets import (
     RenderPacket,
     build_contract_board_packet,
