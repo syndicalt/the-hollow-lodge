@@ -5,7 +5,14 @@ from typing import Any
 
 from fastapi.testclient import TestClient
 
-from hollow_lodge.client.render_packets import build_crew_board_packet, build_inbox_packet
+from hollow_lodge.client.artifact_render import build_artifact_graph_packet
+from hollow_lodge.client.render_packets import (
+    build_crew_board_packet,
+    build_deal_acceptance_preview_packet,
+    build_deals_packet,
+    build_contract_board_packet,
+    build_inbox_packet,
+)
 from hollow_lodge.server.app import create_app
 
 
@@ -26,6 +33,10 @@ def run_mock(data_dir: str) -> dict[str, Any]:
     bela_headers = _auth(bela["token"])
 
     contract_board = _get(client, "/contracts", headers=ada_headers)
+    initial_contract_packet = build_contract_board_packet(contract_board)
+    initial_artifact_packet = build_artifact_graph_packet(
+        _get(client, "/artifacts", headers=ada_headers)
+    )
     _post(
         client,
         "/artifacts/artifact_ledger_rubric/inspect",
@@ -57,7 +68,16 @@ def run_mock(data_dir: str) -> dict[str, Any]:
         },
         expected_status=201,
     )
+    visible_deals = _get(client, "/deals", headers=ada_headers)
+    deals_packet = build_deals_packet(visible_deals)
+    deal_preview_packet = build_deal_acceptance_preview_packet(
+        {
+            "deal": proposed,
+            "viewer_crew_ids": [gilt["crew_id"]],
+        }
+    )
     moth_inbox = _get(client, "/inbox", headers=bela_headers)
+    moth_inbox_packet = build_inbox_packet(moth_inbox)
     fulfilled = _post(
         client,
         f"/deals/{proposed['deal_id']}/accept",
@@ -139,6 +159,7 @@ def run_mock(data_dir: str) -> dict[str, Any]:
     )
     gilt_board = _get(client, f"/crews/{gilt['crew_id']}/board", headers=ada_headers)
     moth_board = _get(client, f"/crews/{moth['crew_id']}/board", headers=bela_headers)
+    gilt_board_packet = build_crew_board_packet(gilt_board)
     reveal = _post(
         client,
         "/contracts/contract_false_finger/phases/auction-preview/lock",
@@ -146,6 +167,18 @@ def run_mock(data_dir: str) -> dict[str, Any]:
         json={"hours_elapsed": 6},
         expected_status=200,
     )
+    final_contract_packet = build_contract_board_packet(
+        _get(client, "/contracts", headers=ada_headers)
+    )
+    codex_packets = [
+        initial_contract_packet,
+        initial_artifact_packet,
+        deals_packet,
+        deal_preview_packet,
+        moth_inbox_packet,
+        gilt_board_packet,
+        final_contract_packet,
+    ]
 
     timeline = [
         event.type
@@ -154,9 +187,17 @@ def run_mock(data_dir: str) -> dict[str, Any]:
     ]
     lines = [
         f"contract: {contract_board['contracts'][0]['title']} / {contract_board['contracts'][0]['phase']['name']}",
+        "initial contract board:",
+        initial_contract_packet.player_markdown,
+        "initial artifact graph:",
+        initial_artifact_packet.player_markdown,
         f"deal proposed: {proposed['deal_id']} {proposed['status']}",
+        "visible deals:",
+        deals_packet.player_markdown,
+        "deal preview:",
+        deal_preview_packet.player_markdown,
         "moth inbox:",
-        build_inbox_packet(moth_inbox).player_markdown,
+        moth_inbox_packet.player_markdown,
         f"deal accepted: {fulfilled['deal_id']} {fulfilled['status']}",
         f"gilt received: {gilt_received}",
         f"moth received: {moth_received}",
@@ -164,12 +205,14 @@ def run_mock(data_dir: str) -> dict[str, Any]:
         f"gilt board deals: {', '.join(deal['status'] for deal in gilt_board['deals'])}",
         f"moth board deals: {', '.join(deal['status'] for deal in moth_board['deals'])}",
         "gilt board excerpt:",
-        "\n".join(build_crew_board_packet(gilt_board).player_markdown.splitlines()[:18]),
+        "\n".join(gilt_board_packet.player_markdown.splitlines()[:18]),
         "phase standings:",
         *[
             f"- {standing['crew_id']}: {standing['standing']} ({standing['score']})"
             for standing in reveal["standings"]
         ],
+        "final contract board:",
+        final_contract_packet.player_markdown,
         f"escrow timeline: {' -> '.join(timeline)}",
     ]
     return {
@@ -178,6 +221,7 @@ def run_mock(data_dir: str) -> dict[str, Any]:
         "moth_board": moth_board,
         "reveal": reveal,
         "timeline": timeline,
+        "codex_packets": [packet.surface for packet in codex_packets],
         "lines": lines,
     }
 

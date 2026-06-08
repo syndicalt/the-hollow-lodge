@@ -24,6 +24,19 @@ def test_full_game_loop_with_escrow_trade(tmp_path):
     assert result["gilt_board"]["dossier"]["artifact_citations"]
     assert result["moth_board"]["dossier"]["artifact_citations"]
     assert result["reveal"]["standings"]
+    assert result["codex_packets"] == [
+        "contract_board",
+        "artifact_graph",
+        "deals",
+        "deal_preview",
+        "inbox",
+        "crew_board",
+        "contract_board",
+    ]
+    assert "Acceptance preview:" in "\n".join(result["lines"])
+    assert "The Saint's False Finger" in "\n".join(result["lines"])
+    assert "Visible artifacts:" in "\n".join(result["lines"])
+    assert "Phase result:" in "\n".join(result["lines"])
     assert result["timeline"] == [
         "deal.proposed",
         "deal.accepted",
