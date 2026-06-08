@@ -61,6 +61,72 @@ def test_hidden_artifact_is_not_visible_until_unlocked(tmp_path):
     assert response.status_code == 404
 
 
+def test_inspection_idempotency_conflict_returns_409(tmp_path):
+    client = TestClient(create_app(data_dir=tmp_path, invite_codes=["a"]))
+    ada = register(client, "a", "Ada")
+
+    first_response = client.post(
+        "/artifacts/artifact_lot_card/inspect",
+        headers={
+            **auth(ada["token"]),
+            "Idempotency-Key": "inspect-conflict",
+        },
+    )
+    second_response = client.post(
+        "/artifacts/artifact_ledger_rubric/inspect",
+        headers={
+            **auth(ada["token"]),
+            "Idempotency-Key": "inspect-conflict",
+        },
+    )
+
+    assert first_response.status_code == 200
+    assert second_response.status_code == 409
+    assert second_response.json()["detail"] == "idempotency key conflict"
+
+
+def test_crew_scoped_artifact_access_is_available_to_service_only(tmp_path):
+    client = TestClient(create_app(data_dir=tmp_path, invite_codes=["a"]))
+    ada = register(client, "a", "Ada")
+    crew_response = client.post(
+        "/crews",
+        json={"name": "Ledger Cell"},
+        headers={
+            **auth(ada["token"]),
+            "Idempotency-Key": "crew-ledger-cell",
+        },
+    )
+    assert crew_response.status_code == 201
+    crew = crew_response.json()
+
+    client.app.state.artifact_service.grant_artifact_access(
+        artifact_id="artifact_chapel_debt_mark",
+        actor_id="server",
+        player_ids=[],
+        crew_ids=[crew["crew_id"]],
+        reason="review guard",
+        idempotency_key="grant-chapel-to-crew",
+    )
+
+    service_view = client.app.state.artifact_service.visible_artifacts_for_player(
+        player_id=ada["player_id"],
+        crew_ids=[crew["crew_id"]],
+    )
+    service_artifact_ids = {
+        artifact["artifact_id"]
+        for artifact in service_view["artifacts"]
+    }
+    route_response = client.get("/artifacts", headers=auth(ada["token"]))
+    route_artifact_ids = {
+        artifact["artifact_id"]
+        for artifact in route_response.json()["artifacts"]
+    }
+
+    assert "artifact_chapel_debt_mark" in service_artifact_ids
+    assert route_response.status_code == 200
+    assert "artifact_chapel_debt_mark" not in route_artifact_ids
+
+
 def test_graph_seed_event_is_server_only_and_appended_once(tmp_path):
     client = TestClient(create_app(data_dir=tmp_path, invite_codes=["a"]))
     ada = register(client, "a", "Ada")

@@ -3,6 +3,7 @@ from __future__ import annotations
 from fastapi import APIRouter, Depends, Header, HTTPException, Request, status
 
 from hollow_lodge.domain.identity import Player
+from hollow_lodge.eventlog.jsonl_store import IdempotencyConflictError
 from hollow_lodge.server.artifact_service import ArtifactService
 from hollow_lodge.server.auth import current_player
 
@@ -53,6 +54,11 @@ def record_artifact_inspection(
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
             detail="artifact not found",
+        ) from exc
+    except IdempotencyConflictError as exc:
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail="idempotency key conflict",
         ) from exc
 
 
