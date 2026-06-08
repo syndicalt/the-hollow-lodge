@@ -25,7 +25,10 @@ from hollow_lodge.eventlog.jsonl_store import JsonlEventStore
 from hollow_lodge.eventlog.visibility import Principal
 from hollow_lodge.server.artifact_seed import STARTER_ARTIFACT_GRAPH
 from hollow_lodge.server.artifact_service import ArtifactService
-from hollow_lodge.server.artifact_unlocks import action_unlock_candidates
+from hollow_lodge.server.artifact_unlocks import (
+    action_unlock_candidates,
+    auction_preview_phase_reward_artifact_id,
+)
 from hollow_lodge.server.projections import contract_board_from_events, inbox_from_board
 from hollow_lodge.server.seed_data import STARTER_CAMPAIGN, STARTER_CONTRACT, STARTER_HIDDEN_TRUTH
 from hollow_lodge.server.auth import authenticate_token
@@ -725,6 +728,7 @@ class ContractService:
         *,
         event_store: JsonlEventStore,
         resolution_oracle: ResolutionOracle | None = None,
+        artifact_service: ArtifactService | None = None,
     ):
         self._event_store = event_store
         self._resolution_oracle = (
@@ -732,8 +736,12 @@ class ContractService:
             if resolution_oracle is not None
             else DeterministicResolutionOracle()
         )
+        self._artifact_service = artifact_service
         self._lock = threading.RLock()
         self._seed_starter_contract()
+
+    def set_artifact_service(self, artifact_service: ArtifactService) -> None:
+        self._artifact_service = artifact_service
 
     def board_for_player(self, player_id: str):
         _ = player_id
@@ -766,6 +774,10 @@ class ContractService:
                 return existing.payload["reveal"]
             resolved = self._resolved_auction_preview()
             if resolved is not None:
+                self._award_auction_preview_phase_rewards(
+                    contract_id=contract_id,
+                    reveal=resolved,
+                )
                 return resolved
             if hours_elapsed < STARTER_CONTRACT.phase.remaining_hours and self._meaningful_action_count() < 2:
                 raise ValueError("phase still active")
@@ -797,6 +809,10 @@ class ContractService:
                     "reveal": reveal,
                 },
                 idempotency_key=idempotency_key,
+            )
+            self._award_auction_preview_phase_rewards(
+                contract_id=contract_id,
+                reveal=reveal,
             )
             return reveal
 
@@ -841,6 +857,58 @@ class ContractService:
                     continue
                 return event.payload["reveal"]
         return None
+
+    def _award_auction_preview_phase_rewards(
+        self,
+        *,
+        contract_id: str,
+        reveal: dict,
+    ) -> None:
+        if self._artifact_service is None:
+            return
+        reward_artifact_id = auction_preview_phase_reward_artifact_id(reveal)
+        standings = reveal.get("standings", [])
+        if reward_artifact_id is None or not standings:
+            return
+        leader_crew_id = standings[0]["crew_id"]
+        if self._crew_has_artifact_signal(
+            crew_id=leader_crew_id,
+            artifact_id=reward_artifact_id,
+        ):
+            return
+        reward_key = (
+            f"artifact.phase-reward.{contract_id}.auction-preview."
+            f"{leader_crew_id}.{reward_artifact_id}"
+        )
+        self._event_store.append_command(
+            event_type="artifact.phase_reward.awarded",
+            actor_id="server",
+            visibility=EventVisibility.crews([leader_crew_id]),
+            payload={
+                "contract_id": contract_id,
+                "phase": "Auction Preview",
+                "crew_id": leader_crew_id,
+                "artifact_id": reward_artifact_id,
+                "reason": "Leader follow-up from auction preview resolution.",
+            },
+            idempotency_key=reward_key,
+        )
+        self._artifact_service.grant_artifact_access(
+            artifact_id=reward_artifact_id,
+            actor_id="server",
+            player_ids=[],
+            crew_ids=[leader_crew_id],
+            reason="Leader follow-up from auction preview resolution.",
+            idempotency_key=f"{reward_key}.grant",
+        )
+
+    def _crew_has_artifact_signal(self, *, crew_id: str, artifact_id: str) -> bool:
+        for event in self._event_store.read_for_principal(Principal.crew(crew_id)):
+            if event.type == "artifact.access.granted" and event.payload["artifact_id"] == artifact_id:
+                return True
+            if event.type == "artifact.dossier.cited" and event.payload["artifact_id"] == artifact_id:
+                return True
+        return False
 
     def _locked_auction_preview(self) -> dict | None:
         for event in self._event_store.read():

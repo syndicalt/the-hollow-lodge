@@ -74,6 +74,7 @@ def create_app(
         app.state.contract_service = ContractService(
             event_store=event_store,
             resolution_oracle=resolved_oracle,
+            artifact_service=artifact_service,
         )
         app.state.proof_service = ProofService(
             event_store=event_store,

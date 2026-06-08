@@ -4,6 +4,7 @@ from pydantic import BaseModel, Field
 from fastapi import APIRouter, Depends, Header, HTTPException, Request, status
 
 from hollow_lodge.domain.identity import Player
+from hollow_lodge.server.artifact_service import ArtifactService
 from hollow_lodge.server.auth import current_player
 from hollow_lodge.server.services import ContractService
 
@@ -55,9 +56,18 @@ def lock_auction_preview(
 
 
 def _contract_service(request: Request) -> ContractService:
+    if not hasattr(request.app.state, "artifact_service"):
+        request.app.state.artifact_service = ArtifactService(
+            event_store=request.app.state.event_store,
+        )
     if not hasattr(request.app.state, "contract_service"):
         request.app.state.contract_service = ContractService(
             event_store=request.app.state.event_store,
             resolution_oracle=getattr(request.app.state, "resolution_oracle", None),
+            artifact_service=request.app.state.artifact_service,
+        )
+    if hasattr(request.app.state.contract_service, "set_artifact_service"):
+        request.app.state.contract_service.set_artifact_service(
+            request.app.state.artifact_service,
         )
     return request.app.state.contract_service

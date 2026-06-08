@@ -3,6 +3,9 @@ from __future__ import annotations
 from hollow_lodge.domain.artifact_graph import ArtifactGraph, ArtifactUnlockRule
 
 
+LEADER_FOLLOWUP_ARTIFACT_ID = "artifact_clerk_pencil_note"
+
+
 def action_unlock_candidates(
     *,
     graph: ArtifactGraph,
@@ -29,3 +32,10 @@ def action_unlock_candidates(
                 candidates.append(rule)
 
     return candidates
+
+
+def auction_preview_phase_reward_artifact_id(reveal: dict) -> str | None:
+    standings = reveal.get("standings", [])
+    if not standings:
+        return None
+    return LEADER_FOLLOWUP_ARTIFACT_ID
