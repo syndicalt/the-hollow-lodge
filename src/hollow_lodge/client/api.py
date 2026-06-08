@@ -56,6 +56,34 @@ class HollowLodgeApi:
         response.raise_for_status()
         return response.json()
 
+    def list_key_requests(self, *, admin_token: str) -> dict[str, Any]:
+        response = httpx.get(
+            f"{self.server_url}/identity/admin/key-requests",
+            headers={"X-Hollow-Lodge-Admin-Token": admin_token},
+            timeout=10,
+        )
+        response.raise_for_status()
+        return response.json()
+
+    def approve_key_request(
+        self,
+        *,
+        request_id: str,
+        admin_token: str,
+        idempotency_key: str,
+    ) -> dict[str, Any]:
+        response = httpx.post(
+            f"{self.server_url}/identity/admin/key-requests/{request_id}/approve",
+            headers={
+                "Idempotency-Key": idempotency_key,
+                "X-Hollow-Lodge-Admin-Token": admin_token,
+            },
+            json={},
+            timeout=10,
+        )
+        response.raise_for_status()
+        return response.json()
+
     def create_crew(self, *, name: str, idempotency_key: str) -> dict[str, Any]:
         return self._post(
             "/crews",

@@ -26,7 +26,9 @@ def test_invite_registration_succeeds_once_and_stores_hashed_token(tmp_path):
 
     assert replay.status_code == 409
     assert "alpha-code" not in replay.text
-    assert body["token"] not in (tmp_path / "server-events.jsonl").read_text()
+    events = (tmp_path / "server-events.jsonl").read_text()
+    assert body["token"] not in events
+    assert "alpha-code" not in events
 
 
 def test_token_auth_rejects_missing_invalid_and_revoked_tokens(tmp_path):
@@ -278,6 +280,7 @@ def test_admin_invite_creation_issues_redeemable_invite(tmp_path, monkeypatch):
 
     assert registered.status_code == 201
     assert registered.json()["display_name"] == "Ada"
+    assert invite_code not in (tmp_path / "server-events.jsonl").read_text(encoding="utf-8")
 
 
 def test_admin_invite_creation_replays_by_idempotency_key(tmp_path, monkeypatch):
@@ -296,3 +299,167 @@ def test_admin_invite_creation_replays_by_idempotency_key(tmp_path, monkeypatch)
     assert first.status_code == 201
     assert replay.status_code == 201
     assert replay.json() == first.json()
+
+
+def test_admin_can_list_access_key_requests(tmp_path, monkeypatch):
+    monkeypatch.setenv("HOLLOW_LODGE_ADMIN_TOKEN", "admin-secret")
+    client = TestClient(create_app(data_dir=tmp_path, invite_codes=[]))
+    client.post(
+        "/identity/key-requests",
+        json={"display_name": "Ada", "contact": "ada@example.com"},
+        headers={"Idempotency-Key": "key-request-ada"},
+    )
+
+    missing = client.get("/identity/admin/key-requests")
+    listed = client.get(
+        "/identity/admin/key-requests",
+        headers={"X-Hollow-Lodge-Admin-Token": "admin-secret"},
+    )
+
+    assert missing.status_code == 401
+    assert listed.status_code == 200
+    assert listed.json() == {
+        "key_requests": [
+            {
+                "request_id": "key_request_0001",
+                "display_name": "Ada",
+                "contact": "ada@example.com",
+                "status": "pending",
+            }
+        ]
+    }
+
+
+def test_admin_approves_access_key_request_into_redeemable_invite(tmp_path, monkeypatch):
+    monkeypatch.setenv("HOLLOW_LODGE_ADMIN_TOKEN", "admin-secret")
+    client = TestClient(create_app(data_dir=tmp_path, invite_codes=[]))
+    requested = client.post(
+        "/identity/key-requests",
+        json={"display_name": "Ada", "contact": "ada@example.com"},
+        headers={"Idempotency-Key": "key-request-ada"},
+    ).json()
+
+    approved = client.post(
+        f"/identity/admin/key-requests/{requested['request_id']}/approve",
+        headers={
+            "Idempotency-Key": "approve-request-ada",
+            "X-Hollow-Lodge-Admin-Token": "admin-secret",
+        },
+    )
+
+    assert approved.status_code == 201
+    body = approved.json()
+    assert body["request_id"] == requested["request_id"]
+    assert body["status"] == "approved"
+    invite_code = body["invite_code"]
+    assert invite_code.startswith("lodge_")
+    assert invite_code not in (tmp_path / "server-events.jsonl").read_text(encoding="utf-8")
+
+    registered = client.post(
+        "/identity/register",
+        json={"invite_code": invite_code, "display_name": "Ada"},
+        headers={"Idempotency-Key": "register-ada"},
+    )
+    listed = client.get(
+        "/identity/admin/key-requests",
+        headers={"X-Hollow-Lodge-Admin-Token": "admin-secret"},
+    ).json()
+
+    assert registered.status_code == 201
+    assert listed["key_requests"][0]["status"] == "approved"
+    assert invite_code not in (tmp_path / "server-events.jsonl").read_text(encoding="utf-8")
+
+
+def test_admin_approval_replays_by_idempotency_key(tmp_path, monkeypatch):
+    monkeypatch.setenv("HOLLOW_LODGE_ADMIN_TOKEN", "admin-secret")
+    client = TestClient(create_app(data_dir=tmp_path, invite_codes=[]))
+    requested = client.post(
+        "/identity/key-requests",
+        json={"display_name": "Ada", "contact": "ada@example.com"},
+        headers={"Idempotency-Key": "key-request-ada"},
+    ).json()
+
+    first = client.post(
+        f"/identity/admin/key-requests/{requested['request_id']}/approve",
+        headers={
+            "Idempotency-Key": "approve-request-ada",
+            "X-Hollow-Lodge-Admin-Token": "admin-secret",
+        },
+    )
+    replay = client.post(
+        f"/identity/admin/key-requests/{requested['request_id']}/approve",
+        headers={
+            "Idempotency-Key": "approve-request-ada",
+            "X-Hollow-Lodge-Admin-Token": "admin-secret",
+        },
+    )
+
+    assert first.status_code == 201
+    assert replay.status_code == 201
+    assert replay.json() == first.json()
+
+
+def test_admin_approval_replay_survives_app_recreation(tmp_path, monkeypatch):
+    monkeypatch.setenv("HOLLOW_LODGE_ADMIN_TOKEN", "admin-secret")
+    first_client = TestClient(create_app(data_dir=tmp_path, invite_codes=[]))
+    requested = first_client.post(
+        "/identity/key-requests",
+        json={"display_name": "Ada", "contact": "ada@example.com"},
+        headers={"Idempotency-Key": "key-request-ada"},
+    ).json()
+    approved = first_client.post(
+        f"/identity/admin/key-requests/{requested['request_id']}/approve",
+        headers={
+            "Idempotency-Key": "approve-request-ada",
+            "X-Hollow-Lodge-Admin-Token": "admin-secret",
+        },
+    )
+
+    second_client = TestClient(create_app(data_dir=tmp_path, invite_codes=[]))
+    replay = second_client.post(
+        f"/identity/admin/key-requests/{requested['request_id']}/approve",
+        headers={
+            "Idempotency-Key": "approve-request-ada",
+            "X-Hollow-Lodge-Admin-Token": "admin-secret",
+        },
+    )
+
+    assert approved.status_code == 201
+    assert replay.status_code == 201
+    assert replay.json() == approved.json()
+
+
+def test_admin_approval_rejects_missing_or_already_approved_request(tmp_path, monkeypatch):
+    monkeypatch.setenv("HOLLOW_LODGE_ADMIN_TOKEN", "admin-secret")
+    client = TestClient(create_app(data_dir=tmp_path, invite_codes=[]))
+    requested = client.post(
+        "/identity/key-requests",
+        json={"display_name": "Ada", "contact": "ada@example.com"},
+        headers={"Idempotency-Key": "key-request-ada"},
+    ).json()
+
+    missing = client.post(
+        "/identity/admin/key-requests/key_request_missing/approve",
+        headers={
+            "Idempotency-Key": "approve-missing",
+            "X-Hollow-Lodge-Admin-Token": "admin-secret",
+        },
+    )
+    first = client.post(
+        f"/identity/admin/key-requests/{requested['request_id']}/approve",
+        headers={
+            "Idempotency-Key": "approve-request-ada",
+            "X-Hollow-Lodge-Admin-Token": "admin-secret",
+        },
+    )
+    second = client.post(
+        f"/identity/admin/key-requests/{requested['request_id']}/approve",
+        headers={
+            "Idempotency-Key": "approve-request-ada-second",
+            "X-Hollow-Lodge-Admin-Token": "admin-secret",
+        },
+    )
+
+    assert missing.status_code == 404
+    assert first.status_code == 201
+    assert second.status_code == 409

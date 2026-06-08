@@ -97,6 +97,7 @@ class IdentityService:
                 raise ValueError("registration replay token unavailable")
             if invite_code in self._used_invites:
                 raise ValueError("invite already used")
+            invite_hash = hash_token(invite_code)
             invite = self._invite_by_code(invite_code)
             if invite_code not in self._unused_invites and invite is None:
                 raise ValueError("invalid invite")
@@ -123,7 +124,7 @@ class IdentityService:
                 payload={
                     "player_id": player_id,
                     "display_name": display_name,
-                    "invite_code": invite_code,
+                    "invite_hash": invite_hash,
                     "token_hash": player.token_hash,
                 },
                 idempotency_key=idempotency_key,
@@ -159,6 +160,67 @@ class IdentityService:
             )
             self._remember_invite_replay(idempotency_key, invite_code)
             return invite_code
+
+    def list_access_key_requests(self) -> list[AccessKeyRequest]:
+        with self._lock:
+            return sorted(
+                self._key_requests.values(),
+                key=lambda request: request.request_id,
+            )
+
+    def approve_access_key_request(
+        self,
+        *,
+        request_id: str,
+        idempotency_key: str,
+    ) -> tuple[AccessKeyRequest, str]:
+        with self._lock:
+            existing = self._event_by_idempotency_key(idempotency_key)
+            if idempotency_key in self._invite_replays:
+                self._ensure_key_request_approval_replay_matches(
+                    existing,
+                    request_id=request_id,
+                )
+                return self._key_requests[request_id], self._invite_replays[idempotency_key]
+            if existing is not None:
+                self._ensure_key_request_approval_replay_matches(
+                    existing,
+                    request_id=request_id,
+                )
+                if idempotency_key in self._invite_replays:
+                    return self._key_requests[request_id], self._invite_replays[idempotency_key]
+                raise ValueError("invite replay code unavailable")
+            key_request = self._key_requests.get(request_id)
+            if key_request is None:
+                raise KeyError(request_id)
+            if key_request.status != "pending":
+                raise ValueError("key request already approved")
+            invite_id = f"invite_{len(self._invites) + 1:04d}"
+            invite_code = generate_invite_code()
+            invite_hash = hash_token(invite_code)
+            approved = AccessKeyRequest(
+                request_id=key_request.request_id,
+                display_name=key_request.display_name,
+                contact=key_request.contact,
+                status="approved",
+            )
+            self._key_requests[request_id] = approved
+            self._invites[invite_id] = Invite(invite_id=invite_id, invite_hash=invite_hash)
+            self._event_store.append_command(
+                event_type="identity.key_request.approved",
+                actor_id="admin",
+                visibility=EventVisibility.server_only(),
+                payload={
+                    "request_id": request_id,
+                    "status": approved.status,
+                    "invite_id": invite_id,
+                    "invite_hash": invite_hash,
+                    "used": False,
+                },
+                idempotency_key=idempotency_key,
+            )
+            self._remember_invite_replay(idempotency_key, invite_code)
+            return approved, invite_code
 
     def request_access_key(
         self,
@@ -227,9 +289,16 @@ class IdentityService:
         replay_invites = self._load_invite_replay_codes(now=datetime.now(UTC))
         for event in self._event_store.read():
             if event.type == "identity.player.registered":
-                invite_code = event.payload["invite_code"]
-                self._unused_invites.discard(invite_code)
-                self._used_invites.add(invite_code)
+                invite_hash = event.payload.get("invite_hash")
+                invite_code = event.payload.get("invite_code")
+                if invite_code is not None:
+                    invite_hash = hash_token(invite_code)
+                if invite_hash is not None:
+                    for seeded_invite in list(self._unused_invites):
+                        if secrets.compare_digest(hash_token(seeded_invite), invite_hash):
+                            self._unused_invites.discard(seeded_invite)
+                            self._used_invites.add(seeded_invite)
+                            break
                 self._players[event.payload["player_id"]] = Player(
                     player_id=event.payload["player_id"],
                     display_name=event.payload["display_name"],
@@ -242,13 +311,15 @@ class IdentityService:
                             self._players[event.payload["player_id"]],
                             token,
                         )
-                invite = self._invite_by_code(invite_code)
-                if invite is not None:
-                    self._invites[invite.invite_id] = Invite(
-                        invite_id=invite.invite_id,
-                        invite_hash=invite.invite_hash,
-                        used=True,
-                    )
+                if invite_hash is not None:
+                    for invite_id, invite in list(self._invites.items()):
+                        if secrets.compare_digest(invite.invite_hash, invite_hash):
+                            self._invites[invite_id] = Invite(
+                                invite_id=invite.invite_id,
+                                invite_hash=invite.invite_hash,
+                                used=True,
+                            )
+                            break
             elif event.type == "identity.invite.created":
                 self._invites[event.payload["invite_id"]] = Invite(
                     invite_id=event.payload["invite_id"],
@@ -274,6 +345,23 @@ class IdentityService:
                     contact=event.payload.get("contact"),
                     status=event.payload["status"],
                 )
+            elif event.type == "identity.key_request.approved":
+                key_request = self._key_requests[event.payload["request_id"]]
+                self._key_requests[key_request.request_id] = AccessKeyRequest(
+                    request_id=key_request.request_id,
+                    display_name=key_request.display_name,
+                    contact=key_request.contact,
+                    status=event.payload["status"],
+                )
+                self._invites[event.payload["invite_id"]] = Invite(
+                    invite_id=event.payload["invite_id"],
+                    invite_hash=event.payload["invite_hash"],
+                    used=event.payload["used"],
+                )
+                if event.idempotency_key is not None:
+                    invite_code = replay_invites.get(event.idempotency_key)
+                    if invite_code is not None:
+                        self._invite_replays[event.idempotency_key] = invite_code
 
     def _event_by_idempotency_key(self, idempotency_key: str):
         for event in self._event_store.read():
@@ -290,7 +378,13 @@ class IdentityService:
     ) -> None:
         if event is None or event.type != "identity.player.registered":
             raise ValueError("idempotency key conflict")
-        if event.payload["invite_code"] != invite_code or event.payload["display_name"] != display_name:
+        event_invite_hash = event.payload.get("invite_hash")
+        if event_invite_hash is None and "invite_code" in event.payload:
+            event_invite_hash = hash_token(event.payload["invite_code"])
+        if (
+            event_invite_hash != hash_token(invite_code)
+            or event.payload["display_name"] != display_name
+        ):
             raise ValueError("idempotency key conflict")
 
     def _ensure_key_request_replay_matches(
@@ -307,6 +401,17 @@ class IdentityService:
 
     def _ensure_invite_replay_matches(self, event) -> None:
         if event is None or event.type != "identity.invite.created":
+            raise ValueError("idempotency key conflict")
+
+    def _ensure_key_request_approval_replay_matches(
+        self,
+        event,
+        *,
+        request_id: str,
+    ) -> None:
+        if event is None or event.type != "identity.key_request.approved":
+            raise ValueError("idempotency key conflict")
+        if event.payload["request_id"] != request_id:
             raise ValueError("idempotency key conflict")
 
     def _invite_by_code(self, invite_code: str) -> Invite | None:

@@ -26,10 +26,17 @@ hollow-lodge onboard --name Ada --invite alpha-code
 ```
 
 Players without an invite can request an access key. The CLI stores pending
-onboarding state locally until an admin approval flow exists:
+onboarding state locally while an admin reviews the request:
 
 ```sh
 hollow-lodge onboard --name Ada --contact ada@example.com
+```
+
+Admins can review and approve requests from the CLI:
+
+```sh
+hollow-lodge admin key-requests
+hollow-lodge admin key-request-approve key_request_0001
 ```
 
 ## Session Loop

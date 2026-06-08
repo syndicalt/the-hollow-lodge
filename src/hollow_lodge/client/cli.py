@@ -183,6 +183,56 @@ def admin_invite_create(
     typer.echo(response["invite_code"])
 
 
+@admin_app.command("key-requests")
+def admin_key_requests(
+    server: str = typer.Option(
+        DEFAULT_SERVER_URL,
+        "--server",
+        help="Authoritative server URL. Defaults to the official Lodge.",
+    ),
+    admin_token: str = typer.Option(
+        ...,
+        "--admin-token",
+        envvar="HOLLOW_LODGE_ADMIN_TOKEN",
+        help="Server admin token.",
+    ),
+) -> None:
+    """List access-key requests."""
+    response = HollowLodgeApi(server_url=server).list_key_requests(
+        admin_token=admin_token,
+    )
+    for key_request in response["key_requests"]:
+        contact = key_request.get("contact") or "-"
+        typer.echo(
+            f"{key_request['request_id']} {key_request['status']} "
+            f"{key_request['display_name']} {contact}"
+        )
+
+
+@admin_app.command("key-request-approve")
+def admin_key_request_approve(
+    request_id: str = typer.Argument(..., help="Access-key request id."),
+    server: str = typer.Option(
+        DEFAULT_SERVER_URL,
+        "--server",
+        help="Authoritative server URL. Defaults to the official Lodge.",
+    ),
+    admin_token: str = typer.Option(
+        ...,
+        "--admin-token",
+        envvar="HOLLOW_LODGE_ADMIN_TOKEN",
+        help="Server admin token.",
+    ),
+) -> None:
+    """Approve an access-key request and print its invite code."""
+    response = HollowLodgeApi(server_url=server).approve_key_request(
+        request_id=request_id,
+        admin_token=admin_token,
+        idempotency_key=new_command_key("admin-key-request-approve"),
+    )
+    typer.echo(response["invite_code"])
+
+
 @codex_app.command("install-mcp")
 def codex_install_mcp(
     config: Path = typer.Option(

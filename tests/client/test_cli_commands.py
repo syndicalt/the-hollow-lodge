@@ -68,6 +68,42 @@ class FakeApi:
         )
         return {"invite_code": "lodge_invite_0001"}
 
+    def list_key_requests(self, *, admin_token: str):
+        self.calls.append(("list_key_requests", {"admin_token": admin_token}))
+        return {
+            "key_requests": [
+                {
+                    "request_id": "key_request_0001",
+                    "display_name": "Ada",
+                    "contact": "ada@example.com",
+                    "status": "pending",
+                }
+            ]
+        }
+
+    def approve_key_request(
+        self,
+        *,
+        request_id: str,
+        admin_token: str,
+        idempotency_key: str,
+    ):
+        self.calls.append(
+            (
+                "approve_key_request",
+                {
+                    "request_id": request_id,
+                    "admin_token": admin_token,
+                    "idempotency_key": idempotency_key,
+                },
+            )
+        )
+        return {
+            "request_id": request_id,
+            "status": "approved",
+            "invite_code": "lodge_invite_0001",
+        }
+
     def create_crew(self, *, name: str, idempotency_key: str):
         self.calls.append(("create_crew", {"name": name, "idempotency_key": idempotency_key}))
         return {"crew_id": "crew_0001", "join_code": "join-secret"}
@@ -652,6 +688,77 @@ def test_admin_invite_create_command_uses_admin_token_without_player_auth(tmp_pa
             {
                 "admin_token": "admin-secret",
                 "idempotency_key": "admin-invite-create-key",
+            },
+        )
+    ]
+
+
+def test_admin_key_requests_command_lists_requests(tmp_path, monkeypatch):
+    runner = CliRunner()
+    created_clients: list[FakeApi] = []
+
+    def fake_client(**kwargs):
+        client = FakeApi(**kwargs)
+        created_clients.append(client)
+        return client
+
+    monkeypatch.setattr(cli, "HollowLodgeApi", fake_client)
+
+    result = runner.invoke(
+        cli.app,
+        [
+            "admin",
+            "key-requests",
+            "--server",
+            "http://testserver",
+            "--admin-token",
+            "admin-secret",
+        ],
+    )
+
+    assert result.exit_code == 0
+    assert "key_request_0001 pending Ada ada@example.com" in result.output
+    assert created_clients[0].token is None
+    assert created_clients[0].calls == [
+        ("list_key_requests", {"admin_token": "admin-secret"})
+    ]
+
+
+def test_admin_key_request_approve_command_prints_invite(tmp_path, monkeypatch):
+    runner = CliRunner()
+    created_clients: list[FakeApi] = []
+
+    def fake_client(**kwargs):
+        client = FakeApi(**kwargs)
+        created_clients.append(client)
+        return client
+
+    monkeypatch.setattr(cli, "HollowLodgeApi", fake_client)
+    monkeypatch.setattr(cli, "new_command_key", lambda prefix: f"{prefix}-key")
+
+    result = runner.invoke(
+        cli.app,
+        [
+            "admin",
+            "key-request-approve",
+            "key_request_0001",
+            "--server",
+            "http://testserver",
+            "--admin-token",
+            "admin-secret",
+        ],
+    )
+
+    assert result.exit_code == 0
+    assert result.output == "lodge_invite_0001\n"
+    assert created_clients[0].token is None
+    assert created_clients[0].calls == [
+        (
+            "approve_key_request",
+            {
+                "request_id": "key_request_0001",
+                "admin_token": "admin-secret",
+                "idempotency_key": "admin-key-request-approve-key",
             },
         )
     ]
