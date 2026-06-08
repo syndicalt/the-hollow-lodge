@@ -268,6 +268,79 @@ def test_crew_board_legacy_remembers_verified_rumors_without_private_sources(tmp
     assert moth["crew_id"] not in memory_text
 
 
+def test_repeated_credible_rumors_create_escalation_decision_on_boards(tmp_path):
+    client = TestClient(create_app(data_dir=tmp_path, invite_codes=["a", "b", "c"]))
+    ada = register(client, "a", "Ada")
+    grace = register(client, "b", "Grace")
+    linus = register(client, "c", "Linus")
+    gilt = client.post(
+        "/crews",
+        headers=command_auth(ada["token"], "crew-create-gilt"),
+        json={"name": "The Gilt Knives"},
+    ).json()
+    moth = client.post(
+        "/crews",
+        headers=command_auth(grace["token"], "crew-create-moth"),
+        json={"name": "The Moth Choir"},
+    ).json()
+    ash = client.post(
+        "/crews",
+        headers=command_auth(linus["token"], "crew-create-ash"),
+        json={"name": "The Ash Keys"},
+    ).json()
+    for index in range(2):
+        leaked = client.post(
+            "/chat/crew-to-crew",
+            headers=command_auth(ada["token"], f"chat-gilt-moth-ledger-{index}"),
+            json={
+                "sender_crew_id": gilt["crew_id"],
+                "recipient_crew_id": moth["crew_id"],
+                "body": f"The ledger proves our leverage. Keep quiet. {index}",
+                "artifact_ids": ["artifact_ledger_rubric"],
+            },
+        )
+        submitted = client.post(
+            "/actions",
+            headers=command_auth(linus["token"], f"action-investigate-rumor-{index}"),
+            json={
+                "crew_id": ash["crew_id"],
+                "intent": "Quietly verify the artifact rumor through the auction clerk.",
+                "confirmed": True,
+                "rumor_id": f"rumor_msg_00000{index + 1}",
+            },
+        )
+        assert leaked.status_code == 201
+        assert submitted.status_code == 201
+
+    crew_board = client.get(f"/crews/{ash['crew_id']}/board", headers=auth(linus["token"]))
+    inbox = client.get("/inbox", headers=auth(linus["token"]))
+
+    assert crew_board.status_code == 200
+    assert inbox.status_code == 200
+    expected = {
+        "kind": "rumor_escalation",
+        "label": "Repeated credible rumor signals",
+        "description": (
+            f"Crew {ash['crew_id']} has 2 credible rumor verifications. Decide "
+            "whether to contain, exploit, or fold them into contract strategy."
+        ),
+        "crew_id": ash["crew_id"],
+        "action": "review_rumor_escalation",
+        "credible_count": 2,
+        "assessment_counts": {"credible_artifact_signal": 2},
+    }
+    assert expected in crew_board.json()["pending_decisions"]
+    assert expected in inbox.json()["pending_decisions"]
+    assert not any(
+        decision["kind"] == "rumor_response"
+        for decision in crew_board.json()["pending_decisions"]
+    )
+    assert "msg_000001" not in str(crew_board.json()["pending_decisions"])
+    assert "chat.message.created" not in str(crew_board.json()["pending_decisions"])
+    assert "The ledger proves our leverage" not in str(crew_board.json()["pending_decisions"])
+    assert "artifact_ledger_rubric" not in str(crew_board.json()["pending_decisions"])
+
+
 def test_crew_board_pending_decisions_include_dossier_needs_and_action(tmp_path):
     client = TestClient(create_app(data_dir=tmp_path, invite_codes=["a"]))
     ada = register(client, "a", "Ada")

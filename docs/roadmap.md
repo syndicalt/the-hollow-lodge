@@ -346,8 +346,13 @@ Status:
   block, preserving assessment counts and recent safe summaries without
   carrying source IDs, private message bodies, artifact IDs, deal terms, or
   suspected crew IDs into legacy context.
+- Ninth social-pressure slice completed: repeated credible rumor verification
+  results now create a safe `rumor_escalation` pending decision in Codex inbox
+  and crew-board surfaces, using only aggregate assessment counts so players
+  can decide whether to contain, exploit, or fold the pattern into contract
+  strategy.
 - Escrowed deal acceptance remains participant-scoped and server-enforced.
-- Deferred: richer rumor verification sources and escalation paths after
+- Deferred: richer rumor verification sources and follow-through mutations for
   repeated credible signals.
 
 Likely files:
@@ -867,6 +872,25 @@ Expected verification:
 
 - `pytest tests/server/test_crew_legacy_projection.py::test_verified_rumors_create_safe_long_term_crew_memory tests/client/test_render_packets.py::test_crew_board_packet_renders_legacy_and_future_modifiers_without_hidden_fields tests/server/test_crew_routes.py::test_crew_board_legacy_remembers_verified_rumors_without_private_sources -q`
 - `pytest tests/server/test_crew_legacy_projection.py tests/server/test_crew_routes.py tests/client/test_render_packets.py -q`
+- `pytest -q`
+
+### Slice 32: Credible Rumor Escalation Decisions
+
+Status: completed.
+
+Make repeated credible rumor checks actionable without exposing private
+sources. Pending-decision projection now accepts optional crew legacy context
+and creates a `rumor_escalation` decision when a crew has at least two
+credible rumor verifications. Crew boards and inboxes pass safe crew legacy
+into the projection, and Codex render packets preserve only aggregate
+`credible_count` and `assessment_counts` for the decision while dropping source
+IDs, private bodies, artifact IDs, deal terms, suspected crew IDs, and raw
+verification recency.
+
+Expected verification:
+
+- `pytest tests/server/test_pending_decisions.py::test_repeated_credible_rumor_memory_creates_escalation_decision tests/server/test_crew_routes.py::test_repeated_credible_rumors_create_escalation_decision_on_boards tests/client/test_render_packets.py::test_crew_board_packet_shows_packet_lead_and_dossier_status tests/client/test_render_packets.py::test_inbox_packet_prioritizes_actionable_items_for_codex -q`
+- `pytest tests/server/test_pending_decisions.py tests/server/test_crew_routes.py tests/server/test_chat_routes.py tests/server/test_deal_routes.py tests/client/test_render_packets.py -q`
 - `pytest -q`
 
 ## Completion Standard

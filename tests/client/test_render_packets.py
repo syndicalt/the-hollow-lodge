@@ -447,6 +447,20 @@ def test_inbox_packet_prioritizes_actionable_items_for_codex():
                     "contract_id": "contract_false_finger",
                     "deal_id": "deal_000001",
                     "hidden_note": "server-only",
+                },
+                {
+                    "kind": "rumor_escalation",
+                    "label": "Repeated credible rumor signals",
+                    "description": (
+                        "Crew crew_0001 has 2 credible rumor verifications. Decide "
+                        "whether to contain, exploit, or fold them into contract strategy."
+                    ),
+                    "crew_id": "crew_0001",
+                    "action": "review_rumor_escalation",
+                    "credible_count": 2,
+                    "assessment_counts": {"credible_artifact_signal": 2},
+                    "source_id": "msg_private_000001",
+                    "private_body": "The ledger proves our leverage.",
                 }
             ],
         }
@@ -456,10 +470,13 @@ def test_inbox_packet_prioritizes_actionable_items_for_codex():
     assert "Inbox: player_0001" in packet.player_markdown
     assert "Pending decisions:" in packet.player_markdown
     assert "- Incoming deal needs response: Deal deal_000001 from crew_0002 needs a response." in packet.player_markdown
+    assert "- Repeated credible rumor signals: Crew crew_0001 has 2 credible rumor verifications. Decide whether to contain, exploit, or fold them into contract strategy." in packet.player_markdown
     assert "incoming proof fragments: none" in packet.player_markdown
     assert "visible artifacts:" in packet.player_markdown
     assert "- artifact_lot_card: Auction Lot Card" in packet.player_markdown
     assert "server-only" not in packet.player_markdown
+    assert "msg_private_000001" not in packet.player_markdown
+    assert "The ledger proves our leverage" not in packet.player_markdown
     assert packet.agent_context["player_id"] == "player_0001"
     assert packet.agent_context["pending_decisions"] == [
         {
@@ -469,6 +486,18 @@ def test_inbox_packet_prioritizes_actionable_items_for_codex():
             "crew_id": "crew_0001",
             "contract_id": "contract_false_finger",
             "deal_id": "deal_000001",
+        },
+        {
+            "kind": "rumor_escalation",
+            "label": "Repeated credible rumor signals",
+            "description": (
+                "Crew crew_0001 has 2 credible rumor verifications. Decide "
+                "whether to contain, exploit, or fold them into contract strategy."
+            ),
+            "crew_id": "crew_0001",
+            "action": "review_rumor_escalation",
+            "credible_count": 2,
+            "assessment_counts": {"credible_artifact_signal": 2},
         }
     ]
     assert packet.agent_context["visible_artifacts"] == [
@@ -703,6 +732,20 @@ def test_crew_board_packet_shows_packet_lead_and_dossier_status():
                     "action": "review_rumor",
                     "artifact_ids": ["artifact_private_escrow"],
                     "body": "The ledger proves our leverage.",
+                },
+                {
+                    "kind": "rumor_escalation",
+                    "label": "Repeated credible rumor signals",
+                    "description": (
+                        "Crew crew_0001 has 2 credible rumor verifications. Decide "
+                        "whether to contain, exploit, or fold them into contract strategy."
+                    ),
+                    "crew_id": "crew_0001",
+                    "action": "review_rumor_escalation",
+                    "credible_count": 2,
+                    "assessment_counts": {"credible_artifact_signal": 2},
+                    "source_id": "msg_private_000001",
+                    "private_body": "The ledger proves our leverage.",
                 }
             ],
         }
@@ -720,6 +763,7 @@ def test_crew_board_packet_shows_packet_lead_and_dossier_status():
     assert "Pending decisions:" in packet.player_markdown
     assert "- Dossier needs provenance chain: The Saint's False Finger still needs dossier coverage for provenance chain." in packet.player_markdown
     assert "- Rumor needs response: Rumor rumor_msg_000001 suggests artifact_reference_detected. Decide whether to verify, ignore, or answer with a crew action." in packet.player_markdown
+    assert "- Repeated credible rumor signals: Crew crew_0001 has 2 credible rumor verifications. Decide whether to contain, exploit, or fold them into contract strategy." in packet.player_markdown
     assert "artifact_private_escrow" not in packet.player_markdown
     assert "Do not cite us." not in packet.player_markdown
     assert "The ledger proves our leverage" not in packet.player_markdown
@@ -779,6 +823,18 @@ def test_crew_board_packet_shows_packet_lead_and_dossier_status():
             "source_id": "msg_000001",
             "pressure": "artifact_reference_detected",
             "action": "review_rumor",
+        },
+        {
+            "kind": "rumor_escalation",
+            "label": "Repeated credible rumor signals",
+            "description": (
+                "Crew crew_0001 has 2 credible rumor verifications. Decide "
+                "whether to contain, exploit, or fold them into contract strategy."
+            ),
+            "crew_id": "crew_0001",
+            "action": "review_rumor_escalation",
+            "credible_count": 2,
+            "assessment_counts": {"credible_artifact_signal": 2},
         }
     ]
     assert packet.agent_context["urgent_items"] == packet.agent_context["pending_decisions"]

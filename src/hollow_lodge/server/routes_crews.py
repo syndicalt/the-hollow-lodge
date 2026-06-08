@@ -146,6 +146,7 @@ def crew_board(
                 crew_id: _action_service(request).current_actions_for_crew(crew_id),
             },
             rumors_by_crew={crew_id: rumors},
+            crew_legacies={crew_id: legacy},
         ),
     }
 

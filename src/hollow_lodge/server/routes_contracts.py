@@ -14,6 +14,7 @@ from hollow_lodge.server.contract_seed import ContractSeed, load_contract_seed_f
 from hollow_lodge.server.pending_decisions import pending_decisions_for_player
 from hollow_lodge.server.projections import (
     apply_contract_unlock_status,
+    crew_legacy_from_contracts,
     inbox_from_board,
     unlocked_actionable_contracts,
 )
@@ -118,6 +119,11 @@ def inbox(
     payload["visible_artifacts"] = _visible_artifacts_for_player(request, player.player_id)
     payload["deals"] = _deals_for_player(request, player.player_id)
     crew_ids = request.app.state.crew_service.crew_ids_for_player(player.player_id)
+    events = request.app.state.event_store.read()
+    deals_by_crew = {
+        crew_id: _deals_for_crew(request, player.player_id, crew_id)
+        for crew_id in crew_ids
+    }
     rumors_by_crew = {
         crew_id: visible_rumors_for_crew(request.app.state.event_store, crew_id)
         for crew_id in crew_ids
@@ -143,6 +149,15 @@ def inbox(
             for crew_id in crew_ids
         },
         rumors_by_crew=rumors_by_crew,
+        crew_legacies={
+            crew_id: crew_legacy_from_contracts(
+                crew_id=crew_id,
+                contracts=payload["active_contracts"],
+                deals=deals_by_crew.get(crew_id, []),
+                events=events,
+            )
+            for crew_id in crew_ids
+        },
     )
     return payload
 

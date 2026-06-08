@@ -359,7 +359,7 @@ def _shape_legacy_delta(payload: dict[str, Any]) -> dict[str, Any]:
 
 
 def _shape_pending_decision(decision: dict[str, Any]) -> dict[str, Any]:
-    return {
+    shaped = {
         key: decision[key]
         for key in (
             "kind",
@@ -376,9 +376,24 @@ def _shape_pending_decision(decision: dict[str, Any]) -> dict[str, Any]:
             "missing_need",
             "action",
             "action_ids",
+            "credible_count",
+            "assessment_counts",
         )
         if key in decision
     }
+    if shaped.get("kind") == "rumor_escalation":
+        shaped.pop("rumor_id", None)
+        shaped.pop("source_type", None)
+        shaped.pop("source_id", None)
+        shaped.pop("pressure", None)
+        shaped["credible_count"] = int(shaped.get("credible_count", 0))
+        shaped["assessment_counts"] = {
+            str(assessment): int(count)
+            for assessment, count in sorted(
+                dict(shaped.get("assessment_counts", {})).items()
+            )
+        }
+    return shaped
 
 
 def _render_pending_decisions(decisions: list[dict[str, Any]]) -> list[str]:
