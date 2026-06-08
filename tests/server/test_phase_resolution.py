@@ -123,6 +123,26 @@ def test_phase_lock_replay_and_duplicate_lock_do_not_append_duplicate_reveals(tm
     assert "saint-bone forgery" not in str(events)
 
 
+def test_phase_resolution_records_server_only_oracle_audit_events(tmp_path):
+    client, ada, linus, gilt, moth = setup_two_crews(tmp_path)
+    submit_action(client, ada, gilt, "action-gilt", "Inspect the ledger for forged provenance.")
+    submit_action(client, linus, moth, "action-moth", "Observe the moth jar door omen.")
+
+    response = lock_preview(client, ada, "phase-lock-1")
+    events = client.app.state.event_store.read()
+
+    requested = [event for event in events if event.type == "oracle.resolution.requested"]
+    completed = [event for event in events if event.type == "oracle.resolution.completed"]
+
+    assert response.status_code == 200
+    assert requested
+    assert completed
+    assert requested[0].visibility == EventVisibility.server_only()
+    assert completed[0].visibility == EventVisibility.server_only()
+    assert completed[0].payload["provider"] == "deterministic"
+    assert completed[0].payload["fallback"] is False
+
+
 def test_actions_can_be_canceled_before_lock_and_cannot_mutate_after_lock(tmp_path):
     client, ada, _, gilt, _ = setup_two_crews(tmp_path)
     submitted = submit_action(client, ada, gilt, "action-gilt", "Inspect the ledger.")

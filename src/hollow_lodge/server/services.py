@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import hashlib
 import json
 import os
 import secrets
@@ -18,13 +19,21 @@ from hollow_lodge.domain.identity import (
     hash_token,
 )
 from hollow_lodge.domain.proofs import ProofDossier, ProofFragment
-from hollow_lodge.domain.scoring import AuctionPreviewScoreInput, score_auction_preview
+from hollow_lodge.domain.scoring import AuctionPreviewScoreInput
 from hollow_lodge.domain.actions import NormalizedAction
 from hollow_lodge.eventlog.jsonl_store import JsonlEventStore
 from hollow_lodge.eventlog.visibility import Principal
 from hollow_lodge.server.projections import contract_board_from_events, inbox_from_board
 from hollow_lodge.server.seed_data import STARTER_CAMPAIGN, STARTER_CONTRACT, STARTER_HIDDEN_TRUTH
 from hollow_lodge.server.auth import authenticate_token
+from hollow_lodge.workflows.deterministic_oracle import DeterministicResolutionOracle
+from hollow_lodge.workflows.oracle_boundary import (
+    AuctionPreviewCrewPacket,
+    AuctionPreviewOraclePacket,
+    AuctionPreviewOracleResult,
+    ResolutionOracle,
+    validate_auction_preview_result,
+)
 
 
 JOIN_CODE_BYTES = 18
@@ -661,8 +670,14 @@ class VisibilityService:
 
 
 class ContractService:
-    def __init__(self, *, event_store: JsonlEventStore):
+    def __init__(
+        self,
+        *,
+        event_store: JsonlEventStore,
+        resolution_oracle: ResolutionOracle | None = None,
+    ):
         self._event_store = event_store
+        self._resolution_oracle = resolution_oracle or DeterministicResolutionOracle()
         self._lock = threading.RLock()
         self._seed_starter_contract()
 
@@ -784,32 +799,120 @@ class ContractService:
         return None
 
     def _build_auction_preview_reveal(self, *, contract_id: str) -> dict:
-        scores = [
-            score_auction_preview(score_input)
-            for score_input in self._auction_preview_score_inputs()
-        ]
+        packet = self._build_auction_preview_packet(contract_id=contract_id)
+        input_packet_hash = self._oracle_packet_hash(packet)
+        self._event_store.append_command(
+            event_type="oracle.resolution.requested",
+            actor_id="server",
+            visibility=EventVisibility.server_only(),
+            payload={
+                "contract_id": contract_id,
+                "phase": "Auction Preview",
+                "input_packet_hash": input_packet_hash,
+            },
+            idempotency_key=f"oracle.resolution.{contract_id}.auction-preview.requested",
+        )
+        candidate = self._resolution_oracle.resolve_auction_preview(packet)
+        result = validate_auction_preview_result(packet=packet, result=candidate)
+        self._event_store.append_command(
+            event_type="oracle.resolution.completed",
+            actor_id="server",
+            visibility=EventVisibility.server_only(),
+            payload={
+                "contract_id": contract_id,
+                "phase": "Auction Preview",
+                "provider": result.provider.provider,
+                "model": result.provider.model,
+                "prompt_version": result.provider.prompt_version,
+                "fallback": False,
+                "fallback_reason": None,
+                "input_packet_hash": input_packet_hash,
+                "accepted_output": result.model_dump(mode="json"),
+            },
+            idempotency_key=f"oracle.resolution.{contract_id}.auction-preview.completed",
+        )
+        return self._auction_preview_reveal_from_oracle_result(
+            contract_id=contract_id,
+            result=result,
+        )
+
+    def _build_auction_preview_packet(self, *, contract_id: str) -> AuctionPreviewOraclePacket:
+        score_inputs = self._auction_preview_score_inputs()
+        allowed_evidence_ids = tuple(
+            dict.fromkeys(
+                (
+                    STARTER_FRAGMENT.fragment_id,
+                    *(asset.asset_id for asset in STARTER_CONTRACT.evidence_assets),
+                    *(
+                        evidence_id
+                        for score_input in score_inputs
+                        for evidence_id in score_input.evidence_ids
+                    ),
+                    *(
+                        asset_id
+                        for score_input in score_inputs
+                        for asset_id in score_input.exposed_assets
+                    ),
+                )
+            )
+        )
+        return AuctionPreviewOraclePacket(
+            contract_id=contract_id,
+            phase="Auction Preview",
+            hidden_truth_summary=STARTER_HIDDEN_TRUTH.summary,
+            allowed_reveal_strings=(
+                "Auction house provenance is now suspect.",
+                "Rival alternate clue paths remain open.",
+            ),
+            rubric_hooks=STARTER_CONTRACT.proof_dossier_needs,
+            crews=tuple(
+                AuctionPreviewCrewPacket(
+                    crew_id=score_input.crew_id,
+                    claim=score_input.claim,
+                    reasoning=score_input.reasoning,
+                    weaknesses=score_input.weaknesses,
+                    provenance_concerns=score_input.provenance_concerns,
+                    evidence_ids=tuple(score_input.evidence_ids),
+                    exposed_assets=tuple(score_input.exposed_assets),
+                    action_intents=tuple(score_input.action_intents),
+                    crew_noise=score_input.crew_noise,
+                )
+                for score_input in score_inputs
+            ),
+            allowed_evidence_ids=allowed_evidence_ids,
+            score_min=0,
+            score_max=100,
+        )
+
+    def _auction_preview_reveal_from_oracle_result(
+        self,
+        *,
+        contract_id: str,
+        result: AuctionPreviewOracleResult,
+    ) -> dict:
         standings = [
             {
-                "crew_id": score.crew_id,
-                "score": score.total,
-                "standing": score.standing,
-                "strengths": list(score.strengths),
-                "weaknesses": list(score.weaknesses),
-                "penalties": list(score.penalties),
-                "revealed_clues": list(score.revealed_clues),
+                "crew_id": standing.crew_id,
+                "score": standing.score,
+                "standing": standing.standing,
+                "strengths": list(standing.strengths),
+                "weaknesses": list(standing.weaknesses),
+                "penalties": list(standing.penalties),
+                "revealed_clues": list(standing.revealed_clues),
             }
-            for score in sorted(scores, key=lambda item: (-item.total, item.crew_id))
+            for standing in result.standings
         ]
         return {
             "contract_id": contract_id,
             "phase": "Auction Preview",
             "status": "resolved",
             "standings": standings,
-            "contract_state": [
-                "Auction house provenance is now suspect.",
-                "Rival alternate clue paths remain open.",
-            ],
+            "contract_state": list(result.contract_state),
+            "narration": result.narration,
         }
+
+    def _oracle_packet_hash(self, packet: AuctionPreviewOraclePacket) -> str:
+        return hashlib.sha256(packet.model_dump_json().encode("utf-8")).hexdigest()
 
     def _auction_preview_score_inputs(self) -> list[AuctionPreviewScoreInput]:
         crew_ids = self._crew_ids()
