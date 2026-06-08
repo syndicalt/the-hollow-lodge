@@ -61,3 +61,8 @@ When a player says "what's happening" or starts a play session:
 Treat private conversations and crew boards as visibility-scoped game state.
 Do not reveal server-only truth. Do not claim certainty about leaked or copied
 information unless the game state exposes that certainty.
+
+Before advising on proof, render artifacts or a specific artifact when the
+player references evidence. Treat visible artifact content as source material.
+Do not infer hidden graph nodes as facts; frame them as hypotheses unless the
+server has revealed them.

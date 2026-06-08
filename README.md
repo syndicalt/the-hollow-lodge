@@ -7,6 +7,14 @@ Players join stable crews, inspect contracts, build proof packets, negotiate
 through brokered messages, and submit freeform actions through a local agent
 that clarifies consequences without choosing strategy by default.
 
+## Artifact Gameplay Loop
+
+Contracts seed a server-only evidence graph before play. Players see a
+visibility-scoped slice of that graph as artifacts. They can inspect artifacts,
+transfer copies, cite artifacts in crew dossiers, and submit freeform actions
+that unlock additional artifacts. Phase resolution scores dossiers and actions
+against the server-owned graph.
+
 ## Install
 
 ```sh
