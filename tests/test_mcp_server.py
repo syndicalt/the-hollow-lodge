@@ -140,9 +140,79 @@ def test_preview_deal_acceptance_mcp_call_is_read_only(monkeypatch):
 
     assert result.content[0].text == packet.player_markdown
     assert result.structuredContent["surface"] == "deal_preview"
-    assert "accept_deal" not in {
-        tool.name for tool in asyncio.run(mcp_server.mcp.list_tools())
-    }
+
+
+def test_submit_action_mcp_call_passes_confirmation_to_session(monkeypatch):
+    packet = RenderPacket(
+        surface="mutation",
+        player_markdown="Preview: submit_action\nNo server mutation was submitted.",
+        agent_context={"operation": "submit_action", "mutation": False},
+    )
+
+    class StubSession:
+        def submit_action(
+            self,
+            *,
+            intent: str,
+            confirm: bool,
+            crew_id: str | None = None,
+        ) -> RenderPacket:
+            assert intent == "Inspect the ledger."
+            assert confirm is False
+            assert crew_id is None
+            return packet
+
+    monkeypatch.setattr(mcp_server, "_session", lambda: StubSession())
+
+    result = asyncio.run(
+        mcp_server.mcp.call_tool(
+            "submit_action",
+            {"intent": "Inspect the ledger.", "confirm": False},
+        )
+    )
+
+    assert result.content[0].text == packet.player_markdown
+    assert result.structuredContent["agent_context"]["mutation"] is False
+
+
+def test_dossier_contribute_mcp_call_passes_note_evidence_and_confirmation(monkeypatch):
+    packet = RenderPacket(
+        surface="mutation",
+        player_markdown="Preview: dossier_contribute\nNo server mutation was submitted.",
+        agent_context={"operation": "dossier_contribute", "mutation": False},
+    )
+
+    class StubSession:
+        def dossier_contribute(
+            self,
+            *,
+            note: str,
+            evidence_ids: list[str],
+            confirm: bool,
+            crew_id: str | None = None,
+        ) -> RenderPacket:
+            assert note == "The ledger hand changes after the chapel seal."
+            assert evidence_ids == ["fragment_1", "artifact_ledger_rubric"]
+            assert confirm is False
+            assert crew_id == "crew_0001"
+            return packet
+
+    monkeypatch.setattr(mcp_server, "_session", lambda: StubSession())
+
+    result = asyncio.run(
+        mcp_server.mcp.call_tool(
+            "dossier_contribute",
+            {
+                "note": "The ledger hand changes after the chapel seal.",
+                "evidence_ids": ["fragment_1", "artifact_ledger_rubric"],
+                "confirm": False,
+                "crew_id": "crew_0001",
+            },
+        )
+    )
+
+    assert result.content[0].text == packet.player_markdown
+    assert result.structuredContent["agent_context"]["mutation"] is False
 
 
 def test_public_mcp_tools_do_not_expose_local_path_overrides():
@@ -156,10 +226,36 @@ def test_public_mcp_tools_do_not_expose_local_path_overrides():
         "render_thread",
         "render_deals",
         "preview_deal_acceptance",
+        "submit_action",
+        "dossier_contribute",
+        "dossier_cite_artifact",
+        "propose_deal",
+        "accept_deal",
+        "transfer_artifact",
+        "vote_packet_lead",
     ):
         properties = tools[tool_name].inputSchema["properties"]
         assert "config_path" not in properties
         assert "local_log_path" not in properties
 
     assert "send_message" not in tools
-    assert "accept_deal" not in tools
+
+
+def test_mutating_mcp_tools_require_confirm_argument():
+    tools = {tool.name: tool for tool in asyncio.run(mcp_server.mcp.list_tools())}
+
+    for tool_name in (
+        "submit_action",
+        "dossier_contribute",
+        "dossier_cite_artifact",
+        "propose_deal",
+        "accept_deal",
+        "transfer_artifact",
+        "vote_packet_lead",
+    ):
+        schema = tools[tool_name].inputSchema
+        assert schema["properties"]["confirm"]["type"] == "boolean"
+        assert "confirm" in schema["required"]
+
+    assert "note" in tools["dossier_contribute"].inputSchema["required"]
+    assert "evidence_ids" in tools["dossier_contribute"].inputSchema["required"]

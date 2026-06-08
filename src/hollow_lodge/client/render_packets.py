@@ -23,6 +23,7 @@ class RenderPacket(BaseModel):
         "artifact_graph",
         "activity",
         "thread",
+        "mutation",
     ]
     player_markdown: str = Field(min_length=1)
     agent_context: dict[str, Any]
@@ -164,6 +165,82 @@ def _shape_activity_event(event: dict[str, Any]) -> dict[str, Any]:
         reveal = payload.get("reveal", {})
         shaped["phase_result"] = _shape_phase_result(reveal)
     return shaped
+
+
+def _shape_mutation_result(operation: str, result: dict[str, Any]) -> dict[str, Any]:
+    if operation == "submit_action":
+        return {
+            key: result[key]
+            for key in ("action_id", "crew_id", "intent")
+            if key in result
+        }
+    if operation in {
+        "dossier_contribute",
+        "dossier_cite_artifact",
+        "vote_packet_lead",
+    }:
+        return _shape_dossier(result)
+    if operation in {"propose_deal", "accept_deal"}:
+        return _shape_deal(result)
+    if operation == "transfer_artifact":
+        return _shape_artifact(result)
+    return {}
+
+
+def _mutation_result_label(operation: str, result: dict[str, Any]) -> str:
+    for key in ("action_id", "deal_id", "artifact_id", "dossier_id"):
+        if key in result:
+            return str(result[key])
+    return "accepted"
+
+
+def build_mutation_result_packet(
+    *,
+    operation: str,
+    confirmed: bool,
+    preview_fields: dict[str, Any] | None = None,
+    result: dict[str, Any] | None = None,
+) -> RenderPacket:
+    if not confirmed:
+        preview = dict(preview_fields or {})
+        lines = [
+            f"Preview: {operation}",
+            "No server mutation was submitted.",
+        ]
+        for key, value in preview.items():
+            lines.append(f"- {key}: {value}")
+        return RenderPacket(
+            surface="mutation",
+            player_markdown="\n".join(lines),
+            agent_context={
+                "operation": operation,
+                "mutation": False,
+                "confirmed": False,
+                "preview": preview,
+            },
+        )
+
+    shaped_result = _shape_mutation_result(operation, result or {})
+    lines = [
+        f"Submitted: {operation}",
+        f"Result: {_mutation_result_label(operation, shaped_result)}",
+    ]
+    if operation in {"propose_deal", "accept_deal"} and shaped_result:
+        lines.extend(_render_deal_lines(shaped_result))
+    return RenderPacket(
+        surface="mutation",
+        player_markdown="\n".join(lines),
+        agent_context={
+            "operation": operation,
+            "mutation": True,
+            "confirmed": True,
+            "result": shaped_result,
+        },
+        suggested_prompts=[
+            "Review recent activity",
+            "Open crew board",
+        ],
+    )
 
 
 def _render_activity_event(event: dict[str, Any]) -> str:

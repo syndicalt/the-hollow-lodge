@@ -87,5 +87,112 @@ def preview_deal_acceptance(deal_id: str) -> CallToolResult:
     return packet_response(_session().preview_deal_acceptance(deal_id))
 
 
+@mcp.tool()
+def submit_action(
+    intent: str,
+    confirm: bool,
+    crew_id: str | None = None,
+) -> CallToolResult:
+    return packet_response(
+        _session().submit_action(intent=intent, confirm=confirm, crew_id=crew_id)
+    )
+
+
+@mcp.tool()
+def dossier_contribute(
+    note: str,
+    evidence_ids: list[str],
+    confirm: bool,
+    crew_id: str | None = None,
+) -> CallToolResult:
+    return packet_response(
+        _session().dossier_contribute(
+            note=note,
+            evidence_ids=evidence_ids,
+            confirm=confirm,
+            crew_id=crew_id,
+        )
+    )
+
+
+@mcp.tool()
+def dossier_cite_artifact(
+    artifact_id: str,
+    claim: str,
+    quote: str,
+    confirm: bool,
+    crew_id: str | None = None,
+) -> CallToolResult:
+    return packet_response(
+        _session().dossier_cite_artifact(
+            artifact_id=artifact_id,
+            claim=claim,
+            quote=quote,
+            confirm=confirm,
+            crew_id=crew_id,
+        )
+    )
+
+
+@mcp.tool()
+def propose_deal(
+    recipient_crew_id: str,
+    offered_artifact_ids: list[str],
+    requested_artifact_ids: list[str],
+    confirm: bool,
+    proposer_crew_id: str | None = None,
+    contract_id: str = "contract_false_finger",
+    soft_terms: list[str] | None = None,
+    expires_phase: str | None = None,
+) -> CallToolResult:
+    return packet_response(
+        _session().propose_deal(
+            recipient_crew_id=recipient_crew_id,
+            offered_artifact_ids=offered_artifact_ids,
+            requested_artifact_ids=requested_artifact_ids,
+            confirm=confirm,
+            proposer_crew_id=proposer_crew_id,
+            contract_id=contract_id,
+            soft_terms=soft_terms,
+            expires_phase=expires_phase,
+        )
+    )
+
+
+@mcp.tool()
+def accept_deal(deal_id: str, confirm: bool) -> CallToolResult:
+    return packet_response(_session().accept_deal(deal_id=deal_id, confirm=confirm))
+
+
+@mcp.tool()
+def transfer_artifact(
+    artifact_id: str,
+    recipient_player_id: str,
+    confirm: bool,
+) -> CallToolResult:
+    return packet_response(
+        _session().transfer_artifact(
+            artifact_id=artifact_id,
+            recipient_player_id=recipient_player_id,
+            confirm=confirm,
+        )
+    )
+
+
+@mcp.tool()
+def vote_packet_lead(
+    player_id: str,
+    confirm: bool,
+    crew_id: str | None = None,
+) -> CallToolResult:
+    return packet_response(
+        _session().vote_packet_lead(
+            player_id=player_id,
+            confirm=confirm,
+            crew_id=crew_id,
+        )
+    )
+
+
 def main() -> None:
     mcp.run()

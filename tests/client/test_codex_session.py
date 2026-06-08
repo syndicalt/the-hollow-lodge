@@ -126,6 +126,221 @@ class FakeApi:
             ]
         }
 
+    def submit_action(self, *, crew_id: str, intent: str, idempotency_key: str):
+        self.calls.append(
+            (
+                "submit_action",
+                {
+                    "crew_id": crew_id,
+                    "intent": intent,
+                    "idempotency_key": idempotency_key,
+                },
+            )
+        )
+        return {"action_id": "action_000001", "crew_id": crew_id, "intent": intent}
+
+    def add_dossier_evidence(
+        self,
+        *,
+        crew_id: str,
+        fragment_id: str,
+        idempotency_key: str,
+    ):
+        self.calls.append(
+            (
+                "add_dossier_evidence",
+                {
+                    "crew_id": crew_id,
+                    "fragment_id": fragment_id,
+                    "idempotency_key": idempotency_key,
+                },
+            )
+        )
+        return {
+            "dossier_id": f"dossier_{crew_id}",
+            "crew_id": crew_id,
+            "packet_lead_player_id": "player_0001",
+            "evidence_ids": [fragment_id],
+            "member_contributions": [
+                {
+                    "player_id": "player_0001",
+                    "note": "Added evidence fragment.",
+                    "evidence_ids": [fragment_id],
+                }
+            ],
+        }
+
+    def add_dossier_contribution(
+        self,
+        *,
+        crew_id: str,
+        note: str,
+        evidence_ids,
+        idempotency_key: str,
+    ):
+        self.calls.append(
+            (
+                "add_dossier_contribution",
+                {
+                    "crew_id": crew_id,
+                    "note": note,
+                    "evidence_ids": list(evidence_ids),
+                    "idempotency_key": idempotency_key,
+                },
+            )
+        )
+        return {
+            "dossier_id": f"dossier_{crew_id}",
+            "crew_id": crew_id,
+            "packet_lead_player_id": "player_0001",
+            "evidence_ids": list(evidence_ids),
+            "member_contributions": [
+                {
+                    "player_id": "player_0001",
+                    "note": note,
+                    "evidence_ids": list(evidence_ids),
+                }
+            ],
+        }
+
+    def cite_artifact_in_dossier(
+        self,
+        *,
+        crew_id: str,
+        artifact_id: str,
+        claim: str,
+        quote: str,
+        idempotency_key: str,
+    ):
+        self.calls.append(
+            (
+                "cite_artifact_in_dossier",
+                {
+                    "crew_id": crew_id,
+                    "artifact_id": artifact_id,
+                    "claim": claim,
+                    "quote": quote,
+                    "idempotency_key": idempotency_key,
+                },
+            )
+        )
+        return {
+            "dossier_id": f"dossier_{crew_id}",
+            "crew_id": crew_id,
+            "packet_lead_player_id": "player_0001",
+            "artifact_citations": [
+                {
+                    "player_id": "player_0001",
+                    "artifact_id": artifact_id,
+                    "claim": claim,
+                    "quote": quote,
+                }
+            ],
+        }
+
+    def propose_deal(
+        self,
+        *,
+        contract_id: str,
+        proposer_crew_id: str,
+        recipient_crew_id: str,
+        offered_artifact_ids,
+        requested_artifact_ids,
+        soft_terms,
+        expires_phase,
+        idempotency_key: str,
+    ):
+        self.calls.append(
+            (
+                "propose_deal",
+                {
+                    "contract_id": contract_id,
+                    "proposer_crew_id": proposer_crew_id,
+                    "recipient_crew_id": recipient_crew_id,
+                    "offered_artifact_ids": list(offered_artifact_ids),
+                    "requested_artifact_ids": list(requested_artifact_ids),
+                    "soft_terms": list(soft_terms),
+                    "expires_phase": expires_phase,
+                    "idempotency_key": idempotency_key,
+                },
+            )
+        )
+        return {
+            "deal_id": "deal_000002",
+            "contract_id": contract_id,
+            "proposer_crew_id": proposer_crew_id,
+            "recipient_crew_id": recipient_crew_id,
+            "status": "proposed",
+            "offered_artifact_ids": list(offered_artifact_ids),
+            "requested_artifact_ids": list(requested_artifact_ids),
+            "soft_terms": list(soft_terms),
+            "expires_phase": expires_phase,
+        }
+
+    def accept_deal(self, *, deal_id: str, idempotency_key: str):
+        self.calls.append(("accept_deal", {"deal_id": deal_id, "idempotency_key": idempotency_key}))
+        return {
+            "deal_id": deal_id,
+            "contract_id": "contract_false_finger",
+            "proposer_crew_id": "crew_0001",
+            "recipient_crew_id": "crew_0002",
+            "status": "fulfilled",
+            "offered_artifact_ids": ["artifact_ledger_rubric"],
+            "requested_artifact_ids": ["artifact_chapel_debt_mark"],
+            "soft_terms": [],
+            "expires_phase": None,
+            "proposer_received_artifact_ids": [
+                "artifact_chapel_debt_mark.dealcopy.deal_000001.crew_0001.2"
+            ],
+            "recipient_received_artifact_ids": [
+                "artifact_ledger_rubric.dealcopy.deal_000001.crew_0002.1"
+            ],
+        }
+
+    def transfer_artifact(
+        self,
+        *,
+        artifact_id: str,
+        recipient_player_id: str,
+        idempotency_key: str,
+    ):
+        self.calls.append(
+            (
+                "transfer_artifact",
+                {
+                    "artifact_id": artifact_id,
+                    "recipient_player_id": recipient_player_id,
+                    "idempotency_key": idempotency_key,
+                },
+            )
+        )
+        return {
+            "artifact_id": f"{artifact_id}.copy",
+            "title": "Red Ledger Rubric",
+            "kind": "ledger",
+            "public_summary": "Copied rubric.",
+            "server_notes": "hidden",
+        }
+
+    def vote_packet_lead(self, *, crew_id: str, player_id: str, idempotency_key: str):
+        self.calls.append(
+            (
+                "vote_packet_lead",
+                {
+                    "crew_id": crew_id,
+                    "player_id": player_id,
+                    "idempotency_key": idempotency_key,
+                },
+            )
+        )
+        return {
+            "dossier_id": f"dossier_{crew_id}",
+            "crew_id": crew_id,
+            "packet_lead_player_id": player_id,
+            "member_contributions": [],
+            "artifact_citations": [],
+        }
+
 
 def test_codex_session_does_not_import_cli_module():
     result = subprocess.run(
@@ -367,4 +582,223 @@ def test_codex_session_renders_thread_with_cli_compatible_matching(tmp_path):
             "body": "The bell moved.",
             "artifact_ids": [],
         }
+    ]
+
+
+def test_codex_session_preview_submit_action_does_not_call_mutating_api(tmp_path):
+    config_path = tmp_path / "config.json"
+    log_path = tmp_path / "local.jsonl"
+    fake_api = FakeApi()
+    save_config(
+        config_path,
+        ClientConfig(
+            server_url="http://testserver",
+            player_id="player_0001",
+            token="token",
+            active_crew_id="crew_0001",
+        ),
+    )
+    session = CodexGameSession(config_path=config_path, local_log_path=log_path, api=fake_api)
+
+    packet = session.submit_action(intent="Inspect the red ledger.", confirm=False)
+
+    assert packet.surface == "mutation"
+    assert packet.agent_context["mutation"] is False
+    assert packet.agent_context["preview"] == {
+        "crew_id": "crew_0001",
+        "intent": "Inspect the red ledger.",
+    }
+    assert fake_api.calls == []
+
+
+def test_codex_session_confirm_submit_action_calls_api_with_active_crew(tmp_path, monkeypatch):
+    config_path = tmp_path / "config.json"
+    log_path = tmp_path / "local.jsonl"
+    fake_api = FakeApi()
+    save_config(
+        config_path,
+        ClientConfig(
+            server_url="http://testserver",
+            player_id="player_0001",
+            token="token",
+            active_crew_id="crew_0001",
+        ),
+    )
+    monkeypatch.setattr(
+        "hollow_lodge.client.codex_session.new_command_key",
+        lambda prefix: f"{prefix}.fixed",
+    )
+    session = CodexGameSession(config_path=config_path, local_log_path=log_path, api=fake_api)
+
+    packet = session.submit_action(intent="Inspect the red ledger.", confirm=True)
+
+    assert packet.agent_context["mutation"] is True
+    assert packet.agent_context["result"] == {
+        "action_id": "action_000001",
+        "crew_id": "crew_0001",
+        "intent": "Inspect the red ledger.",
+    }
+    assert fake_api.calls == [
+        (
+            "submit_action",
+            {
+                "crew_id": "crew_0001",
+                "intent": "Inspect the red ledger.",
+                "idempotency_key": "action-submit.fixed",
+            },
+        ),
+        "visible_events",
+    ]
+
+
+def test_codex_session_accept_deal_preview_shows_consequences_without_accepting(tmp_path):
+    config_path = tmp_path / "config.json"
+    log_path = tmp_path / "local.jsonl"
+    fake_api = FakeApi()
+    save_config(
+        config_path,
+        ClientConfig(
+            server_url="http://testserver",
+            player_id="player_0001",
+            token="token",
+            active_crew_id="crew_0002",
+        ),
+    )
+    session = CodexGameSession(config_path=config_path, local_log_path=log_path, api=fake_api)
+
+    packet = session.accept_deal(deal_id="deal_000001", confirm=False)
+
+    assert packet.surface == "deal_preview"
+    assert "Your side: recipient" in packet.player_markdown
+    assert "Your crew gives: artifact_chapel_debt_mark" in packet.player_markdown
+    assert "Your crew receives: artifact_ledger_rubric" in packet.player_markdown
+    assert packet.agent_context["mutation"] is False
+    assert fake_api.calls == ["visible_events", "deals"]
+
+
+def test_codex_session_confirmed_mutations_use_expected_api_calls(tmp_path, monkeypatch):
+    config_path = tmp_path / "config.json"
+    log_path = tmp_path / "local.jsonl"
+    fake_api = FakeApi()
+    save_config(
+        config_path,
+        ClientConfig(
+            server_url="http://testserver",
+            player_id="player_0001",
+            token="token",
+            active_crew_id="crew_0001",
+        ),
+    )
+    keys: list[str] = []
+
+    def fake_key(prefix: str) -> str:
+        keys.append(prefix)
+        return f"{prefix}.fixed"
+
+    monkeypatch.setattr("hollow_lodge.client.codex_session.new_command_key", fake_key)
+    session = CodexGameSession(config_path=config_path, local_log_path=log_path, api=fake_api)
+
+    packets = [
+        session.dossier_contribute(
+            note="The ledger hand changes after the chapel seal.",
+            evidence_ids=["fragment_1", "artifact_ledger_rubric"],
+            confirm=True,
+        ),
+        session.dossier_cite_artifact(
+            artifact_id="artifact_ledger_rubric",
+            claim="The ledger contradicts the lot card.",
+            quote="The last hand is later.",
+            confirm=True,
+        ),
+        session.propose_deal(
+            recipient_crew_id="crew_0002",
+            offered_artifact_ids=["artifact_ledger_rubric"],
+            requested_artifact_ids=["artifact_chapel_debt_mark"],
+            confirm=True,
+        ),
+        session.accept_deal(deal_id="deal_000001", confirm=True),
+        session.transfer_artifact(
+            artifact_id="artifact_ledger_rubric",
+            recipient_player_id="player_0002",
+            confirm=True,
+        ),
+        session.vote_packet_lead(player_id="player_0002", confirm=True),
+    ]
+
+    assert all(packet.surface == "mutation" for packet in packets)
+    assert all(packet.agent_context["mutation"] is True for packet in packets)
+    assert packets[0].agent_context["result"]["member_contributions"] == [
+        {
+            "player_id": "player_0001",
+            "note": "The ledger hand changes after the chapel seal.",
+            "evidence_ids": ["fragment_1", "artifact_ledger_rubric"],
+        }
+    ]
+    assert packets[3].agent_context["result"]["recipient_received_artifact_ids"] == [
+        "artifact_ledger_rubric.dealcopy.deal_000001.crew_0002.1"
+    ]
+    assert keys == [
+        "dossier-contribute",
+        "dossier-cite-artifact",
+        "deal-propose",
+        "deal-accept",
+        "artifact-transfer",
+        "packet-lead-vote",
+    ]
+    assert fake_api.calls == [
+        (
+            "add_dossier_contribution",
+            {
+                "crew_id": "crew_0001",
+                "note": "The ledger hand changes after the chapel seal.",
+                "evidence_ids": ["fragment_1", "artifact_ledger_rubric"],
+                "idempotency_key": "dossier-contribute.fixed",
+            },
+        ),
+        "visible_events",
+        (
+            "cite_artifact_in_dossier",
+            {
+                "crew_id": "crew_0001",
+                "artifact_id": "artifact_ledger_rubric",
+                "claim": "The ledger contradicts the lot card.",
+                "quote": "The last hand is later.",
+                "idempotency_key": "dossier-cite-artifact.fixed",
+            },
+        ),
+        "visible_events",
+        (
+            "propose_deal",
+            {
+                "contract_id": "contract_false_finger",
+                "proposer_crew_id": "crew_0001",
+                "recipient_crew_id": "crew_0002",
+                "offered_artifact_ids": ["artifact_ledger_rubric"],
+                "requested_artifact_ids": ["artifact_chapel_debt_mark"],
+                "soft_terms": [],
+                "expires_phase": None,
+                "idempotency_key": "deal-propose.fixed",
+            },
+        ),
+        "visible_events",
+        ("accept_deal", {"deal_id": "deal_000001", "idempotency_key": "deal-accept.fixed"}),
+        "visible_events",
+        (
+            "transfer_artifact",
+            {
+                "artifact_id": "artifact_ledger_rubric",
+                "recipient_player_id": "player_0002",
+                "idempotency_key": "artifact-transfer.fixed",
+            },
+        ),
+        "visible_events",
+        (
+            "vote_packet_lead",
+            {
+                "crew_id": "crew_0001",
+                "player_id": "player_0002",
+                "idempotency_key": "packet-lead-vote.fixed",
+            },
+        ),
+        "visible_events",
     ]

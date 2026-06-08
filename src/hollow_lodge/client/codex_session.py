@@ -3,7 +3,7 @@ from __future__ import annotations
 from pathlib import Path
 from typing import Any
 
-from hollow_lodge.client.api import HollowLodgeApi
+from hollow_lodge.client.api import HollowLodgeApi, new_command_key
 from hollow_lodge.client.artifact_render import (
     build_artifact_graph_packet,
     build_artifact_packet,
@@ -19,6 +19,7 @@ from hollow_lodge.client.render_packets import (
     build_contract_board_packet,
     build_crew_board_packet,
     build_inbox_packet,
+    build_mutation_result_packet,
     build_thread_packet,
 )
 
@@ -99,6 +100,215 @@ class CodexGameSession:
                 )
         raise ValueError("deal not found")
 
+    def submit_action(
+        self,
+        *,
+        intent: str,
+        confirm: bool,
+        crew_id: str | None = None,
+    ) -> RenderPacket:
+        target_crew_id = self._target_crew_id(crew_id)
+        if not confirm:
+            return build_mutation_result_packet(
+                operation="submit_action",
+                confirmed=False,
+                preview_fields={"crew_id": target_crew_id, "intent": intent},
+            )
+        result = self.api.submit_action(
+            crew_id=target_crew_id,
+            intent=intent,
+            idempotency_key=new_command_key("action-submit"),
+        )
+        self.sync()
+        return build_mutation_result_packet(
+            operation="submit_action",
+            confirmed=True,
+            result=result,
+        )
+
+    def dossier_contribute(
+        self,
+        *,
+        note: str,
+        evidence_ids: list[str] | tuple[str, ...],
+        confirm: bool,
+        crew_id: str | None = None,
+    ) -> RenderPacket:
+        target_crew_id = self._target_crew_id(crew_id)
+        preview = {
+            "crew_id": target_crew_id,
+            "note": note,
+            "evidence_ids": list(evidence_ids),
+        }
+        if not confirm:
+            return build_mutation_result_packet(
+                operation="dossier_contribute",
+                confirmed=False,
+                preview_fields=preview,
+            )
+        result = self.api.add_dossier_contribution(
+            crew_id=target_crew_id,
+            note=note,
+            evidence_ids=evidence_ids,
+            idempotency_key=new_command_key("dossier-contribute"),
+        )
+        self.sync()
+        return build_mutation_result_packet(
+            operation="dossier_contribute",
+            confirmed=True,
+            result=result,
+        )
+
+    def dossier_cite_artifact(
+        self,
+        *,
+        artifact_id: str,
+        claim: str,
+        quote: str,
+        confirm: bool,
+        crew_id: str | None = None,
+    ) -> RenderPacket:
+        target_crew_id = self._target_crew_id(crew_id)
+        preview = {
+            "crew_id": target_crew_id,
+            "artifact_id": artifact_id,
+            "claim": claim,
+            "quote": quote,
+        }
+        if not confirm:
+            return build_mutation_result_packet(
+                operation="dossier_cite_artifact",
+                confirmed=False,
+                preview_fields=preview,
+            )
+        result = self.api.cite_artifact_in_dossier(
+            crew_id=target_crew_id,
+            artifact_id=artifact_id,
+            claim=claim,
+            quote=quote,
+            idempotency_key=new_command_key("dossier-cite-artifact"),
+        )
+        self.sync()
+        return build_mutation_result_packet(
+            operation="dossier_cite_artifact",
+            confirmed=True,
+            result=result,
+        )
+
+    def propose_deal(
+        self,
+        *,
+        recipient_crew_id: str,
+        offered_artifact_ids: list[str] | tuple[str, ...],
+        requested_artifact_ids: list[str] | tuple[str, ...],
+        confirm: bool,
+        proposer_crew_id: str | None = None,
+        contract_id: str = "contract_false_finger",
+        soft_terms: list[str] | tuple[str, ...] | None = None,
+        expires_phase: str | None = None,
+    ) -> RenderPacket:
+        target_proposer_crew_id = self._target_crew_id(proposer_crew_id)
+        preview = {
+            "contract_id": contract_id,
+            "proposer_crew_id": target_proposer_crew_id,
+            "recipient_crew_id": recipient_crew_id,
+            "offered_artifact_ids": list(offered_artifact_ids),
+            "requested_artifact_ids": list(requested_artifact_ids),
+            "soft_terms": list(soft_terms or []),
+            "expires_phase": expires_phase,
+        }
+        if not confirm:
+            return build_mutation_result_packet(
+                operation="propose_deal",
+                confirmed=False,
+                preview_fields=preview,
+            )
+        result = self.api.propose_deal(
+            contract_id=contract_id,
+            proposer_crew_id=target_proposer_crew_id,
+            recipient_crew_id=recipient_crew_id,
+            offered_artifact_ids=offered_artifact_ids,
+            requested_artifact_ids=requested_artifact_ids,
+            soft_terms=soft_terms or [],
+            expires_phase=expires_phase,
+            idempotency_key=new_command_key("deal-propose"),
+        )
+        self.sync()
+        return build_mutation_result_packet(
+            operation="propose_deal",
+            confirmed=True,
+            result=result,
+        )
+
+    def accept_deal(self, *, deal_id: str, confirm: bool) -> RenderPacket:
+        if not confirm:
+            return self.preview_deal_acceptance(deal_id)
+        result = self.api.accept_deal(
+            deal_id=deal_id,
+            idempotency_key=new_command_key("deal-accept"),
+        )
+        self.sync()
+        return build_mutation_result_packet(
+            operation="accept_deal",
+            confirmed=True,
+            result=result,
+        )
+
+    def transfer_artifact(
+        self,
+        *,
+        artifact_id: str,
+        recipient_player_id: str,
+        confirm: bool,
+    ) -> RenderPacket:
+        preview = {
+            "artifact_id": artifact_id,
+            "recipient_player_id": recipient_player_id,
+        }
+        if not confirm:
+            return build_mutation_result_packet(
+                operation="transfer_artifact",
+                confirmed=False,
+                preview_fields=preview,
+            )
+        result = self.api.transfer_artifact(
+            artifact_id=artifact_id,
+            recipient_player_id=recipient_player_id,
+            idempotency_key=new_command_key("artifact-transfer"),
+        )
+        self.sync()
+        return build_mutation_result_packet(
+            operation="transfer_artifact",
+            confirmed=True,
+            result=result,
+        )
+
+    def vote_packet_lead(
+        self,
+        *,
+        player_id: str,
+        confirm: bool,
+        crew_id: str | None = None,
+    ) -> RenderPacket:
+        target_crew_id = self._target_crew_id(crew_id)
+        if not confirm:
+            return build_mutation_result_packet(
+                operation="vote_packet_lead",
+                confirmed=False,
+                preview_fields={"crew_id": target_crew_id, "player_id": player_id},
+            )
+        result = self.api.vote_packet_lead(
+            crew_id=target_crew_id,
+            player_id=player_id,
+            idempotency_key=new_command_key("packet-lead-vote"),
+        )
+        self.sync()
+        return build_mutation_result_packet(
+            operation="vote_packet_lead",
+            confirmed=True,
+            result=result,
+        )
+
     def _refresh_display_name(self) -> None:
         if self.config.display_name or not hasattr(self.api, "me"):
             return
@@ -110,6 +320,12 @@ class CodexGameSession:
             return
         self.config = self.config.model_copy(update={"display_name": display_name})
         save_config(self.config_path, self.config)
+
+    def _target_crew_id(self, crew_id: str | None) -> str:
+        target_crew_id = crew_id or self.config.active_crew_id
+        if target_crew_id is None:
+            raise ValueError("crew id required when no active crew is configured")
+        return target_crew_id
 
     def _visible_server_events(self) -> list[dict[str, Any]]:
         return [

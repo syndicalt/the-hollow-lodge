@@ -1,5 +1,6 @@
 from hollow_lodge.client import render_packets
 from hollow_lodge.client.render_packets import (
+    build_mutation_result_packet,
     build_contract_board_packet,
     build_crew_board_packet,
     build_inbox_packet,
@@ -85,6 +86,104 @@ def test_inbox_packet_uses_display_name_without_losing_player_id():
     assert "Inbox: corelumen" in packet.player_markdown
     assert packet.agent_context["display_name"] == "corelumen"
     assert packet.agent_context["player_id"] == "player_0001"
+
+
+def test_mutation_preview_packet_is_explicit_and_non_mutating():
+    packet = build_mutation_result_packet(
+        operation="submit_action",
+        confirmed=False,
+        preview_fields={"crew_id": "crew_0001", "intent": "Inspect the red ledger."},
+    )
+
+    assert packet.surface == "mutation"
+    assert "Preview: submit_action" in packet.player_markdown
+    assert "No server mutation was submitted." in packet.player_markdown
+    assert packet.agent_context == {
+        "operation": "submit_action",
+        "mutation": False,
+        "confirmed": False,
+        "preview": {
+            "crew_id": "crew_0001",
+            "intent": "Inspect the red ledger.",
+        },
+    }
+
+
+def test_mutation_result_packet_uses_visible_shaped_result_only():
+    packet = build_mutation_result_packet(
+        operation="dossier_cite_artifact",
+        confirmed=True,
+        result={
+            "dossier_id": "dossier_crew_0001",
+            "crew_id": "crew_0001",
+            "packet_lead_player_id": "player_0001",
+            "claim": "The finger is false.",
+            "artifact_citations": [
+                {
+                    "player_id": "player_0001",
+                    "artifact_id": "artifact_ledger_rubric",
+                    "claim": "The ledger contradicts the lot card.",
+                    "quote": "The last hand is later.",
+                    "server_notes": "hidden",
+                }
+            ],
+            "server_notes": "hidden",
+        },
+    )
+
+    assert "Submitted: dossier_cite_artifact" in packet.player_markdown
+    assert "server_notes" not in packet.player_markdown
+    assert "server_notes" not in str(packet.agent_context)
+    assert packet.agent_context == {
+        "operation": "dossier_cite_artifact",
+        "mutation": True,
+        "confirmed": True,
+        "result": {
+            "dossier_id": "dossier_crew_0001",
+            "crew_id": "crew_0001",
+            "packet_lead_player_id": "player_0001",
+            "claim": "The finger is false.",
+            "artifact_citations": [
+                {
+                    "player_id": "player_0001",
+                    "artifact_id": "artifact_ledger_rubric",
+                    "claim": "The ledger contradicts the lot card.",
+                    "quote": "The last hand is later.",
+                }
+            ],
+            "member_contributions": [],
+        },
+    }
+
+
+def test_accept_deal_mutation_packet_renders_received_artifacts():
+    packet = build_mutation_result_packet(
+        operation="accept_deal",
+        confirmed=True,
+        result={
+            "deal_id": "deal_000001",
+            "contract_id": "contract_false_finger",
+            "proposer_crew_id": "crew_0001",
+            "recipient_crew_id": "crew_0002",
+            "status": "fulfilled",
+            "offered_artifact_ids": ["artifact_ledger_rubric"],
+            "requested_artifact_ids": ["artifact_chapel_debt_mark"],
+            "soft_terms": ["Do not cite us."],
+            "expires_phase": None,
+            "proposer_received_artifact_ids": [
+                "artifact_chapel_debt_mark.dealcopy.deal_000001.crew_0001.2"
+            ],
+            "recipient_received_artifact_ids": [
+                "artifact_ledger_rubric.dealcopy.deal_000001.crew_0002.1"
+            ],
+        },
+    )
+
+    assert "Received by proposer: artifact_chapel_debt_mark.dealcopy.deal_000001.crew_0001.2" in packet.player_markdown
+    assert "Received by recipient: artifact_ledger_rubric.dealcopy.deal_000001.crew_0002.1" in packet.player_markdown
+    assert packet.agent_context["result"]["proposer_received_artifact_ids"] == [
+        "artifact_chapel_debt_mark.dealcopy.deal_000001.crew_0001.2"
+    ]
 
 
 def test_crew_board_packet_shows_packet_lead_and_dossier_status():

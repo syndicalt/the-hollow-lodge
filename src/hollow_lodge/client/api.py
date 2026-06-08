@@ -257,9 +257,24 @@ class HollowLodgeApi:
         fragment_id: str,
         idempotency_key: str,
     ) -> dict[str, Any]:
+        return self.add_dossier_contribution(
+            crew_id=crew_id,
+            note="Added evidence fragment.",
+            evidence_ids=[fragment_id],
+            idempotency_key=idempotency_key,
+        )
+
+    def add_dossier_contribution(
+        self,
+        *,
+        crew_id: str,
+        note: str,
+        evidence_ids: list[str] | tuple[str, ...],
+        idempotency_key: str,
+    ) -> dict[str, Any]:
         return self._post(
             f"/proofs/dossiers/{crew_id}/contributions",
-            json={"note": "Added evidence fragment.", "evidence_ids": [fragment_id]},
+            json={"note": note, "evidence_ids": list(evidence_ids)},
             idempotency_key=idempotency_key,
         )
 
@@ -273,6 +288,25 @@ class HollowLodgeApi:
         return self._patch(
             f"/proofs/dossiers/{crew_id}/framing",
             json={"claim": claim},
+            idempotency_key=idempotency_key,
+        )
+
+    def cite_artifact_in_dossier(
+        self,
+        *,
+        crew_id: str,
+        artifact_id: str,
+        claim: str,
+        quote: str,
+        idempotency_key: str,
+    ) -> dict[str, Any]:
+        return self._post(
+            f"/proofs/dossiers/{crew_id}/artifact-citations",
+            json={
+                "artifact_id": artifact_id,
+                "claim": claim,
+                "quote": quote,
+            },
             idempotency_key=idempotency_key,
         )
 
