@@ -4,7 +4,7 @@ import pytest
 
 from hollow_lodge.workflows.deterministic_oracle import DeterministicResolutionOracle
 from hollow_lodge.workflows import oracle_factory
-from hollow_lodge.workflows.oracle_factory import resolution_oracle_from_env
+from hollow_lodge.workflows.oracle_factory import oracle_diagnostics_from_env, resolution_oracle_from_env
 from hollow_lodge.workflows.openai_oracle import OpenAIResolutionOracle
 
 
@@ -33,6 +33,41 @@ def test_openai_provider_without_api_key_returns_deterministic_oracle(monkeypatc
     oracle = resolution_oracle_from_env()
 
     assert isinstance(oracle, DeterministicResolutionOracle)
+
+
+def test_openai_provider_without_api_key_reports_diagnostic_warning(monkeypatch):
+    monkeypatch.setenv("HOLLOW_LODGE_ORACLE_PROVIDER", "openai")
+    monkeypatch.delenv("HOLLOW_LODGE_OPENAI_API_KEY", raising=False)
+    monkeypatch.delenv("HOLLOW_LODGE_ORACLE_TIMEOUT_SECONDS", raising=False)
+
+    diagnostics = oracle_diagnostics_from_env(active_provider="deterministic")
+
+    assert diagnostics == {
+        "configured_provider": "openai",
+        "active_provider": "deterministic",
+        "ready": False,
+        "fallback_active": True,
+        "warnings": [
+            "openai provider requested but HOLLOW_LODGE_OPENAI_API_KEY is not set; using deterministic fallback"
+        ],
+    }
+
+
+def test_openai_provider_with_api_key_reports_ready_without_secret(monkeypatch):
+    monkeypatch.setenv("HOLLOW_LODGE_ORACLE_PROVIDER", "openai")
+    monkeypatch.setenv("HOLLOW_LODGE_OPENAI_API_KEY", "sk-test-secret")
+    monkeypatch.delenv("HOLLOW_LODGE_ORACLE_TIMEOUT_SECONDS", raising=False)
+
+    diagnostics = oracle_diagnostics_from_env(active_provider="openai")
+
+    assert diagnostics == {
+        "configured_provider": "openai",
+        "active_provider": "openai",
+        "ready": True,
+        "fallback_active": False,
+        "warnings": [],
+    }
+    assert "sk-test-secret" not in repr(diagnostics)
 
 
 def test_openai_provider_with_api_key_returns_openai_oracle(monkeypatch):

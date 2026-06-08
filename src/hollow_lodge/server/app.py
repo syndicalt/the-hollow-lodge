@@ -2,9 +2,11 @@ from __future__ import annotations
 
 import os
 from pathlib import Path
+from typing import Any
 
 from fastapi import FastAPI
 
+from hollow_lodge import __version__
 from hollow_lodge.eventlog.jsonl_store import JsonlEventStore
 from hollow_lodge.server.artifact_service import ArtifactService
 from hollow_lodge.server.deal_service import DealService
@@ -26,8 +28,10 @@ from hollow_lodge.server.services import (
     ProofService,
     VisibilityService,
 )
+from hollow_lodge.workflows.deterministic_oracle import DeterministicResolutionOracle
 from hollow_lodge.workflows.oracle_boundary import ResolutionOracle
-from hollow_lodge.workflows.oracle_factory import resolution_oracle_from_env
+from hollow_lodge.workflows.openai_oracle import OpenAIResolutionOracle
+from hollow_lodge.workflows.oracle_factory import oracle_diagnostics_from_env, resolution_oracle_from_env
 
 
 def create_app(
@@ -104,7 +108,38 @@ def create_app(
     def health() -> dict[str, str]:
         return {"status": "ok"}
 
+    @app.get("/diagnostics", tags=["system"])
+    def diagnostics() -> dict[str, Any]:
+        return {
+            "server": {"version": __version__},
+            "oracle": oracle_diagnostics_from_env(
+                active_provider=_oracle_provider_name(app.state.resolution_oracle)
+            ),
+            "data": {
+                "directory": str(root),
+                "event_log": _event_log_diagnostics(app.state.event_store.path),
+            },
+        }
+
     return app
+
+
+def _oracle_provider_name(oracle: ResolutionOracle) -> str:
+    if isinstance(oracle, OpenAIResolutionOracle):
+        return "openai"
+    if isinstance(oracle, DeterministicResolutionOracle):
+        return "deterministic"
+    return oracle.__class__.__name__
+
+
+def _event_log_diagnostics(path: Path) -> dict[str, Any]:
+    exists = path.exists()
+    status = "available" if exists else "not_created"
+    return {
+        "path": str(path),
+        "exists": exists,
+        "status": status,
+    }
 
 
 app = create_app()
