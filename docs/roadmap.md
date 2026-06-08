@@ -325,6 +325,8 @@ Expected verification:
 
 ### Slice 6: Codex-Native Confirmed Mutations
 
+Status: completed in `6383c18`.
+
 Add MCP tools for the confirmed, irreversible actions required by the alpha
 loop. These tools must remain explicit and confirmation-oriented: the agent can
 translate player intent and submit the command only after the player has
