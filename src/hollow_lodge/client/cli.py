@@ -4,10 +4,20 @@ import typer
 
 from hollow_lodge import __version__
 from hollow_lodge.client.api import HollowLodgeApi, new_command_key
-from hollow_lodge.client.config import ClientConfig, load_config, save_config
+from hollow_lodge.client.config import (
+    ClientConfig,
+    OnboardingConfig,
+    load_config,
+    save_config,
+    save_onboarding_config,
+)
 from hollow_lodge.client.handler import normalize_action_draft
 from hollow_lodge.client.local_log import LocalEventLog
-from hollow_lodge.client.paths import DEFAULT_CONFIG_PATH, DEFAULT_LOCAL_LOG_PATH
+from hollow_lodge.client.paths import (
+    DEFAULT_CONFIG_PATH,
+    DEFAULT_LOCAL_LOG_PATH,
+    DEFAULT_ONBOARDING_STATE_PATH,
+)
 from hollow_lodge.client.render import render_contract_board, render_crew_board, render_inbox
 from hollow_lodge.client.render_packets import (
     build_contract_board_packet,
@@ -15,6 +25,8 @@ from hollow_lodge.client.render_packets import (
     build_inbox_packet,
 )
 
+
+DEFAULT_SERVER_URL = "https://api.thehollowlodge.com"
 
 app = typer.Typer(
     name="hollow-lodge",
@@ -64,6 +76,67 @@ def register(
         ),
     )
     typer.echo(response["player_id"])
+
+
+@app.command()
+def onboard(
+    server: str = typer.Option(
+        DEFAULT_SERVER_URL,
+        "--server",
+        help="Authoritative server URL. Defaults to the official Lodge.",
+    ),
+    name: str | None = typer.Option(None, "--name", help="Display name."),
+    invite: str | None = typer.Option(None, "--invite", help="Invite code, if you already have one."),
+    contact: str | None = typer.Option(
+        None,
+        "--contact",
+        help="Contact handle or email for access-key requests.",
+    ),
+    config: Path = typer.Option(DEFAULT_CONFIG_PATH, "--config", help="Local config path."),
+    onboarding_state: Path = typer.Option(
+        DEFAULT_ONBOARDING_STATE_PATH,
+        "--onboarding-state",
+        help="Pending onboarding state path.",
+    ),
+) -> None:
+    """Register with an invite or request an access key."""
+    display_name = name or typer.prompt("Display name")
+    api = HollowLodgeApi(server_url=server)
+    if invite:
+        response = api.register(
+            invite_code=invite,
+            display_name=display_name,
+            idempotency_key=new_command_key("register"),
+        )
+        save_config(
+            config,
+            ClientConfig(
+                server_url=server,
+                player_id=response["player_id"],
+                token=response["token"],
+            ),
+        )
+        if onboarding_state.exists():
+            onboarding_state.unlink()
+        typer.echo(f"registered {response['player_id']}")
+        return
+
+    response = api.request_access_key(
+        display_name=display_name,
+        contact=contact,
+        idempotency_key=new_command_key("key-request"),
+    )
+    save_onboarding_config(
+        onboarding_state,
+        OnboardingConfig(
+            server_url=server,
+            display_name=display_name,
+            contact=contact,
+            request_id=response["request_id"],
+            status=response["status"],
+        ),
+    )
+    typer.echo(f"pending {response['request_id']}")
 
 
 @app.command("crew-create")

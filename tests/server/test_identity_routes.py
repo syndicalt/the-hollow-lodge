@@ -169,3 +169,71 @@ def test_register_replay_rejects_same_key_with_different_payload(tmp_path):
 
     assert first.status_code == 201
     assert conflict.status_code == 409
+
+
+def test_access_key_request_is_recorded_without_registering_player(tmp_path):
+    app = create_app(data_dir=tmp_path, invite_codes=["alpha-code"])
+    client = TestClient(app)
+
+    response = client.post(
+        "/identity/key-requests",
+        json={"display_name": "Ada", "contact": "ada@example.com"},
+        headers={"Idempotency-Key": "key-request-ada"},
+    )
+
+    assert response.status_code == 202
+    body = response.json()
+    assert body == {
+        "request_id": "key_request_0001",
+        "display_name": "Ada",
+        "status": "pending",
+    }
+    assert app.state.identity_service.has_player("player_0001") is False
+    events = (tmp_path / "server-events.jsonl").read_text(encoding="utf-8")
+    assert "identity.key_request.created" in events
+    assert "ada@example.com" in events
+
+
+def test_access_key_request_replay_is_idempotent(tmp_path):
+    client = TestClient(create_app(data_dir=tmp_path, invite_codes=[]))
+
+    first = client.post(
+        "/identity/key-requests",
+        json={"display_name": "Ada", "contact": "ada@example.com"},
+        headers={"Idempotency-Key": "key-request-ada"},
+    )
+    replay = client.post(
+        "/identity/key-requests",
+        json={"display_name": "Ada", "contact": "ada@example.com"},
+        headers={"Idempotency-Key": "key-request-ada"},
+    )
+    conflict = client.post(
+        "/identity/key-requests",
+        json={"display_name": "Grace", "contact": "grace@example.com"},
+        headers={"Idempotency-Key": "key-request-ada"},
+    )
+
+    assert first.status_code == 202
+    assert replay.status_code == 202
+    assert replay.json() == first.json()
+    assert conflict.status_code == 409
+
+
+def test_access_key_request_survives_app_recreation_from_event_log(tmp_path):
+    first_client = TestClient(create_app(data_dir=tmp_path, invite_codes=[]))
+    first = first_client.post(
+        "/identity/key-requests",
+        json={"display_name": "Ada", "contact": "ada@example.com"},
+        headers={"Idempotency-Key": "key-request-ada"},
+    )
+
+    second_client = TestClient(create_app(data_dir=tmp_path, invite_codes=[]))
+    replay = second_client.post(
+        "/identity/key-requests",
+        json={"display_name": "Ada", "contact": "ada@example.com"},
+        headers={"Idempotency-Key": "key-request-ada"},
+    )
+
+    assert first.status_code == 202
+    assert replay.status_code == 202
+    assert replay.json() == first.json()

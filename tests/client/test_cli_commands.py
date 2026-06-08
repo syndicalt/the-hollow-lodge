@@ -3,7 +3,13 @@ from __future__ import annotations
 from typer.testing import CliRunner
 
 from hollow_lodge.client import cli
-from hollow_lodge.client.config import ClientConfig, load_config, save_config
+from hollow_lodge.client.config import (
+    ClientConfig,
+    OnboardingConfig,
+    load_config,
+    load_onboarding_config,
+    save_config,
+)
 
 
 class FakeApi:
@@ -26,6 +32,29 @@ class FakeApi:
             )
         )
         return {"player_id": "player_0001", "token": "secret-token"}
+
+    def request_access_key(
+        self,
+        *,
+        display_name: str,
+        contact: str | None,
+        idempotency_key: str,
+    ):
+        self.calls.append(
+            (
+                "request_access_key",
+                {
+                    "display_name": display_name,
+                    "contact": contact,
+                    "idempotency_key": idempotency_key,
+                },
+            )
+        )
+        return {
+            "request_id": "key_request_0001",
+            "display_name": display_name,
+            "status": "pending",
+        }
 
     def create_crew(self, *, name: str, idempotency_key: str):
         self.calls.append(("create_crew", {"name": name, "idempotency_key": idempotency_key}))
@@ -273,6 +302,142 @@ def test_register_command_saves_local_config(tmp_path, monkeypatch):
             },
         )
     ]
+
+
+def test_onboard_with_invite_registers_and_saves_local_config(tmp_path, monkeypatch):
+    runner = CliRunner()
+    created_clients: list[FakeApi] = []
+
+    def fake_client(**kwargs):
+        client = FakeApi(**kwargs)
+        created_clients.append(client)
+        return client
+
+    monkeypatch.setattr(cli, "HollowLodgeApi", fake_client)
+    monkeypatch.setattr(cli, "new_command_key", lambda prefix: f"{prefix}-key")
+    config_path = tmp_path / "config.json"
+    onboarding_path = tmp_path / "onboarding.json"
+
+    result = runner.invoke(
+        cli.app,
+        [
+            "onboard",
+            "--server",
+            "http://testserver",
+            "--name",
+            "Ada",
+            "--invite",
+            "invite-a",
+            "--config",
+            str(config_path),
+            "--onboarding-state",
+            str(onboarding_path),
+        ],
+    )
+
+    assert result.exit_code == 0
+    assert "registered player_0001" in result.output
+    assert load_config(config_path) == ClientConfig(
+        server_url="http://testserver",
+        player_id="player_0001",
+        token="secret-token",
+    )
+    assert onboarding_path.exists() is False
+    assert created_clients[0].calls == [
+        (
+            "register",
+            {
+                "invite_code": "invite-a",
+                "display_name": "Ada",
+                "idempotency_key": "register-key",
+            },
+        )
+    ]
+
+
+def test_onboard_without_invite_requests_access_key_and_saves_pending_state(
+    tmp_path,
+    monkeypatch,
+):
+    runner = CliRunner()
+    created_clients: list[FakeApi] = []
+
+    def fake_client(**kwargs):
+        client = FakeApi(**kwargs)
+        created_clients.append(client)
+        return client
+
+    monkeypatch.setattr(cli, "HollowLodgeApi", fake_client)
+    monkeypatch.setattr(cli, "new_command_key", lambda prefix: f"{prefix}-key")
+    config_path = tmp_path / "config.json"
+    onboarding_path = tmp_path / "onboarding.json"
+
+    result = runner.invoke(
+        cli.app,
+        [
+            "onboard",
+            "--server",
+            "http://testserver",
+            "--name",
+            "Ada",
+            "--contact",
+            "ada@example.com",
+            "--config",
+            str(config_path),
+            "--onboarding-state",
+            str(onboarding_path),
+        ],
+    )
+
+    assert result.exit_code == 0
+    assert "pending key_request_0001" in result.output
+    assert config_path.exists() is False
+    assert load_onboarding_config(onboarding_path) == OnboardingConfig(
+        server_url="http://testserver",
+        display_name="Ada",
+        contact="ada@example.com",
+        request_id="key_request_0001",
+        status="pending",
+    )
+    assert created_clients[0].calls == [
+        (
+            "request_access_key",
+            {
+                "display_name": "Ada",
+                "contact": "ada@example.com",
+                "idempotency_key": "key-request-key",
+            },
+        )
+    ]
+
+
+def test_onboard_defaults_to_official_server_for_access_request(tmp_path, monkeypatch):
+    runner = CliRunner()
+    created_clients: list[FakeApi] = []
+
+    def fake_client(**kwargs):
+        client = FakeApi(**kwargs)
+        created_clients.append(client)
+        return client
+
+    monkeypatch.setattr(cli, "HollowLodgeApi", fake_client)
+    monkeypatch.setattr(cli, "new_command_key", lambda prefix: f"{prefix}-key")
+
+    result = runner.invoke(
+        cli.app,
+        [
+            "onboard",
+            "--name",
+            "Ada",
+            "--onboarding-state",
+            str(tmp_path / "onboarding.json"),
+            "--config",
+            str(tmp_path / "config.json"),
+        ],
+    )
+
+    assert result.exit_code == 0
+    assert created_clients[0].server_url == cli.DEFAULT_SERVER_URL
 
 
 def test_crew_commands_use_saved_config(tmp_path, monkeypatch):

@@ -3,6 +3,35 @@
 The Hollow Lodge is played inside Codex through game render tools, not by asking
 the player to manage raw shell commands.
 
+## Install And Onboard
+
+The installer bootstraps the CLI with `uv tool install` and then launches the
+first-run onboarding flow:
+
+```sh
+curl -fsSL https://www.thehollowlodge.com/install.sh | sh
+```
+
+By default, onboarding connects to the official Lodge server. Power users can
+target a custom server with:
+
+```sh
+hollow-lodge onboard --server https://example-lodge.invalid --name Ada
+```
+
+Players who already have an invite can register immediately:
+
+```sh
+hollow-lodge onboard --name Ada --invite alpha-code
+```
+
+Players without an invite can request an access key. The CLI stores pending
+onboarding state locally until an admin approval flow exists:
+
+```sh
+hollow-lodge onboard --name Ada --contact ada@example.com
+```
+
 ## Session Loop
 
 1. Sync visible events before advising.

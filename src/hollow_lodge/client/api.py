@@ -29,6 +29,20 @@ class HollowLodgeApi:
             authenticated=False,
         )
 
+    def request_access_key(
+        self,
+        *,
+        display_name: str,
+        contact: str | None,
+        idempotency_key: str,
+    ) -> dict[str, Any]:
+        return self._post(
+            "/identity/key-requests",
+            json={"display_name": display_name, "contact": contact},
+            idempotency_key=idempotency_key,
+            authenticated=False,
+        )
+
     def create_crew(self, *, name: str, idempotency_key: str) -> dict[str, Any]:
         return self._post(
             "/crews",

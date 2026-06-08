@@ -17,6 +17,14 @@ class Player:
     token_revoked: bool = False
 
 
+@dataclass(frozen=True)
+class AccessKeyRequest:
+    request_id: str
+    display_name: str
+    contact: str | None
+    status: str = "pending"
+
+
 def generate_token() -> str:
     return secrets.token_urlsafe(TOKEN_BYTES)
 
@@ -27,4 +35,3 @@ def hash_token(token: str) -> str:
 
 def token_matches(*, provided_token: str, stored_hash: str) -> bool:
     return hmac.compare_digest(hash_token(provided_token), stored_hash)
-

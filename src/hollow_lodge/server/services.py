@@ -9,7 +9,7 @@ from datetime import UTC, datetime, timedelta
 from hollow_lodge.domain.crews import Crew
 from hollow_lodge.domain.events import EventVisibility
 from hollow_lodge.domain.chat import ChatMessage
-from hollow_lodge.domain.identity import Player, generate_token, hash_token
+from hollow_lodge.domain.identity import AccessKeyRequest, Player, generate_token, hash_token
 from hollow_lodge.domain.proofs import ProofDossier, ProofFragment
 from hollow_lodge.domain.scoring import AuctionPreviewScoreInput, score_auction_preview
 from hollow_lodge.domain.actions import NormalizedAction
@@ -37,6 +37,7 @@ class IdentityService:
         self._unused_invites = set(invite_codes)
         self._used_invites: set[str] = set()
         self._players: dict[str, Player] = {}
+        self._key_requests: dict[str, AccessKeyRequest] = {}
         self._registration_replays: dict[str, tuple[Player, str]] = {}
         self._event_store = event_store
         self._registration_replay_path = event_store.path.with_suffix(".registration-replays.json")
@@ -97,6 +98,43 @@ class IdentityService:
             self._remember_registration_replay(idempotency_key, player, token)
             return player, token
 
+    def request_access_key(
+        self,
+        *,
+        display_name: str,
+        contact: str | None,
+        idempotency_key: str,
+    ) -> AccessKeyRequest:
+        with self._lock:
+            existing = self._event_by_idempotency_key(idempotency_key)
+            if existing is not None:
+                self._ensure_key_request_replay_matches(
+                    existing,
+                    display_name=display_name,
+                    contact=contact,
+                )
+                return self._key_requests[existing.payload["request_id"]]
+            request_id = f"key_request_{len(self._key_requests) + 1:04d}"
+            key_request = AccessKeyRequest(
+                request_id=request_id,
+                display_name=display_name,
+                contact=contact,
+            )
+            self._key_requests[request_id] = key_request
+            self._event_store.append_command(
+                event_type="identity.key_request.created",
+                actor_id="server",
+                visibility=EventVisibility.server_only(),
+                payload={
+                    "request_id": request_id,
+                    "display_name": display_name,
+                    "contact": contact,
+                    "status": key_request.status,
+                },
+                idempotency_key=idempotency_key,
+            )
+            return key_request
+
     def authenticate(self, token: str) -> Player | None:
         with self._lock:
             return authenticate_token(self._players, token)
@@ -149,6 +187,13 @@ class IdentityService:
                     token_hash=player.token_hash,
                     token_revoked=True,
                 )
+            elif event.type == "identity.key_request.created":
+                self._key_requests[event.payload["request_id"]] = AccessKeyRequest(
+                    request_id=event.payload["request_id"],
+                    display_name=event.payload["display_name"],
+                    contact=event.payload.get("contact"),
+                    status=event.payload["status"],
+                )
 
     def _event_by_idempotency_key(self, idempotency_key: str):
         for event in self._event_store.read():
@@ -166,6 +211,18 @@ class IdentityService:
         if event is None or event.type != "identity.player.registered":
             raise ValueError("idempotency key conflict")
         if event.payload["invite_code"] != invite_code or event.payload["display_name"] != display_name:
+            raise ValueError("idempotency key conflict")
+
+    def _ensure_key_request_replay_matches(
+        self,
+        event,
+        *,
+        display_name: str,
+        contact: str | None,
+    ) -> None:
+        if event is None or event.type != "identity.key_request.created":
+            raise ValueError("idempotency key conflict")
+        if event.payload["display_name"] != display_name or event.payload.get("contact") != contact:
             raise ValueError("idempotency key conflict")
 
     def _remember_registration_replay(

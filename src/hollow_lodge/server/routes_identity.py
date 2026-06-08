@@ -15,6 +15,17 @@ class RegisterRequest(BaseModel):
     display_name: str = Field(min_length=1, max_length=80)
 
 
+class AccessKeyRequestCreate(BaseModel):
+    display_name: str = Field(min_length=1, max_length=80)
+    contact: str | None = Field(default=None, max_length=200)
+
+
+class AccessKeyRequestResponse(BaseModel):
+    request_id: str
+    display_name: str
+    status: str
+
+
 class RegisterResponse(BaseModel):
     player_id: str
     display_name: str
@@ -51,6 +62,33 @@ def register(
         player_id=player.player_id,
         display_name=player.display_name,
         token=token,
+    )
+
+
+@router.post(
+    "/key-requests",
+    response_model=AccessKeyRequestResponse,
+    status_code=status.HTTP_202_ACCEPTED,
+)
+def request_access_key(
+    request: Request,
+    payload: AccessKeyRequestCreate,
+    idempotency_key: str = Header(..., alias="Idempotency-Key"),
+) -> AccessKeyRequestResponse:
+    try:
+        key_request = request.app.state.identity_service.request_access_key(
+            display_name=payload.display_name,
+            contact=payload.contact,
+            idempotency_key=idempotency_key,
+        )
+    except ValueError as exc:
+        if str(exc) == "idempotency key conflict":
+            raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail=str(exc)) from exc
+        raise
+    return AccessKeyRequestResponse(
+        request_id=key_request.request_id,
+        display_name=key_request.display_name,
+        status=key_request.status,
     )
 
 
