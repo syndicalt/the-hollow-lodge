@@ -1,4 +1,5 @@
 import pytest
+from pydantic import ValidationError
 
 from hollow_lodge.workflows.oracle_boundary import (
     AuctionPreviewCrewPacket,
@@ -63,6 +64,28 @@ def valid_result() -> AuctionPreviewOracleResult:
     )
 
 
+def packet_with_two_crews() -> AuctionPreviewOraclePacket:
+    packet = valid_packet()
+    return packet.model_copy(
+        update={
+            "crews": (
+                *packet.crews,
+                AuctionPreviewCrewPacket(
+                    crew_id="crew_ember",
+                    claim="The relic is materially suspect.",
+                    evidence_ids=("asset_door_omen",),
+                    exposed_assets=("asset_door_omen",),
+                    reasoning="The debtor omen contradicts the public lot story.",
+                    weaknesses="No chain-of-custody proof.",
+                    provenance_concerns="Omen source is noisy.",
+                    action_intents=("Compare the omen against ledger residue.",),
+                    crew_noise=0,
+                ),
+            )
+        }
+    )
+
+
 def test_validate_accepts_known_crews_and_safe_reveal_strings():
     accepted = validate_auction_preview_result(
         packet=valid_packet(),
@@ -89,6 +112,29 @@ def test_validate_rejects_unknown_crew_id():
         validate_auction_preview_result(packet=valid_packet(), result=result)
 
 
+def test_validate_rejects_duplicate_crew_result():
+    result = valid_result().model_copy(
+        update={"standings": (valid_result().standings[0], valid_result().standings[0])}
+    )
+
+    with pytest.raises(ValueError, match="duplicate crew id"):
+        validate_auction_preview_result(packet=valid_packet(), result=result)
+
+
+def test_validate_rejects_missing_crew_result():
+    result = valid_result().model_copy(update={"standings": ()})
+
+    with pytest.raises(ValueError, match="missing crew result"):
+        validate_auction_preview_result(packet=valid_packet(), result=result)
+
+
+def test_validate_rejects_incomplete_crew_results():
+    packet = packet_with_two_crews()
+
+    with pytest.raises(ValueError, match="missing crew result"):
+        validate_auction_preview_result(packet=packet, result=valid_result())
+
+
 def test_validate_clamps_scores_to_packet_bounds():
     result = valid_result().model_copy(
         update={
@@ -112,6 +158,15 @@ def test_validate_rejects_hidden_truth_leakage():
         validate_auction_preview_result(packet=valid_packet(), result=result)
 
 
+def test_validate_rejects_hidden_truth_spelling_variant():
+    result = valid_result().model_copy(
+        update={"narration": "The relic is a saint bone forgery."}
+    )
+
+    with pytest.raises(ValueError, match="hidden truth leak"):
+        validate_auction_preview_result(packet=valid_packet(), result=result)
+
+
 def test_validate_rejects_unknown_revealed_clue():
     result = valid_result().model_copy(
         update={
@@ -125,3 +180,32 @@ def test_validate_rejects_unknown_revealed_clue():
 
     with pytest.raises(ValueError, match="unsafe reveal"):
         validate_auction_preview_result(packet=valid_packet(), result=result)
+
+
+def test_validate_rejects_unsafe_contract_state():
+    result = valid_result().model_copy(
+        update={"contract_state": ("The debtor omen is real.",)}
+    )
+
+    with pytest.raises(ValueError, match="unsafe reveal"):
+        validate_auction_preview_result(packet=valid_packet(), result=result)
+
+
+def test_negative_score_is_rejected_at_model_construction():
+    with pytest.raises(ValidationError):
+        AuctionPreviewCrewResult(
+            crew_id="crew_gilt",
+            score=-1,
+            standing="Invalid",
+            strengths=(),
+            weaknesses=(),
+            penalties=(),
+            revealed_clues=(),
+        )
+
+
+def test_oracle_boundary_models_are_immutable():
+    result = valid_result()
+
+    with pytest.raises(ValidationError):
+        result.standings[0].score = 80

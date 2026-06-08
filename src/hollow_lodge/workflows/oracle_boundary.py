@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+import re
+import unicodedata
 from collections.abc import Iterable
 from typing import Protocol, Self
 
@@ -79,9 +81,9 @@ class ResolutionOracle(Protocol):
 
 
 _HIDDEN_TRUTH_PHRASES = (
-    "saint-bone forgery",
-    "real debtor's omen",
-    "truth_false_finger_forgery",
+    "saint bone forgery",
+    "real debtor omen",
+    "truth false finger forgery",
 )
 
 
@@ -115,6 +117,11 @@ def validate_auction_preview_result(
                 }
             )
         )
+
+    missing_crew_ids = packet_crew_ids - seen_result_crew_ids
+    if missing_crew_ids:
+        missing = ", ".join(sorted(missing_crew_ids))
+        raise ValueError(f"missing crew result: {missing}")
 
     _reject_unsafe_reveals(packet=packet, lines=result.contract_state)
     _reject_hidden_truth_leak(packet=packet, result=result)
@@ -157,18 +164,54 @@ def _reject_hidden_truth_leak(
     packet: AuctionPreviewOraclePacket,
     result: AuctionPreviewOracleResult,
 ) -> None:
-    hidden_truth = packet.hidden_truth_summary.casefold()
-    phrases = [phrase for phrase in _HIDDEN_TRUTH_PHRASES if phrase in hidden_truth]
-    if hidden_truth.strip():
-        phrases.append(hidden_truth.strip())
+    phrases = _hidden_truth_phrases(packet.hidden_truth_summary)
 
     if not phrases:
         return
 
-    searchable_text = "\n".join(_result_text_lines(result)).casefold()
+    searchable_text = _normalize_leak_text("\n".join(_result_text_lines(result)))
     for phrase in phrases:
         if phrase and phrase in searchable_text:
             raise ValueError(f"hidden truth leak: {phrase}")
+
+
+def _hidden_truth_phrases(hidden_truth_summary: str) -> tuple[str, ...]:
+    normalized_hidden_truth = _normalize_leak_text(hidden_truth_summary)
+    normalized_without_possessives = _drop_possessive_markers(normalized_hidden_truth)
+    phrases: list[str] = []
+
+    for phrase in _HIDDEN_TRUTH_PHRASES:
+        normalized_phrase = _normalize_leak_text(phrase)
+        if (
+            normalized_phrase in normalized_hidden_truth
+            or normalized_phrase in normalized_without_possessives
+        ):
+            phrases.append(normalized_phrase)
+
+    if normalized_hidden_truth:
+        phrases.append(normalized_hidden_truth)
+    if normalized_without_possessives != normalized_hidden_truth:
+        phrases.append(normalized_without_possessives)
+
+    return tuple(dict.fromkeys(phrases))
+
+
+def _normalize_leak_text(text: str) -> str:
+    normalized_chars: list[str] = []
+    for char in unicodedata.normalize("NFKC", text).casefold():
+        if char in {"'", "\u2018", "\u2019", "\u201b", "\u2032"}:
+            normalized_chars.append(" ")
+        elif char in {"-", "\u2010", "\u2011", "\u2012", "\u2013", "\u2014", "\u2212"}:
+            normalized_chars.append(" ")
+        elif unicodedata.category(char).startswith("P"):
+            normalized_chars.append(" ")
+        else:
+            normalized_chars.append(char)
+    return re.sub(r"\s+", " ", "".join(normalized_chars)).strip()
+
+
+def _drop_possessive_markers(text: str) -> str:
+    return re.sub(r"\bs\s+", "", text)
 
 
 def _result_text_lines(result: AuctionPreviewOracleResult) -> tuple[str, ...]:
