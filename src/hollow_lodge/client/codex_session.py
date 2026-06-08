@@ -3,7 +3,7 @@ from __future__ import annotations
 from pathlib import Path
 
 from hollow_lodge.client.api import HollowLodgeApi
-from hollow_lodge.client.config import ClientConfig, load_config
+from hollow_lodge.client.config import ClientConfig, load_config, save_config
 from hollow_lodge.client.local_log import LocalEventLog
 from hollow_lodge.client.paths import DEFAULT_CONFIG_PATH, DEFAULT_LOCAL_LOG_PATH
 from hollow_lodge.client.render_packets import (
@@ -29,6 +29,7 @@ class CodexGameSession:
             server_url=self.config.server_url,
             token=self.config.token,
         )
+        self._refresh_display_name()
         self.local_log = LocalEventLog(local_log_path)
 
     def sync(self) -> int:
@@ -36,7 +37,10 @@ class CodexGameSession:
 
     def render_inbox(self) -> RenderPacket:
         self.sync()
-        return build_inbox_packet(self.api.inbox())
+        inbox = self.api.inbox()
+        if self.config.display_name:
+            inbox.setdefault("display_name", self.config.display_name)
+        return build_inbox_packet(inbox)
 
     def render_contract_board(self) -> RenderPacket:
         self.sync()
@@ -48,3 +52,15 @@ class CodexGameSession:
         if target_crew_id is None:
             raise ValueError("crew id required when no active crew is configured")
         return build_crew_board_packet(self.api.crew_board(crew_id=target_crew_id))
+
+    def _refresh_display_name(self) -> None:
+        if self.config.display_name or not hasattr(self.api, "me"):
+            return
+        identity = self.api.me()
+        if identity.get("player_id") != self.config.player_id:
+            return
+        display_name = identity.get("display_name")
+        if not display_name:
+            return
+        self.config = self.config.model_copy(update={"display_name": display_name})
+        save_config(self.config_path, self.config)

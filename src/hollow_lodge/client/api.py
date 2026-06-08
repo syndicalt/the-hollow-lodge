@@ -139,6 +139,9 @@ class HollowLodgeApi:
     def inbox(self) -> dict[str, Any]:
         return self._get("/inbox")
 
+    def me(self) -> dict[str, Any]:
+        return self._get("/identity/me")
+
     def crew_board(self, *, crew_id: str) -> dict[str, Any]:
         return self._get(f"/crews/{crew_id}/board")
 

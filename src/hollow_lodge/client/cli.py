@@ -77,6 +77,7 @@ def register(
         ClientConfig(
             server_url=server,
             player_id=response["player_id"],
+            display_name=response["display_name"],
             token=response["token"],
         ),
     )
@@ -118,6 +119,7 @@ def onboard(
             ClientConfig(
                 server_url=server,
                 player_id=response["player_id"],
+                display_name=response["display_name"],
                 token=response["token"],
             ),
         )
@@ -305,7 +307,10 @@ def inbox(
     as_json: bool = typer.Option(False, "--json", help="Emit Codex render packet JSON."),
 ) -> None:
     """Show the personal inbox."""
-    inbox_data = _api_from_config(load_config(config)).inbox()
+    current = load_config(config)
+    inbox_data = _api_from_config(current).inbox()
+    if current.display_name:
+        inbox_data.setdefault("display_name", current.display_name)
     if as_json:
         _echo_packet(build_inbox_packet(inbox_data), as_json=True)
     else:

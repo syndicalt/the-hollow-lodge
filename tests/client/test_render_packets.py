@@ -59,6 +59,14 @@ def test_inbox_packet_prioritizes_actionable_items_for_codex():
     ]
 
 
+def test_inbox_packet_uses_display_name_without_losing_player_id():
+    packet = build_inbox_packet({**INBOX, "display_name": "corelumen"})
+
+    assert "Inbox: corelumen" in packet.player_markdown
+    assert packet.agent_context["display_name"] == "corelumen"
+    assert packet.agent_context["player_id"] == "player_0001"
+
+
 def test_crew_board_packet_shows_packet_lead_and_dossier_status():
     packet = build_crew_board_packet(
         {

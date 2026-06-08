@@ -31,7 +31,7 @@ class FakeApi:
                 },
             )
         )
-        return {"player_id": "player_0001", "token": "secret-token"}
+        return {"player_id": "player_0001", "display_name": display_name, "token": "secret-token"}
 
     def request_access_key(
         self,
@@ -302,6 +302,7 @@ def test_register_command_saves_local_config(tmp_path, monkeypatch):
     assert load_config(config_path) == ClientConfig(
         server_url="http://testserver",
         player_id="player_0001",
+        display_name="Ada",
         token="secret-token",
     )
     assert created_clients[0].calls == [
@@ -352,6 +353,7 @@ def test_onboard_with_invite_registers_and_saves_local_config(tmp_path, monkeypa
     assert load_config(config_path) == ClientConfig(
         server_url="http://testserver",
         player_id="player_0001",
+        display_name="Ada",
         token="secret-token",
     )
     assert onboarding_path.exists() is False

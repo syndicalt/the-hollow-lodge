@@ -28,7 +28,9 @@ def inbox(
     request: Request,
     player: Player = Depends(current_player),
 ):
-    return _contract_service(request).inbox_for_player(player.player_id)
+    payload = _contract_service(request).inbox_for_player(player.player_id)
+    payload["display_name"] = player.display_name
+    return payload
 
 
 @router.post("/contracts/{contract_id}/phases/auction-preview/lock")

@@ -69,6 +69,12 @@ def test_inbox_render_preserves_legacy_text():
     )
 
 
+def test_inbox_render_uses_display_name_when_available():
+    rendered = render_inbox({**INBOX, "display_name": "corelumen"})
+
+    assert rendered.startswith("Inbox: corelumen\n")
+
+
 def test_contracts_and_inbox_cli_render_api_results(tmp_path, monkeypatch):
     runner = CliRunner()
     monkeypatch.setattr(cli, "HollowLodgeApi", FakeApi)

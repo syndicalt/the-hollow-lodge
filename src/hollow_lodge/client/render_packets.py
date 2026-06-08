@@ -233,7 +233,8 @@ def build_crew_board_packet(board: dict[str, Any]) -> RenderPacket:
 
 
 def build_inbox_packet(inbox: dict[str, Any]) -> RenderPacket:
-    lines = [f"Inbox: {inbox['player_id']}"]
+    display_name = inbox.get("display_name") or inbox["player_id"]
+    lines = [f"Inbox: {display_name}"]
     active_contracts = inbox.get("active_contracts", [])
     if active_contracts:
         lines.append("")
@@ -251,21 +252,24 @@ def build_inbox_packet(inbox: dict[str, Any]) -> RenderPacket:
         {"kind": "proof_fragment", "fragment_id": fragment["fragment_id"]}
         for fragment in fragments
     ]
+    agent_context: dict[str, Any] = {
+        "player_id": inbox["player_id"],
+        "active_contracts": [
+            _shape_contract(contract)
+            for contract in active_contracts
+        ],
+        "incoming_proof_fragments": [
+            _shape_proof_fragment(fragment)
+            for fragment in fragments
+        ],
+        "urgent_items": urgent_items,
+    }
+    if inbox.get("display_name"):
+        agent_context["display_name"] = inbox["display_name"]
     return RenderPacket(
         surface="inbox",
         player_markdown="\n".join(lines),
-        agent_context={
-            "player_id": inbox["player_id"],
-            "active_contracts": [
-                _shape_contract(contract)
-                for contract in active_contracts
-            ],
-            "incoming_proof_fragments": [
-                _shape_proof_fragment(fragment)
-                for fragment in fragments
-            ],
-            "urgent_items": urgent_items,
-        },
+        agent_context=agent_context,
         suggested_prompts=[
             "Open the contract board",
             "Review crew board",

@@ -55,8 +55,9 @@ def test_codex_render_surfaces_show_player_and_agent_state(tmp_path, monkeypatch
     assert inbox.surface == "inbox"
     assert contracts.surface == "contract_board"
     assert crew_board.surface == "crew_board"
-    assert f"Inbox: {registered['player_id']}" in inbox.player_markdown
+    assert "Inbox: Ada" in inbox.player_markdown
     assert inbox.agent_context["player_id"] == registered["player_id"]
+    assert inbox.agent_context["display_name"] == "Ada"
     assert "The Saint's False Finger" in contracts.player_markdown
     assert contracts.agent_context["visible_contract_count"] == 1
     assert contracts.agent_context["contracts"][0]["title"] == "The Saint's False Finger"

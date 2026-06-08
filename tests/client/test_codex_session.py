@@ -2,7 +2,7 @@ import subprocess
 import sys
 
 from hollow_lodge.client.codex_session import CodexGameSession
-from hollow_lodge.client.config import ClientConfig, save_config
+from hollow_lodge.client.config import ClientConfig, load_config, save_config
 
 
 class FakeApi:
@@ -94,6 +94,29 @@ def test_codex_session_syncs_before_rendering_inbox(tmp_path):
     assert packet.surface == "inbox"
     assert "Inbox: player_0001" in packet.player_markdown
     assert "chat.message.created" in log_path.read_text()
+
+
+def test_codex_session_refreshes_missing_display_name(tmp_path):
+    class IdentityApi(FakeApi):
+        def me(self):
+            self.calls.append("me")
+            return {"player_id": "player_0001", "display_name": "corelumen"}
+
+    config_path = tmp_path / "config.json"
+    log_path = tmp_path / "local.jsonl"
+    save_config(
+        config_path,
+        ClientConfig(server_url="http://testserver", player_id="player_0001", token="token"),
+    )
+    fake_api = IdentityApi()
+
+    session = CodexGameSession(config_path=config_path, local_log_path=log_path, api=fake_api)
+    packet = session.render_inbox()
+
+    assert fake_api.calls == ["me", "visible_events", "inbox"]
+    assert load_config(config_path).display_name == "corelumen"
+    assert "Inbox: corelumen" in packet.player_markdown
+    assert packet.agent_context["player_id"] == "player_0001"
 
 
 def test_codex_session_uses_active_crew_for_crew_board(tmp_path):

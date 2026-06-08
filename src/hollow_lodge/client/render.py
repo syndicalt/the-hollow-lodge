@@ -29,7 +29,8 @@ def render_crew_board(board: dict[str, Any]) -> str:
 
 
 def render_inbox(inbox: dict[str, Any]) -> str:
-    lines = [f"Inbox: {inbox['player_id']}"]
+    display_name = inbox.get("display_name") or inbox["player_id"]
+    lines = [f"Inbox: {display_name}"]
     for contract in inbox.get("active_contracts", []):
         lines.append(contract["title"])
         lines.append(f"Phase: {contract['phase']['name']}")

@@ -59,6 +59,7 @@ def test_inbox_renders_contract_state_and_empty_notices(tmp_path):
     assert response.status_code == 200
     body = response.json()
     assert body["player_id"] == ada["player_id"]
+    assert body["display_name"] == "Ada"
     assert body["active_contracts"][0]["title"] == "The Saint's False Finger"
     assert body["active_contracts"][0]["proof_dossier_needs"] == [
         "provenance chain",
