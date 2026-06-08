@@ -546,6 +546,22 @@ Expected verification:
 - `pytest tests/server/test_crew_legacy_projection.py tests/server/test_crew_routes.py tests/server/test_deal_service.py tests/client/test_render_packets.py tests/e2e/test_escrowed_artifact_deals.py tests/e2e/test_full_game_loop_with_escrow.py -q`
 - `pytest -q`
 
+### Slice 17: Chat Body Rumor Pressure
+
+Status: completed.
+
+Extend leaky private-message pressure beyond explicit `artifact_ids`: a
+crew-to-crew message that names an artifact visible to the sender by ID or
+title now emits the same redacted system-pressure rumor to nonparticipant
+crews. The scanner is deterministic and bounded to visible artifacts, and the
+rumor payload still omits message body text, artifact IDs, artifact titles,
+player IDs, and participant-only deal state.
+
+Expected verification:
+
+- `pytest tests/server/test_chat_routes.py tests/server/test_crew_routes.py tests/client/test_render_packets.py -q`
+- `pytest -q`
+
 ## Completion Standard
 
 Each slice must:

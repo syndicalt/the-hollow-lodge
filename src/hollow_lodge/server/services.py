@@ -3,6 +3,7 @@ from __future__ import annotations
 import hashlib
 import json
 import os
+import re
 import secrets
 import threading
 from datetime import UTC, datetime, timedelta
@@ -804,7 +805,9 @@ class ChatService:
         message: ChatMessage,
         idempotency_key: str,
     ) -> None:
-        if message.kind != "crew_to_crew" or not message.artifact_ids:
+        if message.kind != "crew_to_crew":
+            return
+        if not message.artifact_ids and not self._body_mentions_visible_artifact(message):
             return
         participant_crew_ids = {
             message.sender_crew_id,
@@ -835,6 +838,25 @@ class ChatService:
             },
             idempotency_key=f"{idempotency_key}.rumor",
         )
+
+    def _body_mentions_visible_artifact(self, message: ChatMessage) -> bool:
+        if self._artifact_service is None:
+            return False
+        sender_crew_ids = self._crew_service.crew_ids_for_player(message.sender_player_id)
+        visible = self._artifact_service.visible_artifacts_for_player(
+            message.sender_player_id,
+            crew_ids=sender_crew_ids,
+        )
+        normalized_body = _normalize_search_text(message.body)
+        normalized_body_with_ids = f" {normalized_body} "
+        for artifact in visible.get("artifacts", []):
+            artifact_id = str(artifact.get("artifact_id", ""))
+            if artifact_id and artifact_id.casefold() in message.body.casefold():
+                return True
+            title = _normalize_search_text(str(artifact.get("title", "")))
+            if title and f" {title} " in normalized_body_with_ids:
+                return True
+        return False
 
     def _matching_chat_replay(self, *, idempotency_key: str, **expected) -> ChatMessage | None:
         for event in self._event_store.read():
@@ -874,6 +896,10 @@ class ChatService:
             message_id = event.payload["message_id"]
             if message_id.startswith("msg_"):
                 self._message_count = max(self._message_count, int(message_id.removeprefix("msg_")))
+
+
+def _normalize_search_text(text: str) -> str:
+    return re.sub(r"\s+", " ", re.sub(r"[^a-z0-9]+", " ", text.casefold())).strip()
 
 
 class VisibilityService:
