@@ -6,6 +6,7 @@ from hollow_lodge.domain.events import EventVisibility
 from hollow_lodge.eventlog.jsonl_store import JsonlEventStore
 from hollow_lodge.server.app import create_app
 from hollow_lodge.server.services import ContractService
+from hollow_lodge.workflows.deterministic_oracle import DeterministicResolutionOracle
 from hollow_lodge.workflows.oracle_boundary import (
     AuctionPreviewCrewResult,
     AuctionPreviewOracleResult,
@@ -48,6 +49,15 @@ class FalseyOracle:
 
     def resolve_auction_preview(self, packet):
         raise AssertionError("falsey oracle identity test should not resolve phases")
+
+
+class CountingOracle:
+    def __init__(self) -> None:
+        self.calls = 0
+
+    def resolve_auction_preview(self, packet):
+        self.calls += 1
+        return DeterministicResolutionOracle().resolve_auction_preview(packet)
 
 
 def auth(token: str) -> dict[str, str]:
@@ -140,3 +150,36 @@ def test_invalid_oracle_result_falls_back_and_is_audited(tmp_path):
     assert completed[0].payload["fallback"] is True
     assert completed[0].payload["fallback_reason"] == "ValueError"
     assert completed[0].payload["provider"] == "deterministic"
+
+
+def test_duplicate_phase_lock_does_not_call_oracle_twice(tmp_path):
+    oracle = CountingOracle()
+    client = TestClient(
+        create_app(data_dir=tmp_path, invite_codes=["a"], resolution_oracle=oracle)
+    )
+    ada = register(client, "a", "Ada")
+    crew = create_crew(client, ada["token"], "crew-create-ada", "The Gilt Knives")
+    submit_action(client, ada, crew)
+
+    first = client.post(
+        "/contracts/contract_false_finger/phases/auction-preview/lock",
+        headers=command_auth(ada["token"], "phase-lock"),
+        json={"hours_elapsed": 6},
+    )
+    replay = client.post(
+        "/contracts/contract_false_finger/phases/auction-preview/lock",
+        headers=command_auth(ada["token"], "phase-lock"),
+        json={"hours_elapsed": 6},
+    )
+    duplicate = client.post(
+        "/contracts/contract_false_finger/phases/auction-preview/lock",
+        headers=command_auth(ada["token"], "phase-lock-other"),
+        json={"hours_elapsed": 7},
+    )
+
+    assert first.status_code == 200
+    assert replay.status_code == 200
+    assert duplicate.status_code == 200
+    assert replay.json() == first.json()
+    assert duplicate.json() == first.json()
+    assert oracle.calls == 1
