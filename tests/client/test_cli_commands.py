@@ -120,6 +120,23 @@ class FakeApi:
             ]
         }
 
+    def get_player_detail(self, *, player_id: str, admin_token: str):
+        self.calls.append(
+            (
+                "get_player_detail",
+                {"player_id": player_id, "admin_token": admin_token},
+            )
+        )
+        return {
+            "player_id": player_id,
+            "display_name": "Ada",
+            "token_revoked": False,
+            "crew_ids": ["crew_0001"],
+            "crew_count": 1,
+            "token_hash": "secret-hash",
+            "join_code": "secret-join-code",
+        }
+
     def verify_event_log(self, *, admin_token: str):
         self.calls.append(("verify_event_log", {"admin_token": admin_token}))
         return {"ok": True, "event_count": 7, "repaired_trailing_row": False}
@@ -881,6 +898,43 @@ def test_admin_players_command_lists_player_lookup(tmp_path, monkeypatch):
     assert result.exit_code == 0
     assert "player_0001 active Ada" in result.output
     assert created_clients[0].calls == [("list_players", {"admin_token": "admin-secret"})]
+
+
+def test_admin_player_command_shows_sanitized_player_detail(tmp_path, monkeypatch):
+    runner = CliRunner()
+    created_clients: list[FakeApi] = []
+
+    def fake_client(**kwargs):
+        client = FakeApi(**kwargs)
+        created_clients.append(client)
+        return client
+
+    monkeypatch.setattr(cli, "HollowLodgeApi", fake_client)
+
+    result = runner.invoke(
+        cli.app,
+        [
+            "admin",
+            "player",
+            "player_0001",
+            "--server",
+            "http://testserver",
+            "--admin-token",
+            "admin-secret",
+        ],
+    )
+
+    assert result.exit_code == 0
+    assert "player_0001 active Ada" in result.output
+    assert "crews: crew_0001" in result.output
+    assert "secret-hash" not in result.output
+    assert "secret-join-code" not in result.output
+    assert created_clients[0].calls == [
+        (
+            "get_player_detail",
+            {"player_id": "player_0001", "admin_token": "admin-secret"},
+        )
+    ]
 
 
 def test_admin_event_log_commands_verify_and_export(tmp_path, monkeypatch):

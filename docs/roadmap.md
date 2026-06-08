@@ -203,6 +203,15 @@ Scope:
 - Add deployment documentation for `www.thehollowlodge.com` and
   `server.thehollowlodge.com`.
 
+Status:
+
+- Production diagnostics, hosted deployment docs, installer path, access-key
+  request approval, invite inventory, event-log verify/export, and admin
+  player lookup are implemented.
+- Admin player detail lookup completed: admins can inspect one player's
+  sanitized status and crew memberships without exposing tokens, token hashes,
+  invite hashes, raw invite codes, or crew join codes.
+
 Proof gate:
 
 - A clean machine can install the CLI from the site, request or redeem access,
@@ -660,6 +669,23 @@ Expected verification:
 
 - `pytest tests/server/test_phase_resolution.py::test_phase_resolution_records_public_legacy_delta_events_for_each_standing tests/server/test_phase_resolution.py::test_phase_lock_replay_and_duplicate_lock_do_not_append_duplicate_reveals tests/server/test_crew_legacy_projection.py tests/server/test_crew_routes.py::test_crew_board_legacy_changes_future_contract_risk_and_opportunity tests/client/test_render_packets.py::test_activity_summary_packet_shapes_visible_events_without_server_only_fields tests/client/test_local_log.py::test_local_log_tracks_max_server_sequence_and_replays_visible_events -q`
 - `pytest tests/server/test_phase_resolution.py tests/server/test_crew_legacy_projection.py tests/server/test_crew_routes.py tests/client/test_render_packets.py tests/client/test_local_log.py tests/e2e/test_contract_content_pipeline.py -q`
+- `pytest -q`
+
+### Slice 23: Admin Player Detail Lookup
+
+Status: completed.
+
+Make hosted onboarding operations easier without exposing auth material.
+Admins can now request sanitized detail for a single registered player through
+`GET /identity/admin/players/{player_id}` and
+`hollow-lodge admin player <player_id>`. The response includes player id,
+display name, token revocation state, crew ids, and crew count, while omitting
+tokens, token hashes, invite hashes, raw invite codes, and crew join codes.
+
+Expected verification:
+
+- `pytest tests/server/test_identity_routes.py::test_admin_player_detail_lookup_returns_crews_without_auth_material tests/client/test_api.py::test_api_gets_admin_player_detail_with_admin_token tests/client/test_cli_commands.py::test_admin_player_command_shows_sanitized_player_detail -q`
+- `pytest tests/server/test_identity_routes.py tests/client/test_api.py tests/client/test_cli_commands.py tests/client/test_installer_script.py -q`
 - `pytest -q`
 
 ## Completion Standard

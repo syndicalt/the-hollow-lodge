@@ -256,6 +256,32 @@ def admin_players(
         typer.echo(f"{player['player_id']} {state} {player['display_name']}")
 
 
+@admin_app.command("player")
+def admin_player(
+    player_id: str = typer.Argument(..., help="Player id to inspect."),
+    server: str = typer.Option(
+        DEFAULT_SERVER_URL,
+        "--server",
+        help="Authoritative server URL. Defaults to the official Lodge.",
+    ),
+    admin_token: str = typer.Option(
+        ...,
+        "--admin-token",
+        envvar="HOLLOW_LODGE_ADMIN_TOKEN",
+        help="Server admin token.",
+    ),
+) -> None:
+    """Show sanitized detail for one registered player."""
+    response = HollowLodgeApi(server_url=server).get_player_detail(
+        player_id=player_id,
+        admin_token=admin_token,
+    )
+    state = "revoked" if response["token_revoked"] else "active"
+    typer.echo(f"{response['player_id']} {state} {response['display_name']}")
+    crew_ids = response.get("crew_ids", [])
+    typer.echo(f"crews: {', '.join(crew_ids) if crew_ids else '-'}")
+
+
 @admin_app.command("event-log-verify")
 def admin_event_log_verify(
     server: str = typer.Option(

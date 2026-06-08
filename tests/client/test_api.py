@@ -92,6 +92,57 @@ def test_api_archives_contract_with_admin_token(monkeypatch):
     ]
 
 
+def test_api_gets_admin_player_detail_with_admin_token(monkeypatch):
+    calls = []
+
+    class Response:
+        def raise_for_status(self):
+            calls.append("raise_for_status")
+
+        def json(self):
+            return {
+                "player_id": "player_0001",
+                "display_name": "Ada",
+                "token_revoked": False,
+                "crew_ids": ["crew_0001"],
+                "crew_count": 1,
+            }
+
+    def fake_get(url, *, headers, timeout):
+        calls.append(
+            {
+                "url": url,
+                "headers": headers,
+                "timeout": timeout,
+            }
+        )
+        return Response()
+
+    monkeypatch.setattr("httpx.get", fake_get)
+    api = HollowLodgeApi(server_url="http://testserver")
+
+    result = api.get_player_detail(
+        player_id="player_0001",
+        admin_token="admin-secret",
+    )
+
+    assert result == {
+        "player_id": "player_0001",
+        "display_name": "Ada",
+        "token_revoked": False,
+        "crew_ids": ["crew_0001"],
+        "crew_count": 1,
+    }
+    assert calls == [
+        {
+            "url": "http://testserver/identity/admin/players/player_0001",
+            "headers": {"X-Hollow-Lodge-Admin-Token": "admin-secret"},
+            "timeout": 10,
+        },
+        "raise_for_status",
+    ]
+
+
 def test_api_transfers_proof_fragment(monkeypatch):
     calls = []
 

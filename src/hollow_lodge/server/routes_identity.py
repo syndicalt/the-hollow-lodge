@@ -57,6 +57,11 @@ class AdminPlayerListResponse(BaseModel):
     players: list[AdminPlayerResponse]
 
 
+class AdminPlayerDetailResponse(AdminPlayerResponse):
+    crew_ids: list[str]
+    crew_count: int
+
+
 class EventLogVerifyResponse(BaseModel):
     ok: bool
     event_count: int
@@ -201,6 +206,30 @@ def list_players(
             )
             for player in request.app.state.identity_service.list_players()
         ]
+    )
+
+
+@router.get(
+    "/admin/players/{player_id}",
+    response_model=AdminPlayerDetailResponse,
+)
+def get_player_detail(
+    player_id: str,
+    request: Request,
+    admin_token: str | None = Header(None, alias="X-Hollow-Lodge-Admin-Token"),
+) -> AdminPlayerDetailResponse:
+    _require_admin_token(admin_token)
+    try:
+        player = request.app.state.identity_service.player_by_id(player_id)
+    except KeyError as exc:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="player not found") from exc
+    crew_ids = request.app.state.crew_service.crew_ids_for_player(player.player_id)
+    return AdminPlayerDetailResponse(
+        player_id=player.player_id,
+        display_name=player.display_name,
+        token_revoked=player.token_revoked,
+        crew_ids=crew_ids,
+        crew_count=len(crew_ids),
     )
 
 

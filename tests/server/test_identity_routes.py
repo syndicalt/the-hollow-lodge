@@ -354,6 +354,55 @@ def test_admin_player_lookup_returns_registered_players_without_tokens(tmp_path,
     assert "token_hash" not in response.text
 
 
+def test_admin_player_detail_lookup_returns_crews_without_auth_material(
+    tmp_path,
+    monkeypatch,
+):
+    monkeypatch.setenv("HOLLOW_LODGE_ADMIN_TOKEN", "admin-secret")
+    client = TestClient(create_app(data_dir=tmp_path, invite_codes=["alpha-code"]))
+    registered = client.post(
+        "/identity/register",
+        json={"invite_code": "alpha-code", "display_name": "Ada"},
+        headers={"Idempotency-Key": "register-ada"},
+    ).json()
+    crew = client.post(
+        "/crews",
+        json={"name": "The Gilt Knives"},
+        headers={
+            "Authorization": f"Bearer {registered['token']}",
+            "Idempotency-Key": "crew-create-gilt",
+        },
+    ).json()
+
+    missing_admin = client.get(
+        f"/identity/admin/players/{registered['player_id']}",
+        headers={"Authorization": f"Bearer {registered['token']}"},
+    )
+    response = client.get(
+        f"/identity/admin/players/{registered['player_id']}",
+        headers={"X-Hollow-Lodge-Admin-Token": "admin-secret"},
+    )
+    missing = client.get(
+        "/identity/admin/players/player_missing",
+        headers={"X-Hollow-Lodge-Admin-Token": "admin-secret"},
+    )
+
+    assert missing_admin.status_code == 401
+    assert response.status_code == 200
+    assert response.json() == {
+        "player_id": registered["player_id"],
+        "display_name": "Ada",
+        "token_revoked": False,
+        "crew_ids": [crew["crew_id"]],
+        "crew_count": 1,
+    }
+    assert missing.status_code == 404
+    assert registered["token"] not in response.text
+    assert "token_hash" not in response.text
+    assert "join_code" not in response.text
+    assert "alpha-code" not in response.text
+
+
 def test_admin_can_verify_and_export_event_log(tmp_path, monkeypatch):
     monkeypatch.setenv("HOLLOW_LODGE_ADMIN_TOKEN", "admin-secret")
     client = TestClient(create_app(data_dir=tmp_path, invite_codes=["alpha-code"]))

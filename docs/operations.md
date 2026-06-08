@@ -54,10 +54,13 @@ event log stores only invite hashes.
 ```sh
 hollow-lodge admin invites
 hollow-lodge admin players
+hollow-lodge admin player player_0001
 ```
 
 Invite inventory never prints raw invite codes. Player lookup never prints
-tokens or token hashes.
+tokens, token hashes, or crew join codes. The single-player lookup includes
+sanitized crew memberships so admins can confirm onboarding state without
+opening the event log.
 
 ## Event-Log Integrity And Export
 

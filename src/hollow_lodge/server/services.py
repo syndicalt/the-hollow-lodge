@@ -192,6 +192,10 @@ class IdentityService:
                 key=lambda player: player.player_id,
             )
 
+    def player_by_id(self, player_id: str) -> Player:
+        with self._lock:
+            return self._players[player_id]
+
     def approve_access_key_request(
         self,
         *,
