@@ -10,3 +10,9 @@ Before roadmap, implementation, release, review, resume, or high-context work:
 - If no fresh activation packet or cited checkout is available, treat memory as degraded and pause substantial work until checkout succeeds.
 - Do not rely only on ordinary Codex summaries when Zaxy activation is missing.
 <!-- zaxy-memory-activation:end -->
+
+## The Hollow Lodge Codex Play
+
+For game-play sessions, follow `docs/codex-play.md`. The player should see
+rendered game state inside Codex, and the agent should use structured render
+packet context when advising.
