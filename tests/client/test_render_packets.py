@@ -540,7 +540,7 @@ def test_crew_board_packet_renders_legacy_and_future_modifiers_without_hidden_fi
                 "heat": 1,
                 "favors": 1,
                 "debts": 0,
-                "scars": [],
+                "scars": ["Bruised by The Saint's False Finger"],
                 "deal_conduct": {
                     "score": 2,
                     "fulfilled_count": 1,
@@ -596,6 +596,16 @@ def test_crew_board_packet_renders_legacy_and_future_modifiers_without_hidden_fi
                                 "value": 2,
                                 "offered_artifact_ids": ["artifact_private_ledger"],
                             },
+                            {
+                                "kind": "scar_burden",
+                                "label": "Scar burden",
+                                "description": (
+                                    "A prior scar makes The Ash Window more dangerous "
+                                    "for this crew."
+                                ),
+                                "value": 1,
+                                "server_notes": "hidden",
+                            },
                         ],
                     }
                 ],
@@ -624,6 +634,15 @@ def test_crew_board_packet_renders_legacy_and_future_modifiers_without_hidden_fi
                             ),
                             "value": 2,
                         },
+                        {
+                            "kind": "scar_burden",
+                            "label": "Scar burden",
+                            "description": (
+                                "A prior scar makes The Ash Window more dangerous "
+                                "for this crew."
+                            ),
+                            "value": 1,
+                        },
                     ],
                 }
             ],
@@ -649,12 +668,14 @@ def test_crew_board_packet_renders_legacy_and_future_modifiers_without_hidden_fi
     assert "Conduct score: 2" in packet.player_markdown
     assert "Reliability: reliable_escrow_partner" in packet.player_markdown
     assert "Fulfilled: 1; Canceled: 0; Declined: 0; Open: 0" in packet.player_markdown
+    assert "Scars:" in packet.player_markdown
+    assert "- Bruised by The Saint's False Finger" in packet.player_markdown
     assert "Counterintelligence:" in packet.player_markdown
     assert "Investigations: 1; Containments: 1; Heat from containment: 1" in packet.player_markdown
     assert "- The Saint's False Finger: Strong lead (82)" in packet.player_markdown
     assert "Future modifiers:" in packet.player_markdown
     assert (
-        "- The Ash Window: Reputation leverage +2; Heat attention +1; Deal reliability +2"
+        "- The Ash Window: Reputation leverage +2; Heat attention +1; Deal reliability +2; Scar burden +1"
         in packet.player_markdown
     )
     assert "hidden" not in packet.player_markdown
@@ -665,7 +686,7 @@ def test_crew_board_packet_renders_legacy_and_future_modifiers_without_hidden_fi
         "heat": 1,
         "favors": 1,
         "debts": 0,
-        "scars": [],
+        "scars": ["Bruised by The Saint's False Finger"],
         "deal_conduct": {
             "score": 2,
             "fulfilled_count": 1,
@@ -714,6 +735,15 @@ def test_crew_board_packet_renders_legacy_and_future_modifiers_without_hidden_fi
                             "arrangements for The Ash Window."
                         ),
                         "value": 2,
+                    },
+                    {
+                        "kind": "scar_burden",
+                        "label": "Scar burden",
+                        "description": (
+                            "A prior scar makes The Ash Window more dangerous "
+                            "for this crew."
+                        ),
+                        "value": 1,
                     },
                 ],
             }

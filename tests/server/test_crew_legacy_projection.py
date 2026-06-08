@@ -97,6 +97,60 @@ def test_strong_lead_creates_reputation_heat_and_future_modifiers():
     assert shaped_contracts[1]["crew_modifiers"] == legacy["future_opportunities"][0]["modifiers"]
 
 
+def test_weak_outcome_creates_scar_burden_for_future_contracts():
+    contracts = [
+        {
+            "contract_id": "contract_false_finger",
+            "title": "The Saint's False Finger",
+            "phase": {"name": "Auction Preview", "status": "resolved"},
+            "phase_result": {
+                "standings": [
+                    {
+                        "crew_id": "crew_0001",
+                        "standing": "Weak",
+                        "score": 12,
+                        "hidden_tiebreaker": 9,
+                    }
+                ],
+                "hidden_truth": "do not project",
+            },
+        },
+        {
+            "contract_id": "contract_ash_window",
+            "title": "The Ash Window",
+            "phase": {"name": "Cinder Preview", "remaining_hours": 4},
+        },
+    ]
+
+    legacy = crew_legacy_from_contracts(crew_id="crew_0001", contracts=contracts)
+    shaped_contracts = deepcopy(contracts)
+    apply_crew_modifiers_to_contracts(
+        contracts=shaped_contracts,
+        opportunities=legacy["future_opportunities"],
+    )
+
+    assert legacy["debts"] == 1
+    assert legacy["scars"] == ["Bruised by The Saint's False Finger"]
+    assert legacy["future_opportunities"] == [
+        {
+            "contract_id": "contract_ash_window",
+            "title": "The Ash Window",
+            "modifiers": [
+                {
+                    "kind": "scar_burden",
+                    "label": "Scar burden",
+                    "description": (
+                        "A prior scar makes The Ash Window more dangerous for this crew."
+                    ),
+                    "value": 1,
+                }
+            ],
+        }
+    ]
+    assert shaped_contracts[1]["crew_modifiers"] == legacy["future_opportunities"][0]["modifiers"]
+    assert "hidden_truth" not in str(legacy)
+
+
 def test_explicit_legacy_delta_events_drive_legacy_without_double_counting():
     contracts = [
         {

@@ -266,7 +266,10 @@ Status:
   player-safe arc id, title, chapter, sequence, summary, previous-contract
   links, and next hints that render through Codex contract and crew boards
   without mixing arc presentation with hidden truth or unlock mechanics.
-- Deferred: multi-day campaign arc authoring, scars/death/legacy inheritance,
+- Scar burden modifiers completed: weak outcomes now leave named scars visible
+  on Codex crew boards and add deterministic future risk modifiers on unresolved
+  contracts without exposing hidden resolution data.
+- Deferred: multi-day campaign arc authoring, deeper death/legacy inheritance,
   and richer long-term unlock paths.
 
 Likely files:
@@ -760,6 +763,23 @@ Expected verification:
 - `pytest tests/server/test_contract_seed_pipeline.py::test_contract_seed_accepts_public_campaign_arc_metadata tests/server/test_contract_seed_pipeline.py::test_contract_seed_rejects_arc_previous_link_to_self tests/server/test_contract_seed_pipeline.py::test_contract_seed_rejects_unknown_arc_fields tests/server/test_contract_seed.py::test_contract_board_renders_public_campaign_arc_metadata tests/server/test_contract_seed.py::test_contract_activation_replay_rejects_different_arc_metadata tests/server/test_crew_routes.py::test_crew_board_shapes_contracts_and_dossier_at_server_boundary tests/client/test_render_packets.py::test_contract_board_packet_renders_campaign_arc_metadata_without_hidden_fields -q`
 - `pytest tests/server/test_contract_seed_pipeline.py tests/server/test_contract_seed.py tests/server/test_crew_routes.py -q`
 - `pytest tests/client/test_render_packets.py tests/client/test_contract_board.py tests/e2e/test_contract_content_pipeline.py tests/e2e/test_codex_render_surfaces.py -q`
+- `pytest -q`
+
+### Slice 27: Scar Burden Legacy Modifiers
+
+Status: completed.
+
+Make weak contract outcomes mechanically meaningful without adding permanent
+death yet. Existing weak-result legacy deltas now surface their named scars on
+Codex crew boards, and those scars add a safe `scar_burden` risk modifier to
+future unresolved contracts. The modifier is deterministic and count-based, and
+the render packet keeps hidden resolution data, server notes, private artifact
+IDs, and soft deal terms out of player markdown and agent context.
+
+Expected verification:
+
+- `pytest tests/server/test_crew_legacy_projection.py::test_weak_outcome_creates_scar_burden_for_future_contracts tests/client/test_render_packets.py::test_crew_board_packet_renders_legacy_and_future_modifiers_without_hidden_fields -q`
+- `pytest tests/server/test_crew_legacy_projection.py tests/server/test_crew_routes.py tests/client/test_render_packets.py tests/e2e/test_contract_content_pipeline.py -q`
 - `pytest -q`
 
 ## Completion Standard

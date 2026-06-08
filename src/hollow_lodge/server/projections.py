@@ -173,6 +173,7 @@ def crew_legacy_from_contracts(
             contract=contract,
             reputation=reputation,
             heat=heat,
+            scars=scars,
             deal_conduct=deal_conduct,
         )
         if modifiers:
@@ -452,6 +453,7 @@ def _future_modifiers(
     contract: dict[str, Any],
     reputation: int,
     heat: int,
+    scars: list[str] | None = None,
     deal_conduct: dict[str, Any] | None = None,
 ) -> list[dict[str, Any]]:
     modifiers: list[dict[str, Any]] = []
@@ -472,6 +474,16 @@ def _future_modifiers(
                 "label": "Heat attention",
                 "description": f"Prior heat makes {title} riskier for this crew.",
                 "value": heat,
+            }
+        )
+    scar_count = len(scars or [])
+    if scar_count:
+        modifiers.append(
+            {
+                "kind": "scar_burden",
+                "label": "Scar burden",
+                "description": f"A prior scar makes {title} more dangerous for this crew.",
+                "value": scar_count,
             }
         )
     deal_score = (deal_conduct or {}).get("score", 0)

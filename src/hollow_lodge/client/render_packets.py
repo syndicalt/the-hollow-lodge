@@ -940,6 +940,12 @@ def build_crew_board_packet(board: dict[str, Any]) -> RenderPacket:
             "Heat from containment: "
             f"{legacy['counterintelligence']['heat_from_containment']}"
         ),
+        "Scars:",
+        *(
+            [f"- {scar}" for scar in legacy["scars"]]
+            if legacy["scars"]
+            else ["- none"]
+        ),
         "Completed contracts:",
     ]
     if legacy["completed_contracts"]:
