@@ -7,7 +7,11 @@ from hollow_lodge.client.api import HollowLodgeApi, new_command_key
 from hollow_lodge.client.config import ClientConfig, load_config, save_config
 from hollow_lodge.client.handler import normalize_action_draft
 from hollow_lodge.client.local_log import LocalEventLog
-from hollow_lodge.client.render import render_contract_board, render_inbox
+from hollow_lodge.client.render_packets import (
+    build_contract_board_packet,
+    build_crew_board_packet,
+    build_inbox_packet,
+)
 
 
 app = typer.Typer(
@@ -174,17 +178,34 @@ def thread(
 @app.command()
 def contracts(
     config: Path = typer.Option(DEFAULT_CONFIG_PATH, "--config", help="Local config path."),
+    as_json: bool = typer.Option(False, "--json", help="Emit Codex render packet JSON."),
 ) -> None:
     """Show the contract board."""
-    typer.echo(render_contract_board(_api_from_config(load_config(config)).contracts()))
+    packet = build_contract_board_packet(_api_from_config(load_config(config)).contracts())
+    _echo_packet(packet, as_json=as_json)
 
 
 @app.command()
 def inbox(
     config: Path = typer.Option(DEFAULT_CONFIG_PATH, "--config", help="Local config path."),
+    as_json: bool = typer.Option(False, "--json", help="Emit Codex render packet JSON."),
 ) -> None:
     """Show the personal inbox."""
-    typer.echo(render_inbox(_api_from_config(load_config(config)).inbox()))
+    packet = build_inbox_packet(_api_from_config(load_config(config)).inbox())
+    _echo_packet(packet, as_json=as_json)
+
+
+@app.command("crew-board")
+def crew_board(
+    crew_id: str | None = typer.Option(None, "--crew-id", help="Crew id; defaults to active crew."),
+    config: Path = typer.Option(DEFAULT_CONFIG_PATH, "--config", help="Local config path."),
+    as_json: bool = typer.Option(False, "--json", help="Emit Codex render packet JSON."),
+) -> None:
+    """Show the active crew board."""
+    current = load_config(config)
+    target_crew_id = _target_crew_id(current, crew_id)
+    packet = build_crew_board_packet(_api_from_config(current).crew_board(crew_id=target_crew_id))
+    _echo_packet(packet, as_json=as_json)
 
 
 @app.command()
@@ -341,6 +362,13 @@ def _target_crew_id(config: ClientConfig, crew_id: str | None) -> str:
     if target_crew_id is None:
         raise typer.BadParameter("crew id required when no active crew is configured")
     return target_crew_id
+
+
+def _echo_packet(packet, *, as_json: bool) -> None:
+    if as_json:
+        typer.echo(packet.model_dump_json())
+    else:
+        typer.echo(packet.player_markdown)
 
 
 def _payload_matches_conversation(payload: dict, conversation_id: str) -> bool:

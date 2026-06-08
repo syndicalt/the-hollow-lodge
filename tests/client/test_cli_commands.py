@@ -91,6 +91,61 @@ class FakeApi:
             }
         ]
 
+    def contracts(self):
+        self.calls.append(("contracts", {}))
+        return {
+            "campaign": {"title": "Saints & Ledgers"},
+            "contracts": [
+                {
+                    "title": "The Saint's False Finger",
+                    "phase": {"name": "Auction Preview", "remaining_hours": 6},
+                    "crew_heat": 0,
+                    "proof_dossier_needs": ["provenance chain"],
+                }
+            ],
+        }
+
+    def inbox(self):
+        self.calls.append(("inbox", {}))
+        return {
+            "player_id": "player_0001",
+            "active_contracts": [
+                {
+                    "title": "The Saint's False Finger",
+                    "phase": {"name": "Auction Preview"},
+                }
+            ],
+            "incoming_proof_fragments": [],
+        }
+
+    def crew_board(self, *, crew_id: str):
+        self.calls.append(("crew_board", {"crew_id": crew_id}))
+        return {
+            "player_id": "player_0001",
+            "crew": {
+                "crew_id": crew_id,
+                "name": "The Gilt Knives",
+                "member_ids": ["player_0001", "player_0002"],
+                "member_count": 2,
+                "ready_for_full_contracts": False,
+                "readiness_warning": "Crews should have 3-5 players for full contracts.",
+            },
+            "active_contracts": [
+                {
+                    "title": "The Saint's False Finger",
+                    "phase": {"name": "Auction Preview"},
+                }
+            ],
+            "dossier": {
+                "dossier_id": "dossier_crew_0001",
+                "crew_id": crew_id,
+                "packet_lead_player_id": "player_0001",
+                "claim": "",
+                "evidence_ids": [],
+                "member_contributions": [],
+            },
+        }
+
     def check_provenance(self, *, fragment_id: str, idempotency_key: str):
         self.calls.append(
             (
@@ -103,6 +158,75 @@ class FakeApi:
             "provenance_checked": True,
             "provenance_flags": ["copied-hand", "ink-after-binding"],
         }
+
+    def send_crew_message(self, *, crew_id: str, body: str, idempotency_key: str):
+        self.calls.append(
+            (
+                "send_crew_message",
+                {"crew_id": crew_id, "body": body, "idempotency_key": idempotency_key},
+            )
+        )
+        return {"message_id": "msg_crew"}
+
+    def send_crew_to_crew_message(
+        self,
+        *,
+        sender_crew_id: str,
+        recipient_crew_id: str,
+        body: str,
+        idempotency_key: str,
+    ):
+        self.calls.append(
+            (
+                "send_crew_to_crew_message",
+                {
+                    "sender_crew_id": sender_crew_id,
+                    "recipient_crew_id": recipient_crew_id,
+                    "body": body,
+                    "idempotency_key": idempotency_key,
+                },
+            )
+        )
+        return {"message_id": "msg_crew_to_crew"}
+
+    def dossier(self, *, crew_id: str):
+        self.calls.append(("dossier", {"crew_id": crew_id}))
+        return {
+            "crew_id": crew_id,
+            "packet_lead_player_id": "player_0001",
+            "claim": "likely false relic",
+        }
+
+    def add_dossier_evidence(self, *, crew_id: str, fragment_id: str, idempotency_key: str):
+        self.calls.append(
+            (
+                "add_dossier_evidence",
+                {
+                    "crew_id": crew_id,
+                    "fragment_id": fragment_id,
+                    "idempotency_key": idempotency_key,
+                },
+            )
+        )
+        return {"crew_id": crew_id, "evidence_ids": [fragment_id]}
+
+    def update_dossier_claim(self, *, crew_id: str, claim: str, idempotency_key: str):
+        self.calls.append(
+            (
+                "update_dossier_claim",
+                {"crew_id": crew_id, "claim": claim, "idempotency_key": idempotency_key},
+            )
+        )
+        return {"crew_id": crew_id, "claim": claim}
+
+    def vote_packet_lead(self, *, crew_id: str, player_id: str, idempotency_key: str):
+        self.calls.append(
+            (
+                "vote_packet_lead",
+                {"crew_id": crew_id, "player_id": player_id, "idempotency_key": idempotency_key},
+            )
+        )
+        return {"crew_id": crew_id, "packet_lead_player_id": player_id}
 
 
 def test_register_command_saves_local_config(tmp_path, monkeypatch):
@@ -254,6 +378,142 @@ def test_thread_command_renders_crew_to_crew_conversation_id(tmp_path, monkeypat
     assert "No public claims until lock." in result.output
 
 
+def test_crew_chat_commands_use_active_crew(tmp_path, monkeypatch):
+    runner = CliRunner()
+    created_clients: list[FakeApi] = []
+
+    def fake_client(**kwargs):
+        client = FakeApi(**kwargs)
+        created_clients.append(client)
+        return client
+
+    monkeypatch.setattr(cli, "HollowLodgeApi", fake_client)
+    monkeypatch.setattr(cli, "new_command_key", lambda prefix: f"{prefix}-key")
+    config_path = tmp_path / "config.json"
+    save_config(
+        config_path,
+        ClientConfig(
+            server_url="http://testserver",
+            player_id="player_0001",
+            token="token",
+            active_crew_id="crew_0001",
+        ),
+    )
+
+    crew_result = runner.invoke(
+        cli.app,
+        ["crew", "Meet by the archive.", "--config", str(config_path)],
+    )
+    crew_msg_result = runner.invoke(
+        cli.app,
+        ["crew-msg", "crew_0002", "Trade the ledger?", "--config", str(config_path)],
+    )
+
+    assert crew_result.exit_code == 0
+    assert crew_msg_result.exit_code == 0
+    assert created_clients[0].calls == [
+        (
+            "send_crew_message",
+            {
+                "crew_id": "crew_0001",
+                "body": "Meet by the archive.",
+                "idempotency_key": "chat-crew-key",
+            },
+        )
+    ]
+    assert created_clients[1].calls == [
+        (
+            "send_crew_to_crew_message",
+            {
+                "sender_crew_id": "crew_0001",
+                "recipient_crew_id": "crew_0002",
+                "body": "Trade the ledger?",
+                "idempotency_key": "chat-crew-to-crew-key",
+            },
+        )
+    ]
+
+
+def test_board_commands_render_contracts_and_inbox(tmp_path, monkeypatch):
+    runner = CliRunner()
+    created_clients: list[FakeApi] = []
+
+    def fake_client(**kwargs):
+        client = FakeApi(**kwargs)
+        created_clients.append(client)
+        return client
+
+    monkeypatch.setattr(cli, "HollowLodgeApi", fake_client)
+    config_path = tmp_path / "config.json"
+    save_config(
+        config_path,
+        ClientConfig(server_url="http://testserver", player_id="player_0001", token="token"),
+    )
+
+    contracts_result = runner.invoke(cli.app, ["contracts", "--config", str(config_path)])
+    inbox_result = runner.invoke(cli.app, ["inbox", "--config", str(config_path)])
+
+    assert contracts_result.exit_code == 0
+    assert "The Saint's False Finger" in contracts_result.output
+    assert inbox_result.exit_code == 0
+    assert "Inbox: player_0001" in inbox_result.output
+    assert created_clients[0].calls == [("contracts", {})]
+    assert created_clients[1].calls == [("inbox", {})]
+
+
+def test_contracts_can_emit_render_packet_json(tmp_path, monkeypatch):
+    runner = CliRunner()
+    monkeypatch.setattr(cli, "HollowLodgeApi", FakeApi)
+    config_path = tmp_path / "config.json"
+    save_config(
+        config_path,
+        ClientConfig(server_url="http://testserver", player_id="player_0001", token="token"),
+    )
+
+    result = runner.invoke(cli.app, ["contracts", "--json", "--config", str(config_path)])
+
+    assert result.exit_code == 0
+    assert '"surface":"contract_board"' in result.output
+    assert "The Saint's False Finger" in result.output
+
+
+def test_inbox_can_emit_render_packet_json(tmp_path, monkeypatch):
+    runner = CliRunner()
+    monkeypatch.setattr(cli, "HollowLodgeApi", FakeApi)
+    config_path = tmp_path / "config.json"
+    save_config(
+        config_path,
+        ClientConfig(server_url="http://testserver", player_id="player_0001", token="token"),
+    )
+
+    result = runner.invoke(cli.app, ["inbox", "--json", "--config", str(config_path)])
+
+    assert result.exit_code == 0
+    assert '"surface":"inbox"' in result.output
+    assert '"player_id":"player_0001"' in result.output
+
+
+def test_crew_board_command_uses_active_crew_and_can_emit_json(tmp_path, monkeypatch):
+    runner = CliRunner()
+    monkeypatch.setattr(cli, "HollowLodgeApi", FakeApi)
+    config_path = tmp_path / "config.json"
+    save_config(
+        config_path,
+        ClientConfig(
+            server_url="http://testserver",
+            player_id="player_0001",
+            token="token",
+            active_crew_id="crew_0001",
+        ),
+    )
+
+    result = runner.invoke(cli.app, ["crew-board", "--json", "--config", str(config_path)])
+
+    assert result.exit_code == 0
+    assert '"surface":"crew_board"' in result.output
+    assert '"crew_id":"crew_0001"' in result.output
+
+
 def test_sync_command_fetches_delta_into_local_log(tmp_path, monkeypatch):
     runner = CliRunner()
     created_clients: list[FakeApi] = []
@@ -334,6 +594,104 @@ def test_check_provenance_command_uses_saved_config(tmp_path, monkeypatch):
             {
                 "fragment_id": "fragment_starter_ledger",
                 "idempotency_key": "proof-provenance-key",
+            },
+        )
+    ]
+
+
+def test_dossier_commands_use_active_or_explicit_crew(tmp_path, monkeypatch):
+    runner = CliRunner()
+    created_clients: list[FakeApi] = []
+
+    def fake_client(**kwargs):
+        client = FakeApi(**kwargs)
+        created_clients.append(client)
+        return client
+
+    monkeypatch.setattr(cli, "HollowLodgeApi", fake_client)
+    monkeypatch.setattr(cli, "new_command_key", lambda prefix: f"{prefix}-key")
+    config_path = tmp_path / "config.json"
+    save_config(
+        config_path,
+        ClientConfig(
+            server_url="http://testserver",
+            player_id="player_0001",
+            token="token",
+            active_crew_id="crew_0001",
+        ),
+    )
+
+    show_result = runner.invoke(cli.app, ["dossier", "--config", str(config_path)])
+    evidence_result = runner.invoke(
+        cli.app,
+        ["dossier", "add-evidence", "fragment_copy", "--config", str(config_path)],
+    )
+    claim_result = runner.invoke(
+        cli.app,
+        ["dossier", "claim", "likely false relic", "--crew-id", "crew_0002", "--config", str(config_path)],
+    )
+
+    assert show_result.exit_code == 0
+    assert evidence_result.exit_code == 0
+    assert claim_result.exit_code == 0
+    assert created_clients[0].calls == [("dossier", {"crew_id": "crew_0001"})]
+    assert created_clients[1].calls == [
+        (
+            "add_dossier_evidence",
+            {
+                "crew_id": "crew_0001",
+                "fragment_id": "fragment_copy",
+                "idempotency_key": "dossier-evidence-key",
+            },
+        )
+    ]
+    assert created_clients[2].calls == [
+        (
+            "update_dossier_claim",
+            {
+                "crew_id": "crew_0002",
+                "claim": "likely false relic",
+                "idempotency_key": "dossier-claim-key",
+            },
+        )
+    ]
+
+
+def test_packet_lead_vote_command_uses_active_crew(tmp_path, monkeypatch):
+    runner = CliRunner()
+    created_clients: list[FakeApi] = []
+
+    def fake_client(**kwargs):
+        client = FakeApi(**kwargs)
+        created_clients.append(client)
+        return client
+
+    monkeypatch.setattr(cli, "HollowLodgeApi", fake_client)
+    monkeypatch.setattr(cli, "new_command_key", lambda prefix: f"{prefix}-key")
+    config_path = tmp_path / "config.json"
+    save_config(
+        config_path,
+        ClientConfig(
+            server_url="http://testserver",
+            player_id="player_0001",
+            token="token",
+            active_crew_id="crew_0001",
+        ),
+    )
+
+    result = runner.invoke(
+        cli.app,
+        ["packet-lead", "vote", "player_0002", "--config", str(config_path)],
+    )
+
+    assert result.exit_code == 0
+    assert created_clients[0].calls == [
+        (
+            "vote_packet_lead",
+            {
+                "crew_id": "crew_0001",
+                "player_id": "player_0002",
+                "idempotency_key": "packet-lead-vote-key",
             },
         )
     ]
