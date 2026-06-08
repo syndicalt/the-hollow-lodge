@@ -76,3 +76,38 @@ def test_deal_copy_replay_returns_same_copy(tmp_path):
     )
 
     assert replay["artifact_id"] == first["artifact_id"]
+
+
+def test_repeated_deal_copies_with_different_keys_get_unique_ids(tmp_path):
+    app = create_app(data_dir=tmp_path, invite_codes=["a", "b"])
+    client = TestClient(app)
+    ada = register(client, "a", "Ada")
+    bela = register(client, "b", "Bela")
+    crew = client.post(
+        "/crews",
+        json={"name": "Moth"},
+        headers=command_auth(bela["token"], "crew-moth"),
+    ).json()
+
+    first = app.state.artifact_service.copy_artifact_for_deal(
+        source_artifact_id="artifact_ledger_rubric",
+        source_crew_id="crew_source",
+        recipient_crew_id=crew["crew_id"],
+        actor_id=ada["player_id"],
+        deal_id="deal_000001",
+        idempotency_key="deal-copy-ledger-1",
+    )
+    second = app.state.artifact_service.copy_artifact_for_deal(
+        source_artifact_id="artifact_ledger_rubric",
+        source_crew_id="crew_source",
+        recipient_crew_id=crew["crew_id"],
+        actor_id=ada["player_id"],
+        deal_id="deal_000001",
+        idempotency_key="deal-copy-ledger-2",
+    )
+
+    first_view = client.get(f"/artifacts/{first['artifact_id']}", headers=auth(bela["token"]))
+    second_view = client.get(f"/artifacts/{second['artifact_id']}", headers=auth(bela["token"]))
+    assert first["artifact_id"] != second["artifact_id"]
+    assert first_view.status_code == 200
+    assert second_view.status_code == 200

@@ -159,7 +159,7 @@ class ArtifactService:
                 source_artifact_id=artifact.artifact_id,
                 copy_artifact_id=(
                     f"{artifact.artifact_id}.dealcopy."
-                    f"{deal_id}.{recipient_crew_id}.{self._next_transfer_number()}"
+                    f"{deal_id}.{recipient_crew_id}.{self._next_deal_copy_number()}"
                 ),
                 contract_id=artifact.contract_id,
                 source_crew_id=source_crew_id,
@@ -332,4 +332,11 @@ class ArtifactService:
             1
             for event in self._event_store.read()
             if event.type == "artifact.transferred.internal"
+        )
+
+    def _next_deal_copy_number(self) -> int:
+        return 1 + sum(
+            1
+            for event in self._event_store.read()
+            if event.type == "artifact.deal_copied.internal"
         )
