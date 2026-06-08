@@ -4,6 +4,7 @@ from dataclasses import dataclass
 import threading
 from typing import Any
 
+from hollow_lodge.domain.artifact_graph import ArtifactGraph
 from hollow_lodge.domain.artifacts import ArtifactCopy
 from hollow_lodge.domain.events import EventVisibility
 from hollow_lodge.eventlog.jsonl_store import JsonlEventStore
@@ -37,7 +38,11 @@ class ArtifactService:
         crew_ids: list[str] | tuple[str, ...] = (),
     ) -> dict:
         visible_ids = self._visible_artifact_ids(player_id, crew_ids=crew_ids)
-        visible = STARTER_ARTIFACT_GRAPH.visible_slice(visible_ids)
+        visible = {"contract_id": "multiple", "artifacts": [], "edges": []}
+        for graph, _ in self._seeded_graphs().values():
+            graph_slice = graph.visible_slice(visible_ids)
+            visible["artifacts"].extend(graph_slice["artifacts"])
+            visible["edges"].extend(graph_slice["edges"])
         visible["artifacts"].extend(
             surface
             for surface in self._visible_copy_surfaces(player_id, crew_ids=crew_ids)
@@ -59,7 +64,7 @@ class ArtifactService:
         ):
             raise KeyError(artifact_id)
         try:
-            artifact = STARTER_ARTIFACT_GRAPH.artifact_by_id(artifact_id)
+            artifact = self._artifact_by_id(artifact_id)
         except KeyError:
             copied = self._copy_surface(artifact_id)
             if copied is None:
@@ -97,7 +102,7 @@ class ArtifactService:
             if replay is not None:
                 return replay
 
-            artifact = STARTER_ARTIFACT_GRAPH.artifact_by_id(artifact_id)
+            artifact = self._artifact_by_id(artifact_id)
             if artifact.artifact_id not in self._visible_artifact_ids(
                 sender_player_id,
                 crew_ids=sender_crew_ids,
@@ -246,7 +251,7 @@ class ArtifactService:
         reason: str,
         idempotency_key: str,
     ) -> dict:
-        artifact = STARTER_ARTIFACT_GRAPH.artifact_by_id(artifact_id)
+        artifact = self._artifact_by_id(artifact_id)
         surface = artifact.surface_view()
         self._event_store.append_command(
             event_type="artifact.access.granted",
@@ -283,7 +288,9 @@ class ArtifactService:
         *,
         crew_ids: list[str] | tuple[str, ...] = (),
     ) -> set[str]:
-        visible_ids = set(STARTER_PUBLIC_ARTIFACT_IDS)
+        visible_ids: set[str] = set()
+        for _, public_artifact_ids in self._seeded_graphs().values():
+            visible_ids.update(public_artifact_ids)
         principals = [Principal.player(player_id)]
         principals.extend(Principal.crew(crew_id) for crew_id in crew_ids)
         for principal in principals:
@@ -322,6 +329,38 @@ class ArtifactService:
             if copied.artifact_id == artifact_id:
                 return copied.surface_view()
         return None
+
+    def _artifact_by_id(self, artifact_id: str):
+        for graph, _ in self._seeded_graphs().values():
+            try:
+                return graph.artifact_by_id(artifact_id)
+            except KeyError:
+                continue
+        raise KeyError(artifact_id)
+
+    def _seeded_graphs(self) -> dict[str, tuple[ArtifactGraph, tuple[str, ...]]]:
+        graphs: dict[str, tuple[ArtifactGraph, tuple[str, ...]]] = {
+            STARTER_ARTIFACT_GRAPH.contract_id: (
+                STARTER_ARTIFACT_GRAPH,
+                tuple(STARTER_PUBLIC_ARTIFACT_IDS),
+            )
+        }
+        for event in self._event_store.read():
+            if event.type != "artifact.graph.seeded":
+                continue
+            payload = event.payload
+            if "graph" in payload:
+                graph = ArtifactGraph.model_validate(payload["graph"])
+                public_artifact_ids = tuple(payload.get("public_artifact_ids", ()))
+            else:
+                graph = ArtifactGraph.model_validate(payload)
+                public_artifact_ids = (
+                    tuple(STARTER_PUBLIC_ARTIFACT_IDS)
+                    if graph.contract_id == STARTER_ARTIFACT_GRAPH.contract_id
+                    else ()
+                )
+            graphs[graph.contract_id] = (graph, public_artifact_ids)
+        return graphs
 
     def _matching_transfer_replay(
         self,
@@ -380,7 +419,7 @@ class ArtifactService:
         idempotency_key: str,
         copy_number: int | None = None,
     ) -> _PlannedDealCopy:
-        artifact = STARTER_ARTIFACT_GRAPH.artifact_by_id(source_artifact_id)
+        artifact = self._artifact_by_id(source_artifact_id)
         if artifact.copy_policy == "sealed":
             raise ValueError("artifact cannot be transferred")
 

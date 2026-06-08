@@ -120,6 +120,25 @@ class HollowLodgeApi:
         response.raise_for_status()
         return response.json()
 
+    def activate_contract_seed(
+        self,
+        *,
+        seed: dict[str, Any],
+        admin_token: str,
+        idempotency_key: str,
+    ) -> dict[str, Any]:
+        response = httpx.post(
+            f"{self.server_url}/contracts/admin/activate",
+            headers={
+                "Idempotency-Key": idempotency_key,
+                "X-Hollow-Lodge-Admin-Token": admin_token,
+            },
+            json={"seed": seed},
+            timeout=10,
+        )
+        response.raise_for_status()
+        return response.json()
+
     def create_crew(self, *, name: str, idempotency_key: str) -> dict[str, Any]:
         return self._post(
             "/crews",

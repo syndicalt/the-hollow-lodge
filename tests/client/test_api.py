@@ -1,6 +1,52 @@
 from hollow_lodge.client.api import HollowLodgeApi
 
 
+def test_api_activates_contract_seed_with_admin_token(monkeypatch):
+    calls = []
+
+    class Response:
+        def raise_for_status(self):
+            calls.append("raise_for_status")
+
+        def json(self):
+            return {"contract_id": "contract_ash_window", "lifecycle_status": "active"}
+
+    def fake_post(url, *, headers, json, timeout):
+        calls.append(
+            {
+                "url": url,
+                "headers": headers,
+                "json": json,
+                "timeout": timeout,
+            }
+        )
+        return Response()
+
+    monkeypatch.setattr("httpx.post", fake_post)
+    api = HollowLodgeApi(server_url="http://testserver")
+    seed = {"contract": {"contract_id": "contract_ash_window"}}
+
+    result = api.activate_contract_seed(
+        seed=seed,
+        admin_token="admin-secret",
+        idempotency_key="contract-activate-key",
+    )
+
+    assert result == {"contract_id": "contract_ash_window", "lifecycle_status": "active"}
+    assert calls == [
+        {
+            "url": "http://testserver/contracts/admin/activate",
+            "headers": {
+                "Idempotency-Key": "contract-activate-key",
+                "X-Hollow-Lodge-Admin-Token": "admin-secret",
+            },
+            "json": {"seed": seed},
+            "timeout": 10,
+        },
+        "raise_for_status",
+    ]
+
+
 def test_api_transfers_proof_fragment(monkeypatch):
     calls = []
 

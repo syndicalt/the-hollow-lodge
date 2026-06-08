@@ -1,0 +1,86 @@
+{
+  "campaign": {
+    "campaign_id": "campaign_saints_ledgers",
+    "title": "Saints & Ledgers"
+  },
+  "contract": {
+    "contract_id": "contract_ash_window",
+    "campaign_id": "campaign_saints_ledgers",
+    "title": "The Ash Window",
+    "premise": "A townhouse window keeps showing tomorrow's fire in yesterday's soot.",
+    "phase": {
+      "name": "Cinder Preview",
+      "remaining_hours": 4
+    },
+    "evidence_assets": [
+      {
+        "asset_id": "asset_ash_lot_notice",
+        "title": "Ash lot notice",
+        "public_summary": "A notice lists a window frame recovered before the fire."
+      }
+    ],
+    "proof_dossier_needs": [
+      "fire chronology",
+      "material residue",
+      "witness leverage"
+    ],
+    "crew_heat": 0
+  },
+  "hidden_truth": {
+    "truth_id": "truth_ash_window_future_burn",
+    "summary": "The window is a cinder oracle that shows fires before they are set."
+  },
+  "artifact_graph": {
+    "contract_id": "contract_ash_window",
+    "artifacts": [
+      {
+        "artifact_id": "artifact_ash_notice",
+        "contract_id": "contract_ash_window",
+        "kind": "catalogue",
+        "title": "Ash Lot Notice",
+        "public_summary": "A notice lists the window frame as recovered before the fire.",
+        "full_text": "Lot notice: frame recovered from Bellweather House, timestamped two hours before the fire.",
+        "tags": ["ash", "notice", "timestamp"],
+        "proof_lanes": ["provenance", "leverage"],
+        "phase_relevance": ["Cinder Preview"],
+        "visible_flags": ["public-notice"]
+      },
+      {
+        "artifact_id": "artifact_soot_sample",
+        "contract_id": "contract_ash_window",
+        "kind": "receipt",
+        "title": "Soot Sample Receipt",
+        "public_summary": "A receipt notes glass soot with an impossible cooling pattern.",
+        "full_text": "Receipt: soot lifted from inner glass. Cooling pattern contradicts the reported fire time.",
+        "tags": ["soot", "glass", "cooling"],
+        "proof_lanes": ["material", "occult"],
+        "phase_relevance": ["Cinder Preview"],
+        "hidden_flags": ["future-burn"]
+      }
+    ],
+    "edges": [
+      {
+        "source_id": "artifact_ash_notice",
+        "target_id": "artifact_soot_sample",
+        "relation": "points_to",
+        "public_summary": "The notice timestamp points toward the soot anomaly."
+      }
+    ],
+    "unlock_rules": [
+      {
+        "rule_id": "unlock-soot-sample",
+        "artifact_id": "artifact_soot_sample",
+        "contract_id": "contract_ash_window",
+        "phase": "Cinder Preview",
+        "trigger": "action_mentions_tag",
+        "required_terms": ["soot"],
+        "award_scope": "crew",
+        "award_reason": "Followed the ash notice to the soot sample."
+      }
+    ]
+  },
+  "public_artifact_ids": ["artifact_ash_notice"],
+  "scoring_hints": {
+    "rubric_hooks": ["fire chronology", "material residue", "witness leverage"]
+  }
+}

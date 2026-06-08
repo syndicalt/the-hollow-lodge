@@ -67,3 +67,86 @@ def test_inbox_renders_contract_state_and_empty_notices(tmp_path):
         "auction leverage",
     ]
     assert body["incoming_proof_fragments"] == []
+
+
+def test_admin_can_activate_second_contract_seed_and_render_it(tmp_path, monkeypatch):
+    monkeypatch.setenv("HOLLOW_LODGE_ADMIN_TOKEN", "admin-secret")
+    client = TestClient(create_app(data_dir=tmp_path, invite_codes=["a"]))
+    ada = register(client, "a", "Ada")
+    seed = "tests/fixtures/ash_window_contract.json"
+
+    activated = client.post(
+        "/contracts/admin/activate",
+        headers={
+            "Idempotency-Key": "activate-ash-window",
+            "X-Hollow-Lodge-Admin-Token": "admin-secret",
+        },
+        json={"seed": seed},
+    )
+    contracts = client.get("/contracts", headers=auth(ada["token"]))
+    inbox = client.get("/inbox", headers=auth(ada["token"]))
+    events = client.get("/events", headers=auth(ada["token"]))
+
+    assert activated.status_code == 201
+    assert activated.json() == {
+        "contract_id": "contract_ash_window",
+        "lifecycle_status": "active",
+    }
+    rendered = {
+        contract["contract_id"]: contract
+        for contract in contracts.json()["contracts"]
+    }
+    assert rendered["contract_ash_window"]["title"] == "The Ash Window"
+    assert rendered["contract_ash_window"]["phase"]["name"] == "Cinder Preview"
+    assert rendered["contract_ash_window"]["lifecycle_status"] == "active"
+    assert any(
+        contract["contract_id"] == "contract_ash_window"
+        for contract in inbox.json()["active_contracts"]
+    )
+    assert "cinder oracle" not in contracts.text
+    assert "contract.hidden_truth.seeded" not in events.text
+    assert "cinder oracle" not in events.text
+
+
+def test_admin_contract_activation_is_idempotent(tmp_path, monkeypatch):
+    monkeypatch.setenv("HOLLOW_LODGE_ADMIN_TOKEN", "admin-secret")
+    client = TestClient(create_app(data_dir=tmp_path, invite_codes=["a"]))
+
+    first = client.post(
+        "/contracts/admin/activate",
+        headers={
+            "Idempotency-Key": "activate-ash-window",
+            "X-Hollow-Lodge-Admin-Token": "admin-secret",
+        },
+        json={"seed": "tests/fixtures/ash_window_contract.json"},
+    )
+    replay = client.post(
+        "/contracts/admin/activate",
+        headers={
+            "Idempotency-Key": "activate-ash-window",
+            "X-Hollow-Lodge-Admin-Token": "admin-secret",
+        },
+        json={"seed": "tests/fixtures/ash_window_contract.json"},
+    )
+
+    assert first.status_code == 201
+    assert replay.status_code == 201
+    assert replay.json() == first.json()
+
+
+def test_admin_contract_activation_rejects_invalid_seed(tmp_path, monkeypatch):
+    monkeypatch.setenv("HOLLOW_LODGE_ADMIN_TOKEN", "admin-secret")
+    bad_seed = tmp_path / "bad.json"
+    bad_seed.write_text("{}", encoding="utf-8")
+    client = TestClient(create_app(data_dir=tmp_path, invite_codes=["a"]))
+
+    response = client.post(
+        "/contracts/admin/activate",
+        headers={
+            "Idempotency-Key": "activate-bad",
+            "X-Hollow-Lodge-Admin-Token": "admin-secret",
+        },
+        json={"seed": str(bad_seed)},
+    )
+
+    assert response.status_code == 422

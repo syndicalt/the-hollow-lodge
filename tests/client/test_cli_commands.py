@@ -128,6 +128,25 @@ class FakeApi:
         self.calls.append(("export_event_log", {"admin_token": admin_token}))
         return {"events": [{"sequence": 1, "type": "identity.player.registered"}]}
 
+    def activate_contract_seed(
+        self,
+        *,
+        seed: dict,
+        admin_token: str,
+        idempotency_key: str,
+    ):
+        self.calls.append(
+            (
+                "activate_contract_seed",
+                {
+                    "seed": seed,
+                    "admin_token": admin_token,
+                    "idempotency_key": idempotency_key,
+                },
+            )
+        )
+        return {"contract_id": seed["contract"]["contract_id"], "lifecycle_status": "active"}
+
     def create_crew(self, *, name: str, idempotency_key: str):
         self.calls.append(("create_crew", {"name": name, "idempotency_key": idempotency_key}))
         return {"crew_id": "crew_0001", "join_code": "join-secret"}
@@ -889,6 +908,41 @@ def test_admin_event_log_commands_verify_and_export(tmp_path, monkeypatch):
     assert '"identity.player.registered"' in output_path.read_text(encoding="utf-8")
     assert created_clients[0].calls == [("verify_event_log", {"admin_token": "admin-secret"})]
     assert created_clients[1].calls == [("export_event_log", {"admin_token": "admin-secret"})]
+
+
+def test_admin_contract_activate_command_reads_seed_file(tmp_path, monkeypatch):
+    runner = CliRunner()
+    created_clients: list[FakeApi] = []
+
+    def fake_client(**kwargs):
+        client = FakeApi(**kwargs)
+        created_clients.append(client)
+        return client
+
+    monkeypatch.setattr(cli, "HollowLodgeApi", fake_client)
+    monkeypatch.setattr(cli, "new_command_key", lambda prefix: f"{prefix}-key")
+
+    result = runner.invoke(
+        cli.app,
+        [
+            "admin",
+            "contract-activate",
+            "--server",
+            "http://testserver",
+            "--admin-token",
+            "admin-secret",
+            "--seed-file",
+            "tests/fixtures/ash_window_contract.json",
+        ],
+    )
+
+    assert result.exit_code == 0
+    assert result.output == "contract_ash_window active\n"
+    assert created_clients[0].token is None
+    assert created_clients[0].calls[0][0] == "activate_contract_seed"
+    assert created_clients[0].calls[0][1]["seed"]["contract"]["contract_id"] == "contract_ash_window"
+    assert created_clients[0].calls[0][1]["admin_token"] == "admin-secret"
+    assert created_clients[0].calls[0][1]["idempotency_key"] == "admin-contract-activate-key"
 
 
 def test_crew_commands_use_saved_config(tmp_path, monkeypatch):

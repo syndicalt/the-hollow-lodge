@@ -11,6 +11,7 @@ def contract_board_from_events(events: list[GameEvent]) -> dict[str, Any]:
     contracts: dict[str, Contract] = {}
     phase_results: dict[str, dict[str, Any]] = {}
     phase_locks: dict[str, dict[str, Any]] = {}
+    lifecycle_statuses: dict[str, str] = {}
     for event in events:
         if event.type == "campaign.seeded":
             campaign = Campaign.model_validate(event.payload)
@@ -21,6 +22,8 @@ def contract_board_from_events(events: list[GameEvent]) -> dict[str, Any]:
             phase_results[event.payload["contract_id"]] = event.payload["reveal"]
         elif event.type == "contract.phase.locked":
             phase_locks[event.payload["contract_id"]] = event.payload
+        elif event.type == "contract.lifecycle.changed":
+            lifecycle_statuses[event.payload["contract_id"]] = event.payload["status"]
     contract_rows = []
     for contract in sorted(contracts.values(), key=lambda item: item.contract_id):
         row = contract.model_dump(mode="json")
@@ -29,6 +32,7 @@ def contract_board_from_events(events: list[GameEvent]) -> dict[str, Any]:
             row["phase"]["status"] = "resolved"
         elif contract.contract_id in phase_locks:
             row["phase"]["status"] = "locked"
+        row["lifecycle_status"] = lifecycle_statuses.get(contract.contract_id, "active")
         contract_rows.append(row)
     return {
         "campaign": campaign.model_dump(mode="json") if campaign is not None else None,

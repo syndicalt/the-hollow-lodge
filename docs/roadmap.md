@@ -153,6 +153,14 @@ Scope:
 - Track contract lifecycle: draft, active, resolving, archived.
 - Keep mock simulations for every shipped contract.
 
+Status:
+
+- First activation/rendering slice completed: a second data-defined contract can
+  be validated, activated by admin command/API, shown on Codex contract-board
+  and inbox surfaces, and expose only its public starting artifact.
+- Deferred: generic phase resolution and full smoke playthroughs for every
+  shipped non-starter contract.
+
 Proof gate:
 
 - A second contract can be added as data, activated on a local server, played
@@ -363,6 +371,21 @@ Expected verification:
 
 - `pytest tests/client/test_cli_commands.py tests/client/test_dossier_cli.py -q`
 - `pytest tests/server/test_action_routes.py tests/server/test_phase_resolution.py -q`
+
+### Slice 8: Contract Seed Activation
+
+Status: completed.
+
+Add the first Milestone 4 content pipeline slice: validate a structured
+contract seed, activate it through an admin API/CLI path, append normal
+event-log lifecycle events, render the second contract through existing Codex
+surfaces, and keep hidden truth/artifact graph internals server-only.
+
+Expected verification:
+
+- `pytest tests/server/test_contract_seed_pipeline.py tests/server/test_contract_seed.py tests/server/test_artifact_routes.py -q`
+- `pytest tests/client/test_cli_commands.py tests/client/test_api.py -q`
+- `pytest tests/e2e/test_codex_render_surfaces.py -q`
 
 ## Completion Standard
 

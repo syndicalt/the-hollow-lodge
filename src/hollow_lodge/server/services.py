@@ -30,6 +30,7 @@ from hollow_lodge.server.artifact_unlocks import (
     auction_preview_phase_reward_artifact_id,
 )
 from hollow_lodge.server.projections import contract_board_from_events, inbox_from_board
+from hollow_lodge.server.contract_seed import ContractSeed
 from hollow_lodge.server.seed_data import STARTER_CAMPAIGN, STARTER_CONTRACT, STARTER_HIDDEN_TRUTH
 from hollow_lodge.server.auth import authenticate_token
 from hollow_lodge.workflows.deterministic_oracle import DeterministicResolutionOracle
@@ -868,6 +869,75 @@ class ContractService:
 
     def inbox_for_player(self, player_id: str):
         return inbox_from_board(player_id=player_id, board=self.board_for_player(player_id))
+
+    def activate_contract_seed(
+        self,
+        *,
+        seed: ContractSeed,
+        actor_id: str,
+        idempotency_key: str,
+    ) -> dict:
+        with COMMAND_SERIALIZATION_LOCK, self._lock:
+            existing = self._event_by_idempotency_key(idempotency_key)
+            if existing is not None:
+                if (
+                    existing.type != "contract.lifecycle.changed"
+                    or existing.actor_id != actor_id
+                    or existing.payload["contract_id"] != seed.contract.contract_id
+                    or existing.payload["status"] != "active"
+                ):
+                    raise ValueError("idempotency key conflict")
+                return {
+                    "contract_id": seed.contract.contract_id,
+                    "lifecycle_status": "active",
+                }
+            self._event_store.append_command(
+                event_type="campaign.seeded",
+                actor_id=actor_id,
+                visibility=EventVisibility.public(),
+                payload=seed.campaign.model_dump(mode="json"),
+                idempotency_key=f"{idempotency_key}.campaign",
+            )
+            self._event_store.append_command(
+                event_type="contract.hidden_truth.seeded",
+                actor_id=actor_id,
+                visibility=EventVisibility.server_only(),
+                payload=seed.hidden_truth.model_dump(mode="json"),
+                idempotency_key=f"{idempotency_key}.hidden-truth",
+            )
+            self._event_store.append_command(
+                event_type="artifact.graph.seeded",
+                actor_id=actor_id,
+                visibility=EventVisibility.server_only(),
+                payload={
+                    "graph": seed.artifact_graph.model_dump(mode="json"),
+                    "public_artifact_ids": list(seed.public_artifact_ids),
+                    "scoring_hints": seed.scoring_hints,
+                },
+                idempotency_key=f"{idempotency_key}.artifact-graph",
+            )
+            self._event_store.append_command(
+                event_type="contract.board.published",
+                actor_id=actor_id,
+                visibility=EventVisibility.public(),
+                payload=seed.contract.model_dump(mode="json"),
+                idempotency_key=f"{idempotency_key}.board",
+            )
+            self._event_store.append_command(
+                event_type="contract.lifecycle.changed",
+                actor_id=actor_id,
+                visibility=EventVisibility.public(),
+                payload={
+                    "contract_id": seed.contract.contract_id,
+                    "status": "active",
+                    "previous_status": "draft",
+                },
+                idempotency_key=idempotency_key,
+            )
+            return {
+                "contract_id": seed.contract.contract_id,
+                "lifecycle_status": "active",
+            }
 
     def lock_auction_preview(
         self,

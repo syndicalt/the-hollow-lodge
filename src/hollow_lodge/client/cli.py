@@ -327,6 +327,31 @@ def admin_key_request_approve(
     typer.echo(response["invite_code"])
 
 
+@admin_app.command("contract-activate")
+def admin_contract_activate(
+    seed_file: Path = typer.Option(..., "--seed-file", help="Contract seed JSON file."),
+    server: str = typer.Option(
+        DEFAULT_SERVER_URL,
+        "--server",
+        help="Authoritative server URL. Defaults to the official Lodge.",
+    ),
+    admin_token: str = typer.Option(
+        ...,
+        "--admin-token",
+        envvar="HOLLOW_LODGE_ADMIN_TOKEN",
+        help="Server admin token.",
+    ),
+) -> None:
+    """Activate a contract content seed on the authoritative server."""
+    seed = json.loads(seed_file.read_text(encoding="utf-8"))
+    response = HollowLodgeApi(server_url=server).activate_contract_seed(
+        seed=seed,
+        admin_token=admin_token,
+        idempotency_key=new_command_key("admin-contract-activate"),
+    )
+    typer.echo(f"{response['contract_id']} {response['lifecycle_status']}")
+
+
 @codex_app.command("install-mcp")
 def codex_install_mcp(
     config: Path = typer.Option(

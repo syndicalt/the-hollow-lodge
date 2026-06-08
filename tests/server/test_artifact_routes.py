@@ -157,3 +157,28 @@ def test_public_artifact_list_never_includes_full_text_or_hidden_flags(tmp_path)
     assert "full_text" not in response.text
     assert "hidden_flags" not in response.text
     assert "ink-after-binding" not in response.text
+
+
+def test_activated_contract_public_artifacts_are_visible_without_hidden_nodes(tmp_path, monkeypatch):
+    monkeypatch.setenv("HOLLOW_LODGE_ADMIN_TOKEN", "admin-secret")
+    client = TestClient(create_app(data_dir=tmp_path, invite_codes=["a"]))
+    ada = register(client, "a", "Ada")
+    client.post(
+        "/contracts/admin/activate",
+        headers={
+            "Idempotency-Key": "activate-ash-window",
+            "X-Hollow-Lodge-Admin-Token": "admin-secret",
+        },
+        json={"seed": "tests/fixtures/ash_window_contract.json"},
+    )
+
+    response = client.get("/artifacts", headers=auth(ada["token"]))
+
+    assert response.status_code == 200
+    artifact_ids = {
+        artifact["artifact_id"]
+        for artifact in response.json()["artifacts"]
+    }
+    assert "artifact_ash_notice" in artifact_ids
+    assert "artifact_soot_sample" not in artifact_ids
+    assert "future-burn" not in response.text
