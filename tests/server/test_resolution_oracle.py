@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import pytest
 from fastapi.testclient import TestClient
 
 from hollow_lodge.domain.events import EventVisibility
@@ -58,6 +59,16 @@ class CountingOracle:
     def resolve_auction_preview(self, packet):
         self.calls += 1
         return DeterministicResolutionOracle().resolve_auction_preview(packet)
+
+
+class ValueFailingOracle:
+    def __init__(self) -> None:
+        self.calls = 0
+
+    def resolve_auction_preview(self, packet):
+        _ = packet
+        self.calls += 1
+        raise ValueError("provider returned invalid output")
 
 
 def auth(token: str) -> dict[str, str]:
@@ -183,3 +194,101 @@ def test_duplicate_phase_lock_does_not_call_oracle_twice(tmp_path):
     assert replay.json() == first.json()
     assert duplicate.json() == first.json()
     assert oracle.calls == 1
+
+
+def test_failed_oracle_audit_recovers_without_idempotency_conflict(tmp_path):
+    client = TestClient(create_app(data_dir=tmp_path, invite_codes=["a"]))
+    ada = register(client, "a", "Ada")
+    crew = create_crew(client, ada["token"], "crew-create-ada", "The Gilt Knives")
+    submit_action(client, ada, crew)
+    event_store = client.app.state.event_store
+    contract_service = client.app.state.contract_service
+
+    event_store.append_command(
+        event_type="contract.phase.locked",
+        actor_id="server",
+        visibility=EventVisibility.public(),
+        payload={
+            "contract_id": "contract_false_finger",
+            "phase": "Auction Preview",
+            "hours_elapsed": 6,
+        },
+        idempotency_key="phase-lock.contract_false_finger.auction-preview",
+    )
+    packet = contract_service._build_auction_preview_packet(contract_id="contract_false_finger")
+    input_packet_hash = contract_service._oracle_packet_hash(packet)
+    event_store.append_command(
+        event_type="oracle.resolution.requested",
+        actor_id="server",
+        visibility=EventVisibility.server_only(),
+        payload={
+            "contract_id": "contract_false_finger",
+            "phase": "Auction Preview",
+            "input_packet_hash": input_packet_hash,
+        },
+        idempotency_key="oracle.resolution.contract_false_finger.auction-preview.requested",
+    )
+    event_store.append_command(
+        event_type="oracle.resolution.failed",
+        actor_id="server",
+        visibility=EventVisibility.server_only(),
+        payload={
+            "contract_id": "contract_false_finger",
+            "phase": "Auction Preview",
+            "input_packet_hash": input_packet_hash,
+            "fallback_reason": "RuntimeError",
+        },
+        idempotency_key="oracle.resolution.contract_false_finger.auction-preview.failed",
+    )
+    oracle = ValueFailingOracle()
+    client.app.state.contract_service = ContractService(
+        event_store=event_store,
+        resolution_oracle=oracle,
+    )
+
+    recovered = client.post(
+        "/contracts/contract_false_finger/phases/auction-preview/lock",
+        headers=command_auth(ada["token"], "phase-lock-recover"),
+        json={"hours_elapsed": 7},
+    )
+    events = event_store.read()
+    completed = next(event for event in events if event.type == "oracle.resolution.completed")
+
+    assert recovered.status_code == 200
+    assert oracle.calls == 1
+    assert [event.type for event in events].count("oracle.resolution.failed") == 1
+    assert [event.type for event in events].count("oracle.resolution.completed") == 1
+    assert [event.type for event in events].count("contract.phase.resolved") == 1
+    assert completed.payload["fallback"] is True
+    assert completed.payload["fallback_reason"] == "RuntimeError"
+
+
+def test_completed_oracle_audit_hash_mismatch_is_not_reused(tmp_path):
+    client = TestClient(create_app(data_dir=tmp_path, invite_codes=["a"]))
+    ada = register(client, "a", "Ada")
+    crew = create_crew(client, ada["token"], "crew-create-ada", "The Gilt Knives")
+    submit_action(client, ada, crew)
+    event_store = client.app.state.event_store
+    contract_service = client.app.state.contract_service
+    packet = contract_service._build_auction_preview_packet(contract_id="contract_false_finger")
+    accepted_output = DeterministicResolutionOracle().resolve_auction_preview(packet)
+    event_store.append_command(
+        event_type="oracle.resolution.completed",
+        actor_id="server",
+        visibility=EventVisibility.server_only(),
+        payload={
+            "contract_id": "contract_false_finger",
+            "phase": "Auction Preview",
+            "provider": "deterministic",
+            "model": None,
+            "prompt_version": "deterministic-v1",
+            "fallback": False,
+            "fallback_reason": None,
+            "input_packet_hash": "stale-packet-hash",
+            "accepted_output": accepted_output.model_dump(mode="json"),
+        },
+        idempotency_key="oracle.resolution.contract_false_finger.auction-preview.completed",
+    )
+
+    with pytest.raises(ValueError, match="oracle completed audit hash mismatch"):
+        contract_service._build_auction_preview_reveal(contract_id="contract_false_finger")

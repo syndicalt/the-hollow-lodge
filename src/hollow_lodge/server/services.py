@@ -812,11 +812,23 @@ class ContractService:
                 return event
         return None
 
+    def _failed_auction_preview_oracle_audit(self, *, contract_id: str):
+        for event in reversed(self._event_store.read()):
+            if (
+                event.type == "oracle.resolution.failed"
+                and event.payload["contract_id"] == contract_id
+                and event.payload["phase"] == "Auction Preview"
+            ):
+                return event
+        return None
+
     def _build_auction_preview_reveal(self, *, contract_id: str) -> dict:
         packet = self._build_auction_preview_packet(contract_id=contract_id)
         input_packet_hash = self._oracle_packet_hash(packet)
         completed_audit = self._completed_auction_preview_oracle_audit(contract_id=contract_id)
         if completed_audit is not None and completed_audit.payload.get("accepted_output") is not None:
+            if completed_audit.payload.get("input_packet_hash") != input_packet_hash:
+                raise ValueError("oracle completed audit hash mismatch")
             result = validate_auction_preview_result(
                 packet=packet,
                 result=AuctionPreviewOracleResult.model_validate(
@@ -846,18 +858,22 @@ class ContractService:
         except Exception as exc:
             fallback = True
             fallback_reason = exc.__class__.__name__
-            self._event_store.append_command(
-                event_type="oracle.resolution.failed",
-                actor_id="server",
-                visibility=EventVisibility.server_only(),
-                payload={
-                    "contract_id": contract_id,
-                    "phase": "Auction Preview",
-                    "input_packet_hash": input_packet_hash,
-                    "fallback_reason": fallback_reason,
-                },
-                idempotency_key=f"oracle.resolution.{contract_id}.auction-preview.failed",
-            )
+            failed_audit = self._failed_auction_preview_oracle_audit(contract_id=contract_id)
+            if failed_audit is not None:
+                fallback_reason = failed_audit.payload.get("fallback_reason") or fallback_reason
+            else:
+                self._event_store.append_command(
+                    event_type="oracle.resolution.failed",
+                    actor_id="server",
+                    visibility=EventVisibility.server_only(),
+                    payload={
+                        "contract_id": contract_id,
+                        "phase": "Auction Preview",
+                        "input_packet_hash": input_packet_hash,
+                        "fallback_reason": fallback_reason,
+                    },
+                    idempotency_key=f"oracle.resolution.{contract_id}.auction-preview.failed",
+                )
             result = DeterministicResolutionOracle().resolve_auction_preview(packet)
         self._event_store.append_command(
             event_type="oracle.resolution.completed",
