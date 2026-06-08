@@ -12,6 +12,8 @@ from hollow_lodge.client.local_log import LocalEventLog
 from hollow_lodge.client.paths import DEFAULT_CONFIG_PATH, DEFAULT_LOCAL_LOG_PATH
 from hollow_lodge.client.render_packets import (
     RenderPacket,
+    build_deal_acceptance_preview_packet,
+    build_deals_packet,
     build_contract_board_packet,
     build_crew_board_packet,
     build_inbox_packet,
@@ -64,6 +66,24 @@ class CodexGameSession:
     def render_artifact(self, artifact_id: str) -> RenderPacket:
         self.sync()
         return build_artifact_packet(self.api.artifact(artifact_id=artifact_id))
+
+    def render_deals(self) -> RenderPacket:
+        self.sync()
+        return build_deals_packet(self.api.deals())
+
+    def preview_deal_acceptance(self, deal_id: str) -> RenderPacket:
+        self.sync()
+        deals = self.api.deals()["deals"]
+        for deal in deals:
+            if deal["deal_id"] == deal_id:
+                viewer_crew_ids = [self.config.active_crew_id] if self.config.active_crew_id else []
+                return build_deal_acceptance_preview_packet(
+                    {
+                        "deal": deal,
+                        "viewer_crew_ids": viewer_crew_ids,
+                    }
+                )
+        raise ValueError("deal not found")
 
     def _refresh_display_name(self) -> None:
         if self.config.display_name or not hasattr(self.api, "me"):

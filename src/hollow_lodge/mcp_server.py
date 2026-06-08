@@ -67,5 +67,15 @@ def render_artifact(artifact_id: str) -> CallToolResult:
     return packet_response(_session().render_artifact(artifact_id))
 
 
+@mcp.tool()
+def render_deals() -> CallToolResult:
+    return packet_response(_session().render_deals())
+
+
+@mcp.tool()
+def preview_deal_acceptance(deal_id: str) -> CallToolResult:
+    return packet_response(_session().preview_deal_acceptance(deal_id))
+
+
 def main() -> None:
     mcp.run()

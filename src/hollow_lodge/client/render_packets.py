@@ -16,6 +16,8 @@ class RenderPacket(BaseModel):
         "inbox",
         "contract_board",
         "crew_board",
+        "deals",
+        "deal_preview",
         "artifact",
         "artifact_graph",
     ]
@@ -129,6 +131,81 @@ def _render_deal_lines(deal: dict[str, Any]) -> list[str]:
 
 def _artifact_list(artifact_ids: list[str] | tuple[str, ...]) -> str:
     return ", ".join(artifact_ids) if artifact_ids else "nothing"
+
+
+def _viewer_side(deal: dict[str, Any], viewer_crew_ids: list[str] | tuple[str, ...]) -> str:
+    crews = set(viewer_crew_ids)
+    if deal["recipient_crew_id"] in crews:
+        return "recipient"
+    if deal["proposer_crew_id"] in crews:
+        return "proposer"
+    return "observer"
+
+
+def build_deals_packet(payload: dict[str, Any]) -> RenderPacket:
+    deals = payload.get("deals", [])
+    lines = ["Visible deals:"]
+    if deals:
+        for deal in deals:
+            lines.extend(_render_deal_lines(deal))
+    else:
+        lines.append("- none")
+    return RenderPacket(
+        surface="deals",
+        player_markdown="\n".join(lines),
+        agent_context={
+            "deals": [_shape_deal(deal) for deal in deals],
+            "visible_deal_count": len(deals),
+        },
+        suggested_prompts=[
+            "Preview deal acceptance",
+            "Review crew board",
+        ],
+    )
+
+
+def build_deal_acceptance_preview_packet(payload: dict[str, Any]) -> RenderPacket:
+    deal = payload["deal"]
+    viewer_crew_ids = payload.get("viewer_crew_ids", [])
+    side = _viewer_side(deal, viewer_crew_ids)
+    if side == "recipient":
+        gives = deal.get("requested_artifact_ids", [])
+        receives = deal.get("offered_artifact_ids", [])
+    elif side == "proposer":
+        gives = deal.get("offered_artifact_ids", [])
+        receives = deal.get("requested_artifact_ids", [])
+    else:
+        gives = []
+        receives = []
+
+    lines = [
+        f"Acceptance preview: {deal['deal_id']}",
+        f"Status: {deal['status']}",
+        f"Your side: {side}",
+        f"Your crew gives: {_artifact_list(gives)}",
+        f"Your crew receives: {_artifact_list(receives)}",
+        "Concrete artifact terms are server-enforced as copy transfers.",
+        "Soft terms are recorded but not enforced by the server.",
+    ]
+    for soft_term in deal.get("soft_terms", []):
+        lines.append(f"Soft term: {soft_term}")
+    lines.append("This preview does not accept the deal.")
+    return RenderPacket(
+        surface="deal_preview",
+        player_markdown="\n".join(lines),
+        agent_context={
+            "deal": _shape_deal(deal),
+            "viewer_crew_ids": list(viewer_crew_ids),
+            "viewer_side": side,
+            "gives_artifact_ids": list(gives),
+            "receives_artifact_ids": list(receives),
+            "mutation": False,
+        },
+        suggested_prompts=[
+            "Review visible deals",
+            "Open crew board",
+        ],
+    )
 
 
 def _shape_crew(crew: dict[str, Any]) -> dict[str, Any]:

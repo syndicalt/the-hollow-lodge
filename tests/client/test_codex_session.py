@@ -99,6 +99,26 @@ class FakeApi:
             "source_chain": ["archive:lot-card"],
         }
 
+    def deals(self):
+        self.calls.append("deals")
+        return {
+            "deals": [
+                {
+                    "deal_id": "deal_000001",
+                    "contract_id": "contract_false_finger",
+                    "proposer_crew_id": "crew_0001",
+                    "recipient_crew_id": "crew_0002",
+                    "status": "proposed",
+                    "offered_artifact_ids": ["artifact_ledger_rubric"],
+                    "requested_artifact_ids": ["artifact_chapel_debt_mark"],
+                    "soft_terms": ["Do not cite us."],
+                    "expires_phase": "Auction Preview",
+                    "proposer_received_artifact_ids": [],
+                    "recipient_received_artifact_ids": [],
+                }
+            ]
+        }
+
 
 def test_codex_session_does_not_import_cli_module():
     result = subprocess.run(
@@ -252,3 +272,42 @@ def test_codex_session_renders_artifact(tmp_path):
 
     assert packet.surface == "artifact"
     assert fake_api.calls == ["visible_events", "artifact:artifact_ledger_rubric"]
+
+
+def test_codex_session_renders_deals(tmp_path):
+    config_path = tmp_path / "config.json"
+    log_path = tmp_path / "local.jsonl"
+    fake_api = FakeApi()
+    save_config(
+        config_path,
+        ClientConfig(server_url="http://testserver", player_id="player_0001", token="token"),
+    )
+    session = CodexGameSession(config_path=config_path, local_log_path=log_path, api=fake_api)
+
+    packet = session.render_deals()
+
+    assert packet.surface == "deals"
+    assert fake_api.calls == ["visible_events", "deals"]
+    assert "deal_000001 proposed" in packet.player_markdown
+
+
+def test_codex_session_previews_deal_acceptance(tmp_path):
+    config_path = tmp_path / "config.json"
+    log_path = tmp_path / "local.jsonl"
+    fake_api = FakeApi()
+    save_config(
+        config_path,
+        ClientConfig(
+            server_url="http://testserver",
+            player_id="player_0001",
+            token="token",
+            active_crew_id="crew_0002",
+        ),
+    )
+    session = CodexGameSession(config_path=config_path, local_log_path=log_path, api=fake_api)
+
+    packet = session.preview_deal_acceptance("deal_000001")
+
+    assert packet.surface == "deal_preview"
+    assert fake_api.calls == ["visible_events", "deals"]
+    assert "Your crew gives: artifact_chapel_debt_mark" in packet.player_markdown

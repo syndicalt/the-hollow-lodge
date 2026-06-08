@@ -49,10 +49,65 @@ def test_render_inbox_mcp_call_returns_text_and_structured_packet(monkeypatch):
     assert result.structuredContent["suggested_prompts"] == ["Open the contract board"]
 
 
+def test_render_deals_mcp_call_returns_text_and_structured_packet(monkeypatch):
+    packet = RenderPacket(
+        surface="deals",
+        player_markdown="Visible deals:\n- deal_000001 proposed",
+        agent_context={"deals": [{"deal_id": "deal_000001"}]},
+    )
+
+    class StubSession:
+        def render_deals(self) -> RenderPacket:
+            return packet
+
+    monkeypatch.setattr(mcp_server, "_session", lambda: StubSession())
+
+    result = asyncio.run(mcp_server.mcp.call_tool("render_deals", {}))
+
+    assert isinstance(result, CallToolResult)
+    assert result.content[0].text == packet.player_markdown
+    assert result.structuredContent["surface"] == "deals"
+    assert result.structuredContent["agent_context"]["deals"][0]["deal_id"] == "deal_000001"
+
+
+def test_preview_deal_acceptance_mcp_call_is_read_only(monkeypatch):
+    packet = RenderPacket(
+        surface="deal_preview",
+        player_markdown="Acceptance preview: deal_000001\nThis preview does not accept the deal.",
+        agent_context={"deal": {"deal_id": "deal_000001"}},
+    )
+
+    class StubSession:
+        def preview_deal_acceptance(self, deal_id: str) -> RenderPacket:
+            assert deal_id == "deal_000001"
+            return packet
+
+    monkeypatch.setattr(mcp_server, "_session", lambda: StubSession())
+
+    result = asyncio.run(
+        mcp_server.mcp.call_tool(
+            "preview_deal_acceptance",
+            {"deal_id": "deal_000001"},
+        )
+    )
+
+    assert result.content[0].text == packet.player_markdown
+    assert result.structuredContent["surface"] == "deal_preview"
+    assert "accept_deal" not in {
+        tool.name for tool in asyncio.run(mcp_server.mcp.list_tools())
+    }
+
+
 def test_public_mcp_tools_do_not_expose_local_path_overrides():
     tools = {tool.name: tool for tool in asyncio.run(mcp_server.mcp.list_tools())}
 
-    for tool_name in ("render_inbox", "render_contract_board", "render_crew_board"):
+    for tool_name in (
+        "render_inbox",
+        "render_contract_board",
+        "render_crew_board",
+        "render_deals",
+        "preview_deal_acceptance",
+    ):
         properties = tools[tool_name].inputSchema["properties"]
         assert "config_path" not in properties
         assert "local_log_path" not in properties
