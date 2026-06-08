@@ -42,9 +42,10 @@ def test_codex_render_surfaces_show_player_and_agent_state(tmp_path, monkeypatch
         return client.get(path, headers=headers, params=params)
 
     monkeypatch.setattr("httpx.get", fake_get)
+    local_log_path = tmp_path / "local.jsonl"
     session = CodexGameSession(
         config_path=config_path,
-        local_log_path=tmp_path / "local.jsonl",
+        local_log_path=local_log_path,
     )
 
     inbox = session.render_inbox()
@@ -61,3 +62,7 @@ def test_codex_render_surfaces_show_player_and_agent_state(tmp_path, monkeypatch
     assert contracts.agent_context["contracts"][0]["title"] == "The Saint's False Finger"
     assert "Crew Board: The Gilt Knives" in crew_board.player_markdown
     assert crew_board.agent_context["crew"]["crew_id"] == crew["crew_id"]
+    assert local_log_path.exists()
+    local_log_text = local_log_path.read_text(encoding="utf-8")
+    assert "contract.board.published" in local_log_text
+    assert "crew.created" in local_log_text
