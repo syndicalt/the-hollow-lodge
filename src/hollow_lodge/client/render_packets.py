@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from collections import Counter
 from typing import Any, Literal
 
 from pydantic import BaseModel, Field
@@ -20,6 +21,8 @@ class RenderPacket(BaseModel):
         "deal_preview",
         "artifact",
         "artifact_graph",
+        "activity",
+        "thread",
     ]
     player_markdown: str = Field(min_length=1)
     agent_context: dict[str, Any]
@@ -104,6 +107,180 @@ def _shape_deal(deal: dict[str, Any]) -> dict[str, Any]:
         )
         if key in deal
     }
+
+
+def _shape_chat_message(payload: dict[str, Any], sequence: int) -> dict[str, Any]:
+    shaped = {
+        "sequence": sequence,
+        "message_id": payload.get("message_id"),
+        "sender_player_id": payload.get("sender_player_id"),
+        "sender_crew_id": payload.get("sender_crew_id"),
+        "recipient_player_id": payload.get("recipient_player_id"),
+        "recipient_crew_id": payload.get("recipient_crew_id"),
+        "body": payload.get("body"),
+        "artifact_ids": list(payload.get("artifact_ids", [])),
+    }
+    return {
+        key: value
+        for key, value in shaped.items()
+        if value is not None
+    }
+
+
+def _shape_activity_event(event: dict[str, Any]) -> dict[str, Any]:
+    sequence = int(event["sequence"])
+    event_type = event["type"]
+    payload = event.get("payload", {})
+    shaped: dict[str, Any] = {
+        "sequence": sequence,
+        "type": event_type,
+    }
+    if event_type == "chat.message.created":
+        message = _shape_chat_message(payload, sequence)
+        message.pop("sequence", None)
+        shaped["message"] = message
+    elif event_type == "proof.fragment.transferred":
+        surface = payload.get("surface", {})
+        shaped["proof_fragment"] = {
+            key: surface[key]
+            for key in ("fragment_id", "content_summary")
+            if key in surface
+        }
+    elif event_type == "proof.provenance.checked":
+        result = payload.get("result", {})
+        shaped["provenance"] = {
+            key: result[key]
+            for key in ("fragment_id", "provenance_flags")
+            if key in result
+        }
+    elif event_type == "action.submitted":
+        action = payload.get("action", {})
+        shaped["action"] = {
+            key: action[key]
+            for key in ("action_id", "crew_id", "intent")
+            if key in action
+        }
+    elif event_type == "contract.phase.resolved":
+        reveal = payload.get("reveal", {})
+        shaped["phase_result"] = _shape_phase_result(reveal)
+    return shaped
+
+
+def _render_activity_event(event: dict[str, Any]) -> str:
+    sequence = int(event["sequence"])
+    event_type = event["type"]
+    payload = event.get("payload", {})
+    if event_type == "chat.message.created":
+        return f"{sequence} chat {payload.get('sender_player_id')}: {payload.get('body')}"
+    if event_type == "proof.fragment.transferred":
+        surface = payload.get("surface", {})
+        return (
+            f"{sequence} proof fragment {surface.get('fragment_id')}: "
+            f"{surface.get('content_summary')}"
+        )
+    if event_type == "proof.provenance.checked":
+        result = payload.get("result", {})
+        flags = ", ".join(result.get("provenance_flags", [])) or "clear"
+        return f"{sequence} provenance {result.get('fragment_id')}: {flags}"
+    if event_type == "action.submitted":
+        action = payload.get("action", {})
+        return f"{sequence} action {action.get('action_id')}: {action.get('intent')}"
+    if event_type == "contract.phase.resolved":
+        standings = payload.get("reveal", {}).get("standings", [])
+        if not standings:
+            return f"{sequence} phase result"
+        leader = standings[0]
+        return (
+            f"{sequence} phase result: {leader.get('crew_id')} "
+            f"{leader.get('standing')} {leader.get('score')}"
+        )
+    return f"{sequence} {event_type}"
+
+
+def payload_matches_conversation(payload: dict[str, Any], conversation_id: str) -> bool:
+    if payload.get("message_id") == conversation_id:
+        return True
+    sender_crew_id = payload.get("sender_crew_id")
+    recipient_crew_id = payload.get("recipient_crew_id")
+    if sender_crew_id and recipient_crew_id:
+        return conversation_id in {
+            f"{sender_crew_id}:{recipient_crew_id}",
+            f"{recipient_crew_id}:{sender_crew_id}",
+        }
+    return sender_crew_id == conversation_id
+
+
+def build_activity_summary_packet(
+    events: list[dict[str, Any]],
+    *,
+    recent_limit: int = 10,
+) -> RenderPacket:
+    visible_events = sorted(events, key=lambda event: int(event["sequence"]))
+    recent_events = visible_events[-recent_limit:]
+    lines = ["Recent visible activity:"]
+    if recent_events:
+        lines.extend(f"- {_render_activity_event(event)}" for event in recent_events)
+    else:
+        lines.append("- none")
+    return RenderPacket(
+        surface="activity",
+        player_markdown="\n".join(lines),
+        agent_context={
+            "visible_event_count": len(visible_events),
+            "event_type_counts": dict(
+                Counter(event["type"] for event in visible_events)
+            ),
+            "recent_events": [
+                _shape_activity_event(event)
+                for event in recent_events
+            ],
+        },
+        suggested_prompts=[
+            "Open a conversation thread",
+            "Review inbox",
+            "Open the contract board",
+        ],
+    )
+
+
+def build_thread_packet(
+    events: list[dict[str, Any]],
+    *,
+    conversation_id: str,
+) -> RenderPacket:
+    messages = [
+        event
+        for event in sorted(events, key=lambda candidate: int(candidate["sequence"]))
+        if event.get("type") == "chat.message.created"
+        and payload_matches_conversation(event.get("payload", {}), conversation_id)
+    ]
+    lines = [f"Conversation: {conversation_id}"]
+    if messages:
+        lines.extend(
+            (
+                f"- {event['sequence']} {event.get('payload', {}).get('sender_player_id')}: "
+                f"{event.get('payload', {}).get('body')}"
+            )
+            for event in messages
+        )
+    else:
+        lines.append("- no visible messages")
+    return RenderPacket(
+        surface="thread",
+        player_markdown="\n".join(lines),
+        agent_context={
+            "conversation_id": conversation_id,
+            "message_count": len(messages),
+            "messages": [
+                _shape_chat_message(event.get("payload", {}), int(event["sequence"]))
+                for event in messages
+            ],
+        },
+        suggested_prompts=[
+            "Reply using the CLI",
+            "Review recent activity",
+        ],
+    )
 
 
 def _render_deal_lines(deal: dict[str, Any]) -> list[str]:

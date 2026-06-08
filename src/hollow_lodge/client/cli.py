@@ -30,6 +30,7 @@ from hollow_lodge.client.render_packets import (
     build_contract_board_packet,
     build_crew_board_packet,
     build_inbox_packet,
+    payload_matches_conversation,
 )
 
 
@@ -672,16 +673,7 @@ def _echo_packet(packet, *, as_json: bool) -> None:
 
 
 def _payload_matches_conversation(payload: dict, conversation_id: str) -> bool:
-    if payload.get("message_id") == conversation_id:
-        return True
-    sender_crew_id = payload.get("sender_crew_id")
-    recipient_crew_id = payload.get("recipient_crew_id")
-    if sender_crew_id and recipient_crew_id:
-        return conversation_id in {
-            f"{sender_crew_id}:{recipient_crew_id}",
-            f"{recipient_crew_id}:{sender_crew_id}",
-        }
-    return sender_crew_id == conversation_id
+    return payload_matches_conversation(payload, conversation_id)
 
 
 def main() -> None:

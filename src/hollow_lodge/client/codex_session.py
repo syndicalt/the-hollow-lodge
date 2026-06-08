@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from pathlib import Path
+from typing import Any
 
 from hollow_lodge.client.api import HollowLodgeApi
 from hollow_lodge.client.artifact_render import (
@@ -12,11 +13,13 @@ from hollow_lodge.client.local_log import LocalEventLog
 from hollow_lodge.client.paths import DEFAULT_CONFIG_PATH, DEFAULT_LOCAL_LOG_PATH
 from hollow_lodge.client.render_packets import (
     RenderPacket,
+    build_activity_summary_packet,
     build_deal_acceptance_preview_packet,
     build_deals_packet,
     build_contract_board_packet,
     build_crew_board_packet,
     build_inbox_packet,
+    build_thread_packet,
 )
 
 
@@ -71,6 +74,17 @@ class CodexGameSession:
         self.sync()
         return build_deals_packet(self.api.deals())
 
+    def render_activity(self) -> RenderPacket:
+        self.sync()
+        return build_activity_summary_packet(self._visible_server_events())
+
+    def render_thread(self, conversation_id: str) -> RenderPacket:
+        self.sync()
+        return build_thread_packet(
+            self._visible_server_events(),
+            conversation_id=conversation_id,
+        )
+
     def preview_deal_acceptance(self, deal_id: str) -> RenderPacket:
         self.sync()
         deals = self.api.deals()["deals"]
@@ -96,3 +110,10 @@ class CodexGameSession:
             return
         self.config = self.config.model_copy(update={"display_name": display_name})
         save_config(self.config_path, self.config)
+
+    def _visible_server_events(self) -> list[dict[str, Any]]:
+        return [
+            event
+            for event in self.local_log.read()
+            if event.get("origin") == "server"
+        ]

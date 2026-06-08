@@ -1,3 +1,4 @@
+from hollow_lodge.client import render_packets
 from hollow_lodge.client.render_packets import (
     build_contract_board_packet,
     build_crew_board_packet,
@@ -300,3 +301,160 @@ def test_inbox_agent_context_omits_hidden_upstream_fields_and_serializes_actions
         ],
         "actions": [],
     }
+
+
+def test_activity_summary_packet_shapes_visible_events_without_server_only_fields():
+    assert hasattr(render_packets, "build_activity_summary_packet")
+    packet = render_packets.build_activity_summary_packet(
+        [
+            {
+                "origin": "server",
+                "event_id": "evt_1",
+                "sequence": 1,
+                "type": "chat.message.created",
+                "event_hash": "server-only-hash",
+                "visibility": {"principals": [{"kind": "server"}]},
+                "payload": {
+                    "message_id": "msg_1",
+                    "sender_player_id": "player_0002",
+                    "sender_crew_id": "crew_a",
+                    "recipient_crew_id": "crew_b",
+                    "body": "No public claims until lock.",
+                    "artifact_ids": ["artifact_1"],
+                    "server_only_note": "hidden",
+                },
+            },
+            {
+                "origin": "server",
+                "event_id": "evt_2",
+                "sequence": 2,
+                "type": "proof.fragment.transferred",
+                "payload": {
+                    "surface": {
+                        "fragment_id": "fragment_1",
+                        "content_summary": "A chipped reliquary seal.",
+                        "hidden_source": "server-only witness",
+                    },
+                    "server_notes": "hidden",
+                },
+            },
+        ]
+    )
+
+    assert packet.surface == "activity"
+    assert "Recent visible activity:" in packet.player_markdown
+    assert "1 chat player_0002: No public claims until lock." in packet.player_markdown
+    assert "2 proof fragment fragment_1: A chipped reliquary seal." in packet.player_markdown
+    assert "server-only" not in packet.player_markdown
+    assert "hidden" not in packet.player_markdown
+    assert packet.agent_context == {
+        "visible_event_count": 2,
+        "event_type_counts": {
+            "chat.message.created": 1,
+            "proof.fragment.transferred": 1,
+        },
+        "recent_events": [
+            {
+                "sequence": 1,
+                "type": "chat.message.created",
+                "message": {
+                    "message_id": "msg_1",
+                    "sender_player_id": "player_0002",
+                    "sender_crew_id": "crew_a",
+                    "recipient_crew_id": "crew_b",
+                    "body": "No public claims until lock.",
+                    "artifact_ids": ["artifact_1"],
+                },
+            },
+            {
+                "sequence": 2,
+                "type": "proof.fragment.transferred",
+                "proof_fragment": {
+                    "fragment_id": "fragment_1",
+                    "content_summary": "A chipped reliquary seal.",
+                },
+            },
+        ],
+    }
+    assert packet.suggested_prompts == [
+        "Open a conversation thread",
+        "Review inbox",
+        "Open the contract board",
+    ]
+
+
+def test_thread_packet_matches_cli_conversation_logic_and_omits_hidden_fields():
+    events = [
+        {
+            "sequence": 1,
+            "type": "chat.message.created",
+            "payload": {
+                "message_id": "msg_1",
+                "sender_player_id": "player_0002",
+                "sender_crew_id": "crew_a",
+                "recipient_crew_id": "crew_b",
+                "body": "No public claims until lock.",
+                "server_only_note": "hidden",
+            },
+        },
+        {
+            "sequence": 2,
+            "type": "chat.message.created",
+            "payload": {
+                "message_id": "msg_2",
+                "sender_player_id": "player_0003",
+                "sender_crew_id": "crew_b",
+                "recipient_crew_id": "crew_a",
+                "body": "Agreed.",
+            },
+        },
+        {
+            "sequence": 3,
+            "type": "chat.message.created",
+            "payload": {
+                "message_id": "msg_3",
+                "sender_player_id": "player_0004",
+                "sender_crew_id": "crew_c",
+                "recipient_crew_id": "crew_d",
+                "body": "Not this thread.",
+            },
+        },
+    ]
+
+    assert hasattr(render_packets, "build_thread_packet")
+    packet = render_packets.build_thread_packet(events, conversation_id="crew_a:crew_b")
+
+    assert packet.surface == "thread"
+    assert "Conversation: crew_a:crew_b" in packet.player_markdown
+    assert "1 player_0002: No public claims until lock." in packet.player_markdown
+    assert "2 player_0003: Agreed." in packet.player_markdown
+    assert "Not this thread" not in packet.player_markdown
+    assert "hidden" not in packet.player_markdown
+    assert packet.agent_context == {
+        "conversation_id": "crew_a:crew_b",
+        "message_count": 2,
+        "messages": [
+            {
+                "sequence": 1,
+                "message_id": "msg_1",
+                "sender_player_id": "player_0002",
+                "sender_crew_id": "crew_a",
+                "recipient_crew_id": "crew_b",
+                "body": "No public claims until lock.",
+                "artifact_ids": [],
+            },
+            {
+                "sequence": 2,
+                "message_id": "msg_2",
+                "sender_player_id": "player_0003",
+                "sender_crew_id": "crew_b",
+                "recipient_crew_id": "crew_a",
+                "body": "Agreed.",
+                "artifact_ids": [],
+            },
+        ],
+    }
+    assert packet.suggested_prompts == [
+        "Reply using the CLI",
+        "Review recent activity",
+    ]

@@ -70,6 +70,53 @@ def test_render_deals_mcp_call_returns_text_and_structured_packet(monkeypatch):
     assert result.structuredContent["agent_context"]["deals"][0]["deal_id"] == "deal_000001"
 
 
+def test_render_activity_mcp_call_returns_text_and_structured_packet(monkeypatch):
+    packet = RenderPacket(
+        surface="activity",
+        player_markdown="Recent visible activity:\n- 1 chat player_0002: The bell moved.",
+        agent_context={"visible_event_count": 1, "recent_events": []},
+    )
+
+    class StubSession:
+        def render_activity(self) -> RenderPacket:
+            return packet
+
+    monkeypatch.setattr(mcp_server, "_session", lambda: StubSession())
+
+    result = asyncio.run(mcp_server.mcp.call_tool("render_activity", {}))
+
+    assert isinstance(result, CallToolResult)
+    assert result.content[0].text == packet.player_markdown
+    assert result.structuredContent["surface"] == "activity"
+    assert result.structuredContent["agent_context"]["visible_event_count"] == 1
+
+
+def test_render_thread_mcp_call_returns_matching_thread_packet(monkeypatch):
+    packet = RenderPacket(
+        surface="thread",
+        player_markdown="Conversation: crew_a:crew_b\n- 1 player_0002: No public claims.",
+        agent_context={"conversation_id": "crew_a:crew_b", "messages": []},
+    )
+
+    class StubSession:
+        def render_thread(self, conversation_id: str) -> RenderPacket:
+            assert conversation_id == "crew_a:crew_b"
+            return packet
+
+    monkeypatch.setattr(mcp_server, "_session", lambda: StubSession())
+
+    result = asyncio.run(
+        mcp_server.mcp.call_tool(
+            "render_thread",
+            {"conversation_id": "crew_a:crew_b"},
+        )
+    )
+
+    assert result.content[0].text == packet.player_markdown
+    assert result.structuredContent["surface"] == "thread"
+    assert result.structuredContent["agent_context"]["conversation_id"] == "crew_a:crew_b"
+
+
 def test_preview_deal_acceptance_mcp_call_is_read_only(monkeypatch):
     packet = RenderPacket(
         surface="deal_preview",
@@ -105,9 +152,14 @@ def test_public_mcp_tools_do_not_expose_local_path_overrides():
         "render_inbox",
         "render_contract_board",
         "render_crew_board",
+        "render_activity",
+        "render_thread",
         "render_deals",
         "preview_deal_acceptance",
     ):
         properties = tools[tool_name].inputSchema["properties"]
         assert "config_path" not in properties
         assert "local_log_path" not in properties
+
+    assert "send_message" not in tools
+    assert "accept_deal" not in tools

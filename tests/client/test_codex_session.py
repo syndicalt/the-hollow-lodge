@@ -18,7 +18,14 @@ class FakeApi:
                 "event_id": "evt_1",
                 "sequence": 1,
                 "type": "chat.message.created",
-                "payload": {"sender_player_id": "player_0002", "body": "The bell moved."},
+                "payload": {
+                    "message_id": "msg_1",
+                    "sender_player_id": "player_0002",
+                    "sender_crew_id": "crew_0001",
+                    "recipient_crew_id": "crew_0002",
+                    "body": "The bell moved.",
+                    "server_only_note": "hidden",
+                },
             }
         ]
 
@@ -311,3 +318,53 @@ def test_codex_session_previews_deal_acceptance(tmp_path):
     assert packet.surface == "deal_preview"
     assert fake_api.calls == ["visible_events", "deals"]
     assert "Your crew gives: artifact_chapel_debt_mark" in packet.player_markdown
+
+
+def test_codex_session_renders_activity_from_synced_visible_events(tmp_path):
+    config_path = tmp_path / "config.json"
+    log_path = tmp_path / "local.jsonl"
+    fake_api = FakeApi()
+    save_config(
+        config_path,
+        ClientConfig(server_url="http://testserver", player_id="player_0001", token="token"),
+    )
+    session = CodexGameSession(config_path=config_path, local_log_path=log_path, api=fake_api)
+
+    packet = session.render_activity()
+
+    assert packet.surface == "activity"
+    assert fake_api.calls == ["visible_events"]
+    assert "1 chat player_0002: The bell moved." in packet.player_markdown
+    assert "hidden" not in packet.player_markdown
+    assert packet.agent_context["visible_event_count"] == 1
+    assert packet.agent_context["recent_events"][0]["message"]["message_id"] == "msg_1"
+
+
+def test_codex_session_renders_thread_with_cli_compatible_matching(tmp_path):
+    config_path = tmp_path / "config.json"
+    log_path = tmp_path / "local.jsonl"
+    fake_api = FakeApi()
+    save_config(
+        config_path,
+        ClientConfig(server_url="http://testserver", player_id="player_0001", token="token"),
+    )
+    session = CodexGameSession(config_path=config_path, local_log_path=log_path, api=fake_api)
+
+    packet = session.render_thread("crew_0002:crew_0001")
+
+    assert packet.surface == "thread"
+    assert fake_api.calls == ["visible_events"]
+    assert "Conversation: crew_0002:crew_0001" in packet.player_markdown
+    assert "1 player_0002: The bell moved." in packet.player_markdown
+    assert "hidden" not in packet.player_markdown
+    assert packet.agent_context["messages"] == [
+        {
+            "sequence": 1,
+            "message_id": "msg_1",
+            "sender_player_id": "player_0002",
+            "sender_crew_id": "crew_0001",
+            "recipient_crew_id": "crew_0002",
+            "body": "The bell moved.",
+            "artifact_ids": [],
+        }
+    ]

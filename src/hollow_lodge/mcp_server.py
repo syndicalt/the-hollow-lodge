@@ -73,6 +73,16 @@ def render_deals() -> CallToolResult:
 
 
 @mcp.tool()
+def render_activity() -> CallToolResult:
+    return packet_response(_session().render_activity())
+
+
+@mcp.tool()
+def render_thread(conversation_id: str) -> CallToolResult:
+    return packet_response(_session().render_thread(conversation_id))
+
+
+@mcp.tool()
 def preview_deal_acceptance(deal_id: str) -> CallToolResult:
     return packet_response(_session().preview_deal_acceptance(deal_id))
 
