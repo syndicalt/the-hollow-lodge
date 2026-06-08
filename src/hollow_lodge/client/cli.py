@@ -8,6 +8,7 @@ from hollow_lodge.client.config import ClientConfig, load_config, save_config
 from hollow_lodge.client.handler import normalize_action_draft
 from hollow_lodge.client.local_log import LocalEventLog
 from hollow_lodge.client.paths import DEFAULT_CONFIG_PATH, DEFAULT_LOCAL_LOG_PATH
+from hollow_lodge.client.render import render_contract_board, render_crew_board, render_inbox
 from hollow_lodge.client.render_packets import (
     build_contract_board_packet,
     build_crew_board_packet,
@@ -178,8 +179,11 @@ def contracts(
     as_json: bool = typer.Option(False, "--json", help="Emit Codex render packet JSON."),
 ) -> None:
     """Show the contract board."""
-    packet = build_contract_board_packet(_api_from_config(load_config(config)).contracts())
-    _echo_packet(packet, as_json=as_json)
+    board = _api_from_config(load_config(config)).contracts()
+    if as_json:
+        _echo_packet(build_contract_board_packet(board), as_json=True)
+    else:
+        typer.echo(render_contract_board(board))
 
 
 @app.command()
@@ -188,8 +192,11 @@ def inbox(
     as_json: bool = typer.Option(False, "--json", help="Emit Codex render packet JSON."),
 ) -> None:
     """Show the personal inbox."""
-    packet = build_inbox_packet(_api_from_config(load_config(config)).inbox())
-    _echo_packet(packet, as_json=as_json)
+    inbox_data = _api_from_config(load_config(config)).inbox()
+    if as_json:
+        _echo_packet(build_inbox_packet(inbox_data), as_json=True)
+    else:
+        typer.echo(render_inbox(inbox_data))
 
 
 @app.command("crew-board")
@@ -201,8 +208,11 @@ def crew_board(
     """Show the active crew board."""
     current = load_config(config)
     target_crew_id = _target_crew_id(current, crew_id)
-    packet = build_crew_board_packet(_api_from_config(current).crew_board(crew_id=target_crew_id))
-    _echo_packet(packet, as_json=as_json)
+    board = _api_from_config(current).crew_board(crew_id=target_crew_id)
+    if as_json:
+        _echo_packet(build_crew_board_packet(board), as_json=True)
+    else:
+        typer.echo(render_crew_board(board))
 
 
 @app.command()

@@ -43,20 +43,30 @@ class FakeApi:
         return INBOX
 
 
-def test_contract_board_render_contains_starter_state():
+def test_contract_board_render_preserves_legacy_text():
     rendered = render_contract_board(BOARD)
 
-    assert "The Saint's False Finger" in rendered
-    assert "Auction Preview" in rendered
-    assert "Crew Heat: 0" in rendered
-    assert "provenance chain" in rendered
+    assert rendered == (
+        "Saints & Ledgers\n"
+        "The Saint's False Finger\n"
+        "Phase: Auction Preview (6h remaining)\n"
+        "Crew Heat: 0\n"
+        "Proof dossier needs:\n"
+        "- provenance chain\n"
+        "- material authenticity\n"
+        "- auction leverage"
+    )
 
 
-def test_inbox_render_contains_contract_and_notices():
+def test_inbox_render_preserves_legacy_text():
     rendered = render_inbox(INBOX)
 
-    assert "The Saint's False Finger" in rendered
-    assert "incoming proof fragments: none" in rendered
+    assert rendered == (
+        "Inbox: player_0001\n"
+        "The Saint's False Finger\n"
+        "Phase: Auction Preview\n"
+        "incoming proof fragments: none"
+    )
 
 
 def test_contracts_and_inbox_cli_render_api_results(tmp_path, monkeypatch):
@@ -73,5 +83,19 @@ def test_contracts_and_inbox_cli_render_api_results(tmp_path, monkeypatch):
 
     assert contracts.exit_code == 0
     assert inbox.exit_code == 0
-    assert "The Saint's False Finger" in contracts.output
-    assert "incoming proof fragments: none" in inbox.output
+    assert contracts.output == (
+        "Saints & Ledgers\n"
+        "The Saint's False Finger\n"
+        "Phase: Auction Preview (6h remaining)\n"
+        "Crew Heat: 0\n"
+        "Proof dossier needs:\n"
+        "- provenance chain\n"
+        "- material authenticity\n"
+        "- auction leverage\n"
+    )
+    assert inbox.output == (
+        "Inbox: player_0001\n"
+        "The Saint's False Finger\n"
+        "Phase: Auction Preview\n"
+        "incoming proof fragments: none\n"
+    )
