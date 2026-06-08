@@ -149,6 +149,71 @@ def _shape_contract(contract: dict[str, Any]) -> dict[str, Any]:
     return shaped
 
 
+def _contract_arc_status(contract: dict[str, Any]) -> str:
+    if contract.get("lifecycle_status") == "archived":
+        return "archived"
+    if (
+        contract.get("unlock_status", {}).get("state") == "locked"
+        or contract.get("phase", {}).get("status") == "locked"
+    ):
+        return "locked"
+    if contract.get("phase_result") or contract.get("phase", {}).get("status") == "resolved":
+        return "resolved"
+    return "active"
+
+
+def _shape_arc_progress(contracts: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    arcs: dict[str, dict[str, Any]] = {}
+    for contract in contracts:
+        if not contract.get("arc"):
+            continue
+        arc = _shape_arc(contract["arc"])
+        arc_id = arc["arc_id"]
+        progress = arcs.setdefault(
+            arc_id,
+            {
+                "arc_id": arc_id,
+                "title": arc["title"],
+                "total_contracts": 0,
+                "resolved_count": 0,
+                "active_count": 0,
+                "locked_count": 0,
+                "archived_count": 0,
+                "chapters": [],
+            },
+        )
+        status = _contract_arc_status(contract)
+        progress["total_contracts"] += 1
+        progress[f"{status}_count"] += 1
+        progress["chapters"].append(
+            {
+                "contract_id": contract["contract_id"],
+                "title": contract["title"],
+                "chapter": arc["chapter"],
+                "sequence": arc["sequence"],
+                "status": status,
+            }
+        )
+    progress_rows = sorted(
+        arcs.values(),
+        key=lambda progress: (
+            min(chapter["sequence"] for chapter in progress["chapters"]),
+            progress["title"],
+            progress["arc_id"],
+        ),
+    )
+    for progress in progress_rows:
+        progress["chapters"].sort(
+            key=lambda chapter: (
+                chapter["sequence"],
+                chapter["chapter"],
+                chapter["title"],
+                chapter["contract_id"],
+            )
+        )
+    return progress_rows
+
+
 def _shape_proof_fragment(fragment: dict[str, Any]) -> dict[str, Any]:
     return {
         key: fragment[key]
@@ -819,6 +884,25 @@ def build_contract_board_packet(board: dict[str, Any]) -> RenderPacket:
     contracts = board.get("contracts", [])
     if not contracts:
         lines.append("No visible contracts.")
+    arc_progress = _shape_arc_progress(contracts)
+    if arc_progress:
+        lines.append("Campaign arcs:")
+        for progress in arc_progress:
+            lines.append(
+                f"- {progress['title']}: {progress['total_contracts']} contracts; "
+                f"resolved {progress['resolved_count']}; "
+                f"active {progress['active_count']}; "
+                f"locked {progress['locked_count']}; "
+                f"archived {progress['archived_count']}"
+            )
+            lines.extend(
+                (
+                    f"  - Chapter {chapter['chapter']}: {chapter['title']} "
+                    f"({chapter['status']})"
+                )
+                for chapter in progress["chapters"]
+            )
+        lines.append("")
     for contract in contracts:
         phase = contract["phase"]
         lines.append(f"## {contract['title']}")
@@ -865,18 +949,21 @@ def build_contract_board_packet(board: dict[str, Any]) -> RenderPacket:
             for artifact in visible_artifacts[:5]
         )
         lines.append("")
+    agent_context = {
+        "campaign": _shape_campaign(campaign),
+        "contracts": [_shape_contract(contract) for contract in contracts],
+        "visible_artifacts": [
+            _shape_artifact(artifact)
+            for artifact in board.get("visible_artifacts", [])
+        ],
+        "visible_contract_count": len(contracts),
+    }
+    if arc_progress:
+        agent_context["arc_progress"] = arc_progress
     return RenderPacket(
         surface="contract_board",
         player_markdown="\n".join(lines).strip(),
-        agent_context={
-            "campaign": _shape_campaign(campaign),
-            "contracts": [_shape_contract(contract) for contract in contracts],
-            "visible_artifacts": [
-                _shape_artifact(artifact)
-                for artifact in board.get("visible_artifacts", [])
-            ],
-            "visible_contract_count": len(contracts),
-        },
+        agent_context=agent_context,
         suggested_prompts=[
             "Open the contested contract",
             "Review crew packet status",

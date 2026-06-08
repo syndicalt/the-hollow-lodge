@@ -224,6 +224,216 @@ def test_contract_board_packet_renders_campaign_arc_metadata_without_hidden_fiel
     }
 
 
+def test_contract_board_packet_renders_campaign_arc_progress_without_hidden_fields():
+    packet = build_contract_board_packet(
+        {
+            "campaign": BOARD["campaign"],
+            "contracts": [
+                {
+                    **BOARD["contracts"][0],
+                    "phase": {
+                        "name": "Auction Preview",
+                        "remaining_hours": 0,
+                        "status": "resolved",
+                    },
+                    "phase_result": {
+                        "standings": [],
+                        "hidden_truth": "server-only",
+                    },
+                    "arc": {
+                        "arc_id": "arc_cinders_below",
+                        "title": "Cinders Below",
+                        "chapter": 1,
+                        "sequence": 10,
+                        "public_summary": "Fire omens begin in the auction catalogue.",
+                        "hidden_truth": "server-only",
+                    },
+                    "server_notes": "hidden",
+                },
+                {
+                    **BOARD["contracts"][0],
+                    "contract_id": "contract_ash_window",
+                    "title": "The Ash Window",
+                    "phase": {"name": "Cinder Preview", "remaining_hours": 4},
+                    "proof_dossier_needs": ["fire chronology"],
+                    "unlock_status": {"state": "unlocked", "requirements": []},
+                    "arc": {
+                        "arc_id": "arc_cinders_below",
+                        "title": "Cinders Below",
+                        "chapter": 2,
+                        "sequence": 20,
+                        "public_summary": "The Lodge follows fire omens into old glass.",
+                        "previous_contract_id": "contract_false_finger",
+                    },
+                },
+                {
+                    **BOARD["contracts"][0],
+                    "contract_id": "contract_undercroft",
+                    "title": "The Chapel Undercroft",
+                    "phase": {"name": "Door Below", "remaining_hours": 12},
+                    "proof_dossier_needs": ["door key"],
+                    "unlock_status": {
+                        "state": "locked",
+                        "requirements": [
+                            {
+                                "scope": "crew",
+                                "metric": "completed_contract",
+                                "required_contract_id": "contract_ash_window",
+                                "minimum": 1,
+                                "current": 0,
+                                "label": "Complete The Ash Window",
+                                "description": "Finish the prior contract.",
+                                "satisfied": False,
+                                "hidden_truth": "server-only",
+                            }
+                        ],
+                    },
+                    "arc": {
+                        "arc_id": "arc_cinders_below",
+                        "title": "Cinders Below",
+                        "chapter": 3,
+                        "sequence": 30,
+                        "public_summary": "Smoke points below the chapel.",
+                    },
+                },
+                {
+                    **BOARD["contracts"][0],
+                    "contract_id": "contract_old_file",
+                    "title": "The Old File",
+                    "phase": {"name": "Closed", "remaining_hours": 0},
+                    "lifecycle_status": "archived",
+                    "arc": {
+                        "arc_id": "arc_old_file",
+                        "title": "Old File",
+                        "chapter": 1,
+                        "sequence": 5,
+                        "public_summary": "A retired Lodge matter.",
+                    },
+                },
+            ],
+        }
+    )
+
+    assert "Campaign arcs:" in packet.player_markdown
+    assert "- Cinders Below: 3 contracts; resolved 1; active 1; locked 1; archived 0" in packet.player_markdown
+    assert "  - Chapter 1: The Saint's False Finger (resolved)" in packet.player_markdown
+    assert "  - Chapter 2: The Ash Window (active)" in packet.player_markdown
+    assert "  - Chapter 3: The Chapel Undercroft (locked)" in packet.player_markdown
+    assert "- Old File: 1 contracts; resolved 0; active 0; locked 0; archived 1" in packet.player_markdown
+    assert "hidden" not in packet.player_markdown
+    assert "server-only" not in str(packet.agent_context)
+    assert packet.agent_context["arc_progress"] == [
+        {
+            "arc_id": "arc_old_file",
+            "title": "Old File",
+            "total_contracts": 1,
+            "resolved_count": 0,
+            "active_count": 0,
+            "locked_count": 0,
+            "archived_count": 1,
+            "chapters": [
+                {
+                    "contract_id": "contract_old_file",
+                    "title": "The Old File",
+                    "chapter": 1,
+                    "sequence": 5,
+                    "status": "archived",
+                }
+            ],
+        },
+        {
+            "arc_id": "arc_cinders_below",
+            "title": "Cinders Below",
+            "total_contracts": 3,
+            "resolved_count": 1,
+            "active_count": 1,
+            "locked_count": 1,
+            "archived_count": 0,
+            "chapters": [
+                {
+                    "contract_id": "contract_false_finger",
+                    "title": "The Saint's False Finger",
+                    "chapter": 1,
+                    "sequence": 10,
+                    "status": "resolved",
+                },
+                {
+                    "contract_id": "contract_ash_window",
+                    "title": "The Ash Window",
+                    "chapter": 2,
+                    "sequence": 20,
+                    "status": "active",
+                },
+                {
+                    "contract_id": "contract_undercroft",
+                    "title": "The Chapel Undercroft",
+                    "chapter": 3,
+                    "sequence": 30,
+                    "status": "locked",
+                },
+            ],
+        },
+    ]
+
+
+def test_contract_board_arc_progress_counts_phase_locked_contracts():
+    packet = build_contract_board_packet(
+        {
+            "campaign": BOARD["campaign"],
+            "contracts": [
+                {
+                    **BOARD["contracts"][0],
+                    "contract_id": "contract_locked_phase",
+                    "title": "The Locked Phase",
+                    "phase": {
+                        "name": "Sealed Door",
+                        "remaining_hours": 0,
+                        "status": "locked",
+                    },
+                    "arc": {
+                        "arc_id": "arc_cinders_below",
+                        "title": "Cinders Below",
+                        "chapter": 2,
+                        "sequence": 20,
+                        "public_summary": "A phase lock should count as locked progress.",
+                    },
+                },
+                {
+                    **BOARD["contracts"][0],
+                    "contract_id": "contract_same_sequence",
+                    "title": "A Tiebreaker Chapter",
+                    "phase": {"name": "Open", "remaining_hours": 4},
+                    "arc": {
+                        "arc_id": "arc_cinders_below",
+                        "title": "Cinders Below",
+                        "chapter": 1,
+                        "sequence": 20,
+                        "public_summary": "A deterministic ordering check.",
+                    },
+                },
+            ],
+        }
+    )
+
+    assert "- Cinders Below: 2 contracts; resolved 0; active 1; locked 1; archived 0" in packet.player_markdown
+    assert packet.agent_context["arc_progress"][0]["chapters"] == [
+        {
+            "contract_id": "contract_same_sequence",
+            "title": "A Tiebreaker Chapter",
+            "chapter": 1,
+            "sequence": 20,
+            "status": "active",
+        },
+        {
+            "contract_id": "contract_locked_phase",
+            "title": "The Locked Phase",
+            "chapter": 2,
+            "sequence": 20,
+            "status": "locked",
+        },
+    ]
+
+
 def test_inbox_packet_prioritizes_actionable_items_for_codex():
     packet = build_inbox_packet(
         {

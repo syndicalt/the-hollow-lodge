@@ -276,6 +276,9 @@ Status:
 - Completed-contract unlocks completed: contract seeds can now require a crew
   to have completed a specific prior contract, with safe crew-scoped
   `unlock_status` projection and no raw unlock requirements in visible events.
+- Campaign arc progress rendering completed: Codex contract boards now summarize
+  visible arc progress across chapters with safe resolved, active, locked, and
+  archived counts before the per-contract details.
 - Deferred: multi-day campaign arc authoring, deeper death/legacy inheritance,
   and richer long-term unlock paths.
 
@@ -823,6 +826,24 @@ Expected verification:
 
 - `pytest tests/server/test_contract_seed_pipeline.py::test_contract_seed_accepts_completed_contract_unlock_requirement tests/server/test_contract_seed_pipeline.py::test_contract_seed_rejects_completed_contract_requirement_without_target tests/server/test_contract_seed_pipeline.py::test_contract_seed_rejects_zero_minimum_for_completed_contract_requirement tests/server/test_contract_seed_pipeline.py::test_contract_seed_rejects_required_contract_on_numeric_unlock_metric tests/server/test_contract_seed.py::test_completed_contract_unlock_requires_crew_completion_before_actionable tests/server/test_contract_seed.py::test_completed_contract_unlock_rejects_missing_required_contract tests/server/test_contract_seed.py::test_completed_contract_unlock_is_scoped_to_the_acting_crew tests/client/test_render_packets.py::test_contract_board_packet_renders_completed_contract_unlock_requirement -q`
 - `pytest tests/server/test_contract_seed_pipeline.py tests/server/test_contract_seed.py tests/server/test_crew_routes.py tests/server/test_crew_legacy_projection.py tests/client/test_render_packets.py tests/e2e/test_contract_content_pipeline.py tests/e2e/test_codex_render_surfaces.py -q`
+- `pytest -q`
+
+### Slice 30: Codex Campaign Arc Progress
+
+Status: completed.
+
+Make multi-contract campaign arcs easier to scan inside Codex. Contract board
+render packets now derive a player-safe `arc_progress` summary from public
+contract arc metadata, lifecycle status, phase status, and unlock status. The
+markdown shows each visible arc before individual contract sections with
+resolved, active, locked, and archived counts plus ordered chapter lines. Agent
+context receives the same compact derived summary without hidden truth, raw
+unlock requirements, server notes, or phase-result internals.
+
+Expected verification:
+
+- `pytest tests/client/test_render_packets.py::test_contract_board_packet_renders_campaign_arc_progress_without_hidden_fields tests/client/test_render_packets.py::test_contract_board_arc_progress_counts_phase_locked_contracts tests/client/test_render_packets.py::test_contract_board_agent_context_omits_hidden_upstream_fields -q`
+- `pytest tests/client/test_render_packets.py tests/client/test_contract_board.py tests/client/test_codex_session.py tests/test_mcp_server.py tests/e2e/test_codex_render_surfaces.py tests/e2e/test_contract_content_pipeline.py -q`
 - `pytest -q`
 
 ## Completion Standard
