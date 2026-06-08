@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+from pathlib import Path
+
 from fastapi.testclient import TestClient
 
 from hollow_lodge.server.app import create_app
@@ -72,3 +74,9 @@ def test_diagnostics_reports_existing_event_log(tmp_path):
         "exists": True,
         "status": "available",
     }
+
+
+def test_server_docker_image_installs_openai_client_for_openai_oracle():
+    dockerfile = Path("Dockerfile").read_text(encoding="utf-8")
+
+    assert '"openai>=' in dockerfile

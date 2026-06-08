@@ -10,6 +10,7 @@ RUN pip install --no-cache-dir \
     "fastapi>=0.115" \
     "httpx>=0.27" \
     "mcp>=1.0" \
+    "openai>=1.0" \
     "pydantic>=2.8" \
     "typer>=0.12" \
     "uvicorn>=0.30"
