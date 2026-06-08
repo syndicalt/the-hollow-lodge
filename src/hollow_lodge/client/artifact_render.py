@@ -30,18 +30,12 @@ def build_artifact_packet(artifact: dict[str, Any]) -> RenderPacket:
         agent_context={"artifact": artifact},
         suggested_prompts=[
             "Compare this artifact against the known graph",
-            "Check whether this is safe to cite",
-            "Draft a dossier citation",
-            "Consider a transfer request",
+            "Review the source material",
+            "Check whether visible material supports a working hypothesis",
         ],
         actions=[
-            RenderAction(label="Check citation safety", intent="check_artifact"),
-            RenderAction(label="Draft dossier citation", intent="cite_artifact"),
-            RenderAction(
-                label="Request artifact transfer",
-                intent="transfer_artifact",
-                requires_confirmation=True,
-            ),
+            RenderAction(label="Review source material", intent="review_artifact"),
+            RenderAction(label="Compare artifacts", intent="check_artifact"),
         ],
     )
 
@@ -79,15 +73,9 @@ def build_artifact_graph_packet(graph: dict[str, Any]) -> RenderPacket:
         suggested_prompts=[
             "Compare two artifacts",
             "Open a source artifact",
-            "Check whether an artifact is safe to cite",
+            "Review visible source connections",
         ],
         actions=[
             RenderAction(label="Compare artifacts", intent="check_artifact"),
-            RenderAction(label="Draft dossier citation", intent="cite_artifact"),
-            RenderAction(
-                label="Request artifact transfer",
-                intent="transfer_artifact",
-                requires_confirmation=True,
-            ),
         ],
     )
