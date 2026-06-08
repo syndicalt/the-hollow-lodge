@@ -33,7 +33,7 @@ from hollow_lodge.server.artifact_unlocks import (
     auction_preview_phase_reward_artifact_id,
 )
 from hollow_lodge.server.projections import contract_board_from_events, inbox_from_board
-from hollow_lodge.server.contract_seed import ContractSeed
+from hollow_lodge.server.contract_seed import ContractSeed, PhaseReward
 from hollow_lodge.server.seed_data import STARTER_CAMPAIGN, STARTER_CONTRACT, STARTER_HIDDEN_TRUTH
 from hollow_lodge.server.auth import authenticate_token
 from hollow_lodge.server.rumors import visible_rumors_for_crew
@@ -992,6 +992,9 @@ class ContractService:
                     "graph": seed.artifact_graph.model_dump(mode="json"),
                     "public_artifact_ids": list(seed.public_artifact_ids),
                     "scoring_hints": seed.scoring_hints,
+                    "phase_rewards": [
+                        reward.model_dump(mode="json") for reward in seed.phase_rewards
+                    ],
                 },
                 idempotency_key=f"{idempotency_key}.artifact-graph",
             )
@@ -1199,41 +1202,73 @@ class ContractService:
     ) -> None:
         if self._artifact_service is None:
             return
-        if contract_id != STARTER_CONTRACT.contract_id:
-            return
-        reward_artifact_id = auction_preview_phase_reward_artifact_id(reveal)
         standings = reveal.get("standings", [])
-        if reward_artifact_id is None or not standings:
+        if not standings:
             return
         leader_crew_id = standings[0]["crew_id"]
+        rewards = self._phase_rewards_for_contract(contract_id)
+        if not rewards and contract_id == STARTER_CONTRACT.contract_id:
+            starter_reward_artifact_id = auction_preview_phase_reward_artifact_id(reveal)
+            rewards = (
+                PhaseReward(
+                    phase=phase,
+                    trigger="phase_resolved",
+                    award_to="standing_leader",
+                    artifact_id=starter_reward_artifact_id,
+                    reason="Leader follow-up from auction preview resolution.",
+                ),
+            ) if starter_reward_artifact_id is not None else ()
+        for reward in rewards:
+            if reward.phase != phase or reward.trigger != "phase_resolved":
+                continue
+            if reward.award_to != "standing_leader":
+                continue
+            self._award_phase_reward_artifact(
+                contract_id=contract_id,
+                phase=phase,
+                crew_id=leader_crew_id,
+                artifact_id=reward.artifact_id,
+                reason=reward.reason,
+            )
+
+    def _award_phase_reward_artifact(
+        self,
+        *,
+        contract_id: str,
+        phase: str,
+        crew_id: str,
+        artifact_id: str,
+        reason: str,
+    ) -> None:
         if self._crew_has_artifact_signal(
-            crew_id=leader_crew_id,
-            artifact_id=reward_artifact_id,
+            crew_id=crew_id,
+            artifact_id=artifact_id,
         ):
             return
+        phase_key = re.sub(r"[^a-z0-9]+", "-", phase.casefold()).strip("-")
         reward_key = (
-            f"artifact.phase-reward.{contract_id}.auction-preview."
-            f"{leader_crew_id}.{reward_artifact_id}"
+            f"artifact.phase-reward.{contract_id}.{phase_key}."
+            f"{crew_id}.{artifact_id}"
         )
         self._event_store.append_command(
             event_type="artifact.phase_reward.awarded",
             actor_id="server",
-            visibility=EventVisibility.crews([leader_crew_id]),
+            visibility=EventVisibility.crews([crew_id]),
             payload={
                 "contract_id": contract_id,
                 "phase": phase,
-                "crew_id": leader_crew_id,
-                "artifact_id": reward_artifact_id,
-                "reason": "Leader follow-up from auction preview resolution.",
+                "crew_id": crew_id,
+                "artifact_id": artifact_id,
+                "reason": reason,
             },
             idempotency_key=reward_key,
         )
         self._artifact_service.grant_artifact_access(
-            artifact_id=reward_artifact_id,
+            artifact_id=artifact_id,
             actor_id="server",
             player_ids=[],
-            crew_ids=[leader_crew_id],
-            reason="Leader follow-up from auction preview resolution.",
+            crew_ids=[crew_id],
+            reason=reason,
             idempotency_key=f"{reward_key}.grant",
         )
 
@@ -1520,6 +1555,20 @@ class ContractService:
             if graph.contract_id == contract_id:
                 return dict(payload.get("scoring_hints", {}))
         return {}
+
+    def _phase_rewards_for_contract(self, contract_id: str) -> tuple[PhaseReward, ...]:
+        for event in reversed(self._event_store.read()):
+            if event.type != "artifact.graph.seeded":
+                continue
+            payload = event.payload
+            graph_payload = payload.get("graph", payload)
+            graph = ArtifactGraph.model_validate(graph_payload)
+            if graph.contract_id == contract_id:
+                return tuple(
+                    PhaseReward.model_validate(reward)
+                    for reward in payload.get("phase_rewards", ())
+                )
+        return ()
 
     def _auction_preview_reveal_from_oracle_result(
         self,

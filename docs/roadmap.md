@@ -166,8 +166,10 @@ Status:
   through an idempotent lifecycle event; archived contracts remain visible on
   the contract board as archived history but leave active inbox and crew-board
   work queues.
-- Deferred: generic phase reward configuration and full smoke playthroughs for
-  every future shipped contract.
+- Generic phase reward configuration completed: contract seeds can define
+  server-only phase-resolution rewards that grant configured follow-up
+  artifacts to the phase leader without hard-coding a contract-specific branch.
+- Deferred: full smoke playthroughs for every future shipped contract.
 
 Proof gate:
 
@@ -621,6 +623,23 @@ Expected verification:
 
 - `pytest tests/server/test_contract_seed.py tests/server/test_contract_seed_pipeline.py tests/server/test_crew_routes.py tests/server/test_phase_resolution.py -q`
 - `pytest tests/client/test_api.py tests/client/test_cli_commands.py tests/client/test_render_packets.py tests/client/test_contract_board.py tests/e2e/test_contract_content_pipeline.py tests/e2e/test_codex_render_surfaces.py -q`
+- `pytest -q`
+
+### Slice 21: Data-Defined Phase Rewards
+
+Status: completed.
+
+Move phase-resolution artifact rewards into contract seed configuration. Seeded
+contracts can now define server-only `phase_rewards` that award a configured
+artifact to the standing leader when the phase resolves. The server persists
+the reward rules with the server-only artifact graph payload, validates reward
+artifact references at seed load time, keeps legacy starter reward behavior
+compatible, and preserves idempotent crew-scoped artifact grants.
+
+Expected verification:
+
+- `pytest tests/server/test_contract_seed_pipeline.py tests/server/test_phase_artifact_rewards.py -q`
+- `pytest tests/server/test_phase_resolution.py tests/server/test_action_routes.py tests/server/test_artifact_routes.py tests/e2e/test_contract_content_pipeline.py -q`
 - `pytest -q`
 
 ## Completion Standard

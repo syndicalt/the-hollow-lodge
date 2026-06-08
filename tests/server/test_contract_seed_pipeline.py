@@ -24,6 +24,7 @@ def test_contract_seed_file_loads_typed_contract_and_artifact_graph():
         "material residue",
         "witness leverage",
     ]
+    assert seed.phase_rewards == ()
 
 
 def test_contract_seed_rejects_contract_campaign_mismatch(tmp_path):
@@ -41,6 +42,22 @@ def test_contract_seed_rejects_public_artifact_outside_graph():
     raw["public_artifact_ids"] = ["artifact_missing"]
 
     with pytest.raises(ValueError, match="unknown public artifact"):
+        ContractSeed.model_validate(raw)
+
+
+def test_contract_seed_rejects_phase_reward_outside_graph():
+    raw = json.loads(FIXTURE.read_text(encoding="utf-8"))
+    raw["phase_rewards"] = [
+        {
+            "phase": "Cinder Preview",
+            "trigger": "phase_resolved",
+            "award_to": "standing_leader",
+            "artifact_id": "artifact_missing",
+            "reason": "Leader follow-up from cinder preview resolution.",
+        }
+    ]
+
+    with pytest.raises(ValueError, match="unknown phase reward artifact"):
         ContractSeed.model_validate(raw)
 
 
