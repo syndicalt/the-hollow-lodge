@@ -5,6 +5,7 @@ from fastapi import APIRouter, Depends, Header, HTTPException, Request, status
 
 from hollow_lodge.domain.identity import Player
 from hollow_lodge.server.auth import current_player
+from hollow_lodge.server.artifact_service import ArtifactService
 from hollow_lodge.server.services import ActionService
 
 
@@ -83,9 +84,18 @@ def cancel_action(
 
 
 def _action_service(request: Request) -> ActionService:
+    if not hasattr(request.app.state, "artifact_service"):
+        request.app.state.artifact_service = ArtifactService(
+            event_store=request.app.state.event_store,
+        )
     if not hasattr(request.app.state, "action_service"):
         request.app.state.action_service = ActionService(
             event_store=request.app.state.event_store,
             crew_service=request.app.state.crew_service,
+            artifact_service=request.app.state.artifact_service,
+        )
+    else:
+        request.app.state.action_service.set_artifact_service(
+            request.app.state.artifact_service,
         )
     return request.app.state.action_service

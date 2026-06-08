@@ -49,8 +49,11 @@ def create_app(
         event_store=event_store,
     )
     crew_service = CrewService(event_store=event_store)
+    artifact_service = ArtifactService(event_store=event_store) if data_dir is not None else None
     app.state.identity_service = identity_service
     app.state.crew_service = crew_service
+    if artifact_service is not None:
+        app.state.artifact_service = artifact_service
     app.state.chat_service = ChatService(
         event_store=event_store,
         identity_service=identity_service,
@@ -59,6 +62,7 @@ def create_app(
     app.state.action_service = ActionService(
         event_store=event_store,
         crew_service=crew_service,
+        artifact_service=artifact_service,
     )
     app.state.visibility_service = VisibilityService(
         event_store=event_store,
@@ -66,7 +70,6 @@ def create_app(
     )
 
     if data_dir is not None:
-        app.state.artifact_service = ArtifactService(event_store=event_store)
         app.state.contract_service = ContractService(
             event_store=event_store,
             resolution_oracle=resolved_oracle,

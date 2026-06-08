@@ -23,6 +23,9 @@ from hollow_lodge.domain.scoring import AuctionPreviewScoreInput
 from hollow_lodge.domain.actions import NormalizedAction
 from hollow_lodge.eventlog.jsonl_store import JsonlEventStore
 from hollow_lodge.eventlog.visibility import Principal
+from hollow_lodge.server.artifact_seed import STARTER_ARTIFACT_GRAPH
+from hollow_lodge.server.artifact_service import ArtifactService
+from hollow_lodge.server.artifact_unlocks import action_unlock_candidates
 from hollow_lodge.server.projections import contract_board_from_events, inbox_from_board
 from hollow_lodge.server.seed_data import STARTER_CAMPAIGN, STARTER_CONTRACT, STARTER_HIDDEN_TRUTH
 from hollow_lodge.server.auth import authenticate_token
@@ -1440,10 +1443,21 @@ class ProofService:
 
 
 class ActionService:
-    def __init__(self, *, event_store: JsonlEventStore, crew_service: CrewService):
+    def __init__(
+        self,
+        *,
+        event_store: JsonlEventStore,
+        crew_service: CrewService,
+        artifact_service: ArtifactService | None = None,
+    ):
         self._event_store = event_store
         self._crew_service = crew_service
+        self._artifact_service = artifact_service
         self._lock = threading.RLock()
+
+    def set_artifact_service(self, artifact_service: ArtifactService) -> None:
+        if self._artifact_service is None:
+            self._artifact_service = artifact_service
 
     def submit_action(
         self,
@@ -1465,6 +1479,11 @@ class ActionService:
                     or existing.payload["action"]["intent"] != intent
                 ):
                     raise ValueError("idempotency key conflict")
+                self._award_action_artifacts(
+                    action=existing.payload["action"],
+                    player_id=player_id,
+                    crew_id=crew_id,
+                )
                 return existing.payload["action"]
             if self._auction_preview_locked():
                 raise ValueError("phase locked")
@@ -1490,6 +1509,11 @@ class ActionService:
                 visibility=EventVisibility.crews([crew_id]),
                 payload={"confirmed": confirmed, "action": action},
                 idempotency_key=idempotency_key,
+            )
+            self._award_action_artifacts(
+                action=action,
+                player_id=player_id,
+                crew_id=crew_id,
             )
             return action
 
@@ -1583,6 +1607,42 @@ class ActionService:
             if event.idempotency_key == idempotency_key:
                 return event
         return None
+
+    def _award_action_artifacts(
+        self,
+        *,
+        action: dict,
+        player_id: str,
+        crew_id: str,
+    ) -> None:
+        if self._artifact_service is None:
+            return
+        visible = self._artifact_service.visible_artifacts_for_player(
+            player_id,
+            crew_ids=[crew_id],
+        )
+        already_visible_artifact_ids = {
+            artifact["artifact_id"] for artifact in visible["artifacts"]
+        }
+        candidates = action_unlock_candidates(
+            graph=STARTER_ARTIFACT_GRAPH,
+            contract_id=STARTER_CONTRACT.contract_id,
+            phase="Auction Preview",
+            intent=action["intent"],
+            exposed_assets=action.get("exposed_assets", ()),
+            already_visible_artifact_ids=already_visible_artifact_ids,
+        )
+        for candidate in candidates:
+            self._artifact_service.grant_artifact_access(
+                artifact_id=candidate.artifact_id,
+                actor_id="server",
+                player_ids=[],
+                crew_ids=[crew_id],
+                reason=candidate.award_reason,
+                idempotency_key=(
+                    f"artifact.award.{action['action_id']}.{candidate.artifact_id}"
+                ),
+            )
 
     def _auction_preview_locked(self) -> bool:
         return any(
