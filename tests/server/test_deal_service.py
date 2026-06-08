@@ -1,6 +1,7 @@
 from fastapi.testclient import TestClient
 import pytest
 
+from hollow_lodge.domain.events import EventVisibility
 from hollow_lodge.server.app import create_app
 
 
@@ -198,3 +199,77 @@ def test_accept_preflight_conflict_does_not_append_accepted(tmp_path):
         )
 
     assert app.state.deal_service._deal_by_id(deal["deal_id"])["status"] == "proposed"
+
+
+def test_accept_internal_copy_preflight_conflict_does_not_append_accepted(tmp_path):
+    app = create_app(data_dir=tmp_path, invite_codes=["a", "b"])
+    client = TestClient(app)
+    ada = register(client, "a", "Ada")
+    bela = register(client, "b", "Bela")
+    gilt = create_crew(client, ada["token"], "Gilt Knives", "crew-gilt")
+    moth = create_crew(client, bela["token"], "Moth Lanterns", "crew-moth")
+    deal = app.state.deal_service.propose(
+        contract_id="contract_false_finger",
+        proposer_crew_id=gilt["crew_id"],
+        recipient_crew_id=moth["crew_id"],
+        offered_artifact_ids=["artifact_ledger_rubric"],
+        requested_artifact_ids=[],
+        soft_terms=[],
+        expires_phase=None,
+        proposer_player_id=ada["player_id"],
+        idempotency_key="deal-propose-internal-preflight",
+    )
+    app.state.event_store.append_command(
+        event_type="debug.conflicting_event",
+        actor_id="server",
+        visibility=EventVisibility.server_only(),
+        payload={"conflict": "internal deal copy key"},
+        idempotency_key="deal-accept.recipient.0.internal",
+    )
+
+    with pytest.raises(ValueError, match="idempotency key conflict"):
+        app.state.deal_service.accept(
+            deal_id=deal["deal_id"],
+            actor_player_id=bela["player_id"],
+            idempotency_key="deal-accept",
+        )
+
+    assert app.state.deal_service.list_for_player(ada["player_id"])[0]["status"] == "proposed"
+    assert not any(event.type == "deal.accepted" for event in app.state.event_store.read())
+
+
+def test_accept_fulfilled_preflight_conflict_does_not_append_accepted(tmp_path):
+    app = create_app(data_dir=tmp_path, invite_codes=["a", "b"])
+    client = TestClient(app)
+    ada = register(client, "a", "Ada")
+    bela = register(client, "b", "Bela")
+    gilt = create_crew(client, ada["token"], "Gilt Knives", "crew-gilt")
+    moth = create_crew(client, bela["token"], "Moth Lanterns", "crew-moth")
+    deal = app.state.deal_service.propose(
+        contract_id="contract_false_finger",
+        proposer_crew_id=gilt["crew_id"],
+        recipient_crew_id=moth["crew_id"],
+        offered_artifact_ids=["artifact_ledger_rubric"],
+        requested_artifact_ids=[],
+        soft_terms=[],
+        expires_phase=None,
+        proposer_player_id=ada["player_id"],
+        idempotency_key="deal-propose-fulfilled-preflight",
+    )
+    app.state.event_store.append_command(
+        event_type="debug.conflicting_event",
+        actor_id="server",
+        visibility=EventVisibility.server_only(),
+        payload={"conflict": "deal fulfilled key"},
+        idempotency_key="deal-accept.fulfilled",
+    )
+
+    with pytest.raises(ValueError, match="idempotency key conflict"):
+        app.state.deal_service.accept(
+            deal_id=deal["deal_id"],
+            actor_player_id=bela["player_id"],
+            idempotency_key="deal-accept",
+        )
+
+    assert app.state.deal_service.list_for_player(ada["player_id"])[0]["status"] == "proposed"
+    assert not any(event.type == "deal.accepted" for event in app.state.event_store.read())

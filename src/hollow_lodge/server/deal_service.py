@@ -244,6 +244,10 @@ class DealService:
                 deal_id=deal["deal_id"],
                 idempotency_key=f"{idempotency_key}.recipient.{index}",
             )
+            self._preflight_deal_copy_internal_key(
+                idempotency_key=f"{idempotency_key}.recipient.{index}.internal",
+                copy_idempotency_key=f"{idempotency_key}.recipient.{index}",
+            )
         for index, artifact_id in enumerate(deal["requested_artifact_ids"]):
             self._artifact_service.preflight_copy_artifact_for_deal(
                 source_artifact_id=artifact_id,
@@ -252,6 +256,41 @@ class DealService:
                 deal_id=deal["deal_id"],
                 idempotency_key=f"{idempotency_key}.proposer.{index}",
             )
+            self._preflight_deal_copy_internal_key(
+                idempotency_key=f"{idempotency_key}.proposer.{index}.internal",
+                copy_idempotency_key=f"{idempotency_key}.proposer.{index}",
+            )
+        self._preflight_deal_fulfilled_key(
+            idempotency_key=f"{idempotency_key}.fulfilled",
+            deal_id=deal["deal_id"],
+        )
+
+    def _preflight_deal_copy_internal_key(
+        self,
+        *,
+        idempotency_key: str,
+        copy_idempotency_key: str,
+    ) -> None:
+        existing = self._event_by_idempotency_key(idempotency_key)
+        if existing is None:
+            return
+        if (
+            existing.type != "artifact.deal_copied.internal"
+            or existing.payload.get("deal_copy_idempotency_key") != copy_idempotency_key
+        ):
+            raise ValueError("idempotency key conflict")
+
+    def _preflight_deal_fulfilled_key(
+        self,
+        *,
+        idempotency_key: str,
+        deal_id: str,
+    ) -> None:
+        existing = self._event_by_idempotency_key(idempotency_key)
+        if existing is None:
+            return
+        if existing.type != "deal.fulfilled" or existing.payload.get("deal_id") != deal_id:
+            raise ValueError("idempotency key conflict")
 
     def _next_deal_id(self) -> str:
         count = sum(1 for event in self._event_store.read() if event.type == "deal.proposed")
