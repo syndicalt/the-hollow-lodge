@@ -1787,6 +1787,20 @@ class ActionService:
             )
             return canceled
 
+    def current_actions_for_crew(self, crew_id: str) -> list[dict]:
+        current: dict[str, dict] = {}
+        for event in self._event_store.read_for_principal(Principal.crew(crew_id)):
+            if event.type not in {"action.submitted", "action.edited", "action.canceled"}:
+                continue
+            action = event.payload["action"]
+            if action["crew_id"] == crew_id:
+                current[action["action_id"]] = action
+        return [
+            action
+            for action in sorted(current.values(), key=lambda item: item["action_id"])
+            if action["status"] != "canceled"
+        ]
+
     def _submitted_action_count(self, crew_id: str) -> int:
         return sum(
             1

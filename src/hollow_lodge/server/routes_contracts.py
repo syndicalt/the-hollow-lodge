@@ -8,7 +8,7 @@ from hollow_lodge.server.artifact_service import ArtifactService
 from hollow_lodge.server.auth import current_player
 from hollow_lodge.server.pending_decisions import pending_decisions_for_player
 from hollow_lodge.server.runtime_services import ensure_deal_service
-from hollow_lodge.server.services import ContractService, ProofService
+from hollow_lodge.server.services import ActionService, ContractService, ProofService
 
 
 router = APIRouter(tags=["contracts"])
@@ -52,6 +52,10 @@ def inbox(
                 crew_id=crew_id,
                 player_id=player.player_id,
             )
+            for crew_id in crew_ids
+        },
+        actions_by_crew={
+            crew_id: _action_service(request).current_actions_for_crew(crew_id)
             for crew_id in crew_ids
         },
     )
@@ -116,3 +120,13 @@ def _proof_service(request: Request) -> ProofService:
             crew_service=request.app.state.crew_service,
         )
     return request.app.state.proof_service
+
+
+def _action_service(request: Request) -> ActionService:
+    if not hasattr(request.app.state, "action_service"):
+        request.app.state.action_service = ActionService(
+            event_store=request.app.state.event_store,
+            crew_service=request.app.state.crew_service,
+            artifact_service=getattr(request.app.state, "artifact_service", None),
+        )
+    return request.app.state.action_service

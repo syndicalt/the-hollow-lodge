@@ -139,6 +139,84 @@ def test_crew_board_pending_decisions_include_dossier_needs_and_action(tmp_path)
     } in pending
 
 
+def test_crew_board_pending_action_decision_tracks_submitted_actions(tmp_path):
+    client = TestClient(create_app(data_dir=tmp_path, invite_codes=["a"]))
+    ada = register(client, "a", "Ada")
+    crew = client.post(
+        "/crews",
+        headers=command_auth(ada["token"], "crew-create-gilt"),
+        json={"name": "The Gilt Knives"},
+    ).json()
+    submitted = client.post(
+        "/actions",
+        headers=command_auth(ada["token"], "action-submit-1"),
+        json={
+            "crew_id": crew["crew_id"],
+            "intent": "I inspect the red ledger rubric quietly.",
+            "confirmed": True,
+        },
+    ).json()
+
+    board = client.get(f"/crews/{crew['crew_id']}/board", headers=auth(ada["token"])).json()
+    pending = board["pending_decisions"]
+
+    assert {
+        "kind": "contract_action",
+        "label": "Submitted action open for edits",
+        "description": (
+            "The Saint's False Finger has submitted action(s) that can still be "
+            "reviewed, edited, or canceled before lock."
+        ),
+        "crew_id": crew["crew_id"],
+        "contract_id": "contract_false_finger",
+        "action": "review_submitted_action",
+        "action_ids": [submitted["action_id"]],
+    } in pending
+    assert not any(
+        decision.get("kind") == "contract_action"
+        and decision.get("action") == "submit_action"
+        for decision in pending
+    )
+
+
+def test_crew_board_pending_action_decision_returns_to_submit_after_cancel(tmp_path):
+    client = TestClient(create_app(data_dir=tmp_path, invite_codes=["a"]))
+    ada = register(client, "a", "Ada")
+    crew = client.post(
+        "/crews",
+        headers=command_auth(ada["token"], "crew-create-gilt"),
+        json={"name": "The Gilt Knives"},
+    ).json()
+    submitted = client.post(
+        "/actions",
+        headers=command_auth(ada["token"], "action-submit-1"),
+        json={
+            "crew_id": crew["crew_id"],
+            "intent": "I inspect the red ledger rubric quietly.",
+            "confirmed": True,
+        },
+    ).json()
+    client.delete(
+        f"/actions/{submitted['action_id']}",
+        headers=command_auth(ada["token"], "action-cancel-1"),
+    )
+
+    pending = client.get(
+        f"/crews/{crew['crew_id']}/board",
+        headers=auth(ada["token"]),
+    ).json()["pending_decisions"]
+
+    assert {
+        "kind": "contract_action",
+        "label": "Contract action opportunity",
+        "description": "The Saint's False Finger is active and unresolved.",
+        "crew_id": crew["crew_id"],
+        "contract_id": "contract_false_finger",
+        "action": "submit_action",
+    } in pending
+    assert not any("action_ids" in decision for decision in pending)
+
+
 def test_crew_board_lazy_contract_service_preserves_injected_oracle(tmp_path):
     class InjectedOracle:
         def resolve_auction_preview(self, packet):

@@ -123,6 +123,7 @@ def _shape_pending_decision(decision: dict[str, Any]) -> dict[str, Any]:
             "candidate_player_id",
             "missing_need",
             "action",
+            "action_ids",
         )
         if key in decision
     }

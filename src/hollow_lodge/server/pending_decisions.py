@@ -14,9 +14,11 @@ def pending_decisions_for_player(
     deals: list[dict[str, Any]],
     crew_summaries: dict[str, dict[str, Any]],
     dossiers: dict[str, dict[str, Any]],
+    actions_by_crew: dict[str, list[dict[str, Any]]] | None = None,
 ) -> list[Decision]:
     decisions: list[Decision] = []
     visible_crew_ids = set(crew_ids)
+    actions_by_crew = actions_by_crew or {}
 
     for deal in deals:
         if deal.get("status") != "proposed":
@@ -71,16 +73,38 @@ def pending_decisions_for_player(
                         "missing_need": need,
                     }
                 )
-            decisions.append(
-                {
-                    "kind": "contract_action",
-                    "label": "Contract action opportunity",
-                    "description": f"{contract['title']} is active and unresolved.",
-                    "crew_id": crew_id,
-                    "contract_id": contract["contract_id"],
-                    "action": "submit_action",
-                }
-            )
+            active_actions = [
+                action
+                for action in actions_by_crew.get(crew_id, [])
+                if action.get("status") == "submitted"
+            ]
+            if active_actions:
+                action_ids = [action["action_id"] for action in active_actions]
+                decisions.append(
+                    {
+                        "kind": "contract_action",
+                        "label": "Submitted action open for edits",
+                        "description": (
+                            f"{contract['title']} has submitted action(s) that can "
+                            "still be reviewed, edited, or canceled before lock."
+                        ),
+                        "crew_id": crew_id,
+                        "contract_id": contract["contract_id"],
+                        "action": "review_submitted_action",
+                        "action_ids": action_ids,
+                    }
+                )
+            else:
+                decisions.append(
+                    {
+                        "kind": "contract_action",
+                        "label": "Contract action opportunity",
+                        "description": f"{contract['title']} is active and unresolved.",
+                        "crew_id": crew_id,
+                        "contract_id": contract["contract_id"],
+                        "action": "submit_action",
+                    }
+                )
 
         summary = crew_summaries.get(crew_id, {})
         member_ids = summary.get("member_ids", [])
