@@ -5,6 +5,57 @@ from typing import Any
 from hollow_lodge.client.render_packets import RenderAction, RenderPacket
 
 
+_ARTIFACT_CONTEXT_FIELDS = (
+    "artifact_id",
+    "contract_id",
+    "title",
+    "kind",
+    "public_summary",
+    "full_text",
+    "source_chain",
+    "visible_flags",
+    "proof_lanes",
+    "phase_relevance",
+    "copy_policy",
+    "source_artifact_id",
+    "contamination_flags",
+    "is_copy",
+)
+
+
+def _shape_artifact(artifact: dict[str, Any]) -> dict[str, Any]:
+    return {
+        key: artifact[key]
+        for key in _ARTIFACT_CONTEXT_FIELDS
+        if key in artifact
+    }
+
+
+def _shape_edge(edge: dict[str, Any]) -> dict[str, Any]:
+    return {
+        key: edge[key]
+        for key in ("source_id", "target_id", "relation", "public_summary")
+        if key in edge
+    }
+
+
+def _shape_artifact_graph(graph: dict[str, Any]) -> dict[str, Any]:
+    shaped = {
+        key: graph[key]
+        for key in ("contract_id",)
+        if key in graph
+    }
+    shaped["artifacts"] = [
+        _shape_artifact(artifact)
+        for artifact in graph.get("artifacts", [])
+    ]
+    shaped["edges"] = [
+        _shape_edge(edge)
+        for edge in graph.get("edges", [])
+    ]
+    return shaped
+
+
 def build_artifact_packet(artifact: dict[str, Any]) -> RenderPacket:
     lines = [
         f"Artifact: {artifact['title']}",
@@ -27,7 +78,7 @@ def build_artifact_packet(artifact: dict[str, Any]) -> RenderPacket:
     return RenderPacket(
         surface="artifact",
         player_markdown="\n".join(lines),
-        agent_context={"artifact": artifact},
+        agent_context={"artifact": _shape_artifact(artifact)},
         suggested_prompts=[
             "Compare this artifact against the known graph",
             "Review the source material",
@@ -69,7 +120,7 @@ def build_artifact_graph_packet(graph: dict[str, Any]) -> RenderPacket:
     return RenderPacket(
         surface="artifact_graph",
         player_markdown="\n".join(lines),
-        agent_context={"artifact_graph": graph},
+        agent_context={"artifact_graph": _shape_artifact_graph(graph)},
         suggested_prompts=[
             "Compare two artifacts",
             "Open a source artifact",
