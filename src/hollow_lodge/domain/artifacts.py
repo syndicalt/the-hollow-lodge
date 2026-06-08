@@ -101,6 +101,7 @@ class ArtifactCopy(BaseModel):
             "contract_id": self.contract_id,
             "title": self.title,
             "public_summary": self.public_summary,
+            "source_chain": list(self.source_chain),
             "visible_flags": list(self.visible_flags),
             "contamination_flags": list(self.contamination_flags),
             "is_copy": True,

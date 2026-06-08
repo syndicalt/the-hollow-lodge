@@ -45,3 +45,7 @@ def test_artifact_copy_preserves_provenance_chain_and_marks_copy():
         "transfer:player_0001->player_0002",
     )
     assert copied.surface_view()["is_copy"] is True
+    assert copied.surface_view()["source_chain"] == [
+        "artifact:artifact_ledger_rubric",
+        "transfer:player_0001->player_0002",
+    ]
