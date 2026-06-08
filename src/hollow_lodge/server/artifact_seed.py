@@ -24,8 +24,8 @@ STARTER_ARTIFACT_GRAPH = ArtifactGraph(
                 "A vellum card attributes the reliquary finger to Saint Aint."
             ),
             full_text=(
-                "Lot 19. Reliquary finger of Saint Aint. The vellum lot card "
-                "bears a chapel seal beside the auctioneer's copied custody note."
+                "Lot 19. Reliquary finger of Saint Aint. Held under sealed "
+                "preview by Venn & Bell, with chapel seal affixed."
             ),
             tags=("auction", "lot", "chapel", "saint-aint"),
             proof_lanes=("provenance", "leverage"),
@@ -41,8 +41,8 @@ STARTER_ARTIFACT_GRAPH = ArtifactGraph(
                 "A copied rubric marks three prior owners in an unfamiliar hand."
             ),
             full_text=(
-                "Rubric copy lists three prior owners, but the red hand is "
-                "redder and later than the binding."
+                "Rubric copy: Armitage, then Venn, then a chapel debt mark. "
+                "The last hand is redder and later than the binding."
             ),
             source_chain=("archive:lot-card",),
             tags=("ledger", "rubric", "ownership", "red-hand"),
@@ -61,8 +61,8 @@ STARTER_ARTIFACT_GRAPH = ArtifactGraph(
                 "case."
             ),
             full_text=(
-                "The charcoal rubbing shows a debt sign rather than a saintly "
-                "custody seal pressed into the reliquary case."
+                "The rubbing shows the same chapel mark named in the ledger, "
+                "but it is a debt sign rather than a saintly custody seal."
             ),
             tags=("chapel", "debt", "mark", "omen"),
             proof_lanes=("occult", "provenance"),
@@ -76,8 +76,8 @@ STARTER_ARTIFACT_GRAPH = ArtifactGraph(
             title="Clerk's Pencil Correction",
             public_summary="A clerk's correction questions the lot's ownership date.",
             full_text=(
-                "Do not read the chapel mark as custody. Date was corrected "
-                "after the catalogue copy was prepared."
+                "Pencil note: 'Do not read the chapel mark as custody. Date "
+                "was corrected after the preview catalogue was copied.'"
             ),
             tags=("clerk", "pencil", "catalogue", "date"),
             proof_lanes=("witness", "provenance", "leverage"),
