@@ -834,8 +834,27 @@ class ContractService:
             },
             idempotency_key=f"oracle.resolution.{contract_id}.auction-preview.requested",
         )
-        candidate = self._resolution_oracle.resolve_auction_preview(packet)
-        result = validate_auction_preview_result(packet=packet, result=candidate)
+        fallback = False
+        fallback_reason: str | None = None
+        try:
+            candidate = self._resolution_oracle.resolve_auction_preview(packet)
+            result = validate_auction_preview_result(packet=packet, result=candidate)
+        except Exception as exc:
+            fallback = True
+            fallback_reason = exc.__class__.__name__
+            self._event_store.append_command(
+                event_type="oracle.resolution.failed",
+                actor_id="server",
+                visibility=EventVisibility.server_only(),
+                payload={
+                    "contract_id": contract_id,
+                    "phase": "Auction Preview",
+                    "input_packet_hash": input_packet_hash,
+                    "fallback_reason": fallback_reason,
+                },
+                idempotency_key=f"oracle.resolution.{contract_id}.auction-preview.failed",
+            )
+            result = DeterministicResolutionOracle().resolve_auction_preview(packet)
         self._event_store.append_command(
             event_type="oracle.resolution.completed",
             actor_id="server",
@@ -846,8 +865,8 @@ class ContractService:
                 "provider": result.provider.provider,
                 "model": result.provider.model,
                 "prompt_version": result.provider.prompt_version,
-                "fallback": False,
-                "fallback_reason": None,
+                "fallback": fallback,
+                "fallback_reason": fallback_reason,
                 "input_packet_hash": input_packet_hash,
                 "accepted_output": result.model_dump(mode="json"),
             },

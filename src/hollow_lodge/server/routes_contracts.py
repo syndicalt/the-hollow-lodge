@@ -58,5 +58,6 @@ def _contract_service(request: Request) -> ContractService:
     if not hasattr(request.app.state, "contract_service"):
         request.app.state.contract_service = ContractService(
             event_store=request.app.state.event_store,
+            resolution_oracle=getattr(request.app.state, "resolution_oracle", None),
         )
     return request.app.state.contract_service

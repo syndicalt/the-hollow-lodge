@@ -22,12 +22,15 @@ from hollow_lodge.server.services import (
     ProofService,
     VisibilityService,
 )
+from hollow_lodge.workflows.oracle_boundary import ResolutionOracle
+from hollow_lodge.workflows.oracle_factory import resolution_oracle_from_env
 
 
 def create_app(
     *,
     data_dir: str | Path | None = None,
     invite_codes: list[str] | None = None,
+    resolution_oracle: ResolutionOracle | None = None,
 ) -> FastAPI:
     app = FastAPI(
         title="The Hollow Lodge",
@@ -36,7 +39,9 @@ def create_app(
     )
     root = Path(data_dir) if data_dir is not None else Path(os.environ.get("HOLLOW_LODGE_DATA_DIR", ".hollow-lodge"))
     event_store = JsonlEventStore(root / "server-events.jsonl")
+    resolved_oracle = resolution_oracle or resolution_oracle_from_env()
     app.state.event_store = event_store
+    app.state.resolution_oracle = resolved_oracle
     identity_service = IdentityService(
         invite_codes=invite_codes or [],
         event_store=event_store,
@@ -59,7 +64,10 @@ def create_app(
     )
 
     if data_dir is not None:
-        app.state.contract_service = ContractService(event_store=event_store)
+        app.state.contract_service = ContractService(
+            event_store=event_store,
+            resolution_oracle=resolved_oracle,
+        )
         app.state.proof_service = ProofService(
             event_store=event_store,
             identity_service=identity_service,
