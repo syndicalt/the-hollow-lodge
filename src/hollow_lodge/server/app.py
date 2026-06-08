@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import os
 from pathlib import Path
 
 from fastapi import FastAPI
@@ -33,7 +34,7 @@ def create_app(
         version="0.1.0",
         summary="Authoritative server for The Hollow Lodge.",
     )
-    root = Path(data_dir) if data_dir is not None else Path(".hollow-lodge")
+    root = Path(data_dir) if data_dir is not None else Path(os.environ.get("HOLLOW_LODGE_DATA_DIR", ".hollow-lodge"))
     event_store = JsonlEventStore(root / "server-events.jsonl")
     app.state.event_store = event_store
     identity_service = IdentityService(
