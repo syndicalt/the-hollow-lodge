@@ -32,6 +32,56 @@ class FakeApi:
         )
         return {"crew_id": crew_id, "claim": claim}
 
+    def update_dossier_framing(
+        self,
+        *,
+        crew_id: str,
+        claim: str | None,
+        evidence_ids: list[str] | None,
+        reasoning: str | None,
+        weaknesses: str | None,
+        provenance_concerns: str | None,
+        idempotency_key: str,
+    ):
+        self.calls.append(
+            (
+                "update_dossier_framing",
+                {
+                    "crew_id": crew_id,
+                    "claim": claim,
+                    "evidence_ids": evidence_ids,
+                    "reasoning": reasoning,
+                    "weaknesses": weaknesses,
+                    "provenance_concerns": provenance_concerns,
+                    "idempotency_key": idempotency_key,
+                },
+            )
+        )
+        return {"crew_id": crew_id, "claim": claim}
+
+    def cite_artifact_in_dossier(
+        self,
+        *,
+        crew_id: str,
+        artifact_id: str,
+        claim: str,
+        quote: str,
+        idempotency_key: str,
+    ):
+        self.calls.append(
+            (
+                "cite_artifact_in_dossier",
+                {
+                    "crew_id": crew_id,
+                    "artifact_id": artifact_id,
+                    "claim": claim,
+                    "quote": quote,
+                    "idempotency_key": idempotency_key,
+                },
+            )
+        )
+        return {"crew_id": crew_id, "artifact_id": artifact_id}
+
     def vote_packet_lead(self, *, crew_id: str, player_id: str, idempotency_key: str):
         self.calls.append(
             (
@@ -113,6 +163,78 @@ def test_dossier_commands_use_saved_config(tmp_path, monkeypatch):
                 "crew_id": "crew_0001",
                 "player_id": "player_0002",
                 "idempotency_key": "packet-lead-vote-key",
+            },
+        )
+    ]
+
+
+def test_dossier_citation_and_frame_commands_send_only_requested_fields(tmp_path, monkeypatch):
+    runner = CliRunner()
+    clients: list[FakeApi] = []
+
+    def fake_client(**kwargs):
+        client = FakeApi(**kwargs)
+        clients.append(client)
+        return client
+
+    monkeypatch.setattr(cli, "HollowLodgeApi", fake_client)
+    monkeypatch.setattr(cli, "new_command_key", lambda prefix: f"{prefix}-key")
+    config_path = tmp_path / "config.json"
+    write_config(config_path)
+
+    cite = runner.invoke(
+        cli.app,
+        [
+            "dossier",
+            "cite-artifact",
+            "artifact_ledger_rubric",
+            "--claim",
+            "The ledger contradicts the lot card.",
+            "--quote",
+            "The last hand is later.",
+            "--config",
+            str(config_path),
+        ],
+    )
+    frame = runner.invoke(
+        cli.app,
+        [
+            "dossier",
+            "frame",
+            "--evidence-id",
+            "fragment_1",
+            "--weaknesses",
+            "No direct witness.",
+            "--config",
+            str(config_path),
+        ],
+    )
+
+    assert cite.exit_code == 0
+    assert frame.exit_code == 0
+    assert clients[0].calls == [
+        (
+            "cite_artifact_in_dossier",
+            {
+                "crew_id": "crew_0001",
+                "artifact_id": "artifact_ledger_rubric",
+                "claim": "The ledger contradicts the lot card.",
+                "quote": "The last hand is later.",
+                "idempotency_key": "dossier-cite-artifact-key",
+            },
+        )
+    ]
+    assert clients[1].calls == [
+        (
+            "update_dossier_framing",
+            {
+                "crew_id": "crew_0001",
+                "claim": None,
+                "evidence_ids": ["fragment_1"],
+                "reasoning": None,
+                "weaknesses": "No direct witness.",
+                "provenance_concerns": None,
+                "idempotency_key": "dossier-frame-key",
             },
         )
     ]

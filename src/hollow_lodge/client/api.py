@@ -240,10 +240,55 @@ class HollowLodgeApi:
             idempotency_key=idempotency_key,
         )
 
+    def transfer_proof_fragment(
+        self,
+        *,
+        fragment_id: str,
+        recipient_player_id: str,
+        idempotency_key: str,
+    ) -> dict[str, Any]:
+        return self._post(
+            f"/proofs/fragments/{fragment_id}/transfer",
+            json={"recipient_player_id": recipient_player_id},
+            idempotency_key=idempotency_key,
+        )
+
     def submit_action(self, *, crew_id: str, intent: str, idempotency_key: str) -> dict[str, Any]:
         return self._post(
             "/actions",
             json={"crew_id": crew_id, "intent": intent, "confirmed": True},
+            idempotency_key=idempotency_key,
+        )
+
+    def edit_action(
+        self,
+        *,
+        action_id: str,
+        intent: str,
+        idempotency_key: str,
+    ) -> dict[str, Any]:
+        return self._patch(
+            f"/actions/{action_id}",
+            json={"intent": intent},
+            idempotency_key=idempotency_key,
+        )
+
+    def cancel_action(self, *, action_id: str, idempotency_key: str) -> dict[str, Any]:
+        return self._delete(
+            f"/actions/{action_id}",
+            idempotency_key=idempotency_key,
+        )
+
+    def lock_auction_preview_phase(
+        self,
+        *,
+        contract_id: str,
+        hours_elapsed: int,
+        idempotency_key: str,
+    ) -> dict[str, Any]:
+        return self._post(
+            f"/contracts/{contract_id}/phases/auction-preview/lock",
+            json={"hours_elapsed": hours_elapsed},
             idempotency_key=idempotency_key,
         )
 
@@ -288,6 +333,34 @@ class HollowLodgeApi:
         return self._patch(
             f"/proofs/dossiers/{crew_id}/framing",
             json={"claim": claim},
+            idempotency_key=idempotency_key,
+        )
+
+    def update_dossier_framing(
+        self,
+        *,
+        crew_id: str,
+        claim: str | None = None,
+        evidence_ids: list[str] | tuple[str, ...] | None = None,
+        reasoning: str | None = None,
+        weaknesses: str | None = None,
+        provenance_concerns: str | None = None,
+        idempotency_key: str,
+    ) -> dict[str, Any]:
+        payload: dict[str, Any] = {}
+        if claim is not None:
+            payload["claim"] = claim
+        if evidence_ids is not None:
+            payload["evidence_ids"] = list(evidence_ids)
+        if reasoning is not None:
+            payload["reasoning"] = reasoning
+        if weaknesses is not None:
+            payload["weaknesses"] = weaknesses
+        if provenance_concerns is not None:
+            payload["provenance_concerns"] = provenance_concerns
+        return self._patch(
+            f"/proofs/dossiers/{crew_id}/framing",
+            json=payload,
             idempotency_key=idempotency_key,
         )
 
@@ -357,6 +430,15 @@ class HollowLodgeApi:
             f"{self.server_url}{path}",
             headers={**self._auth_headers(), "Idempotency-Key": idempotency_key},
             json=json,
+            timeout=10,
+        )
+        response.raise_for_status()
+        return response.json()
+
+    def _delete(self, path: str, *, idempotency_key: str) -> dict[str, Any]:
+        response = httpx.delete(
+            f"{self.server_url}{path}",
+            headers={**self._auth_headers(), "Idempotency-Key": idempotency_key},
             timeout=10,
         )
         response.raise_for_status()

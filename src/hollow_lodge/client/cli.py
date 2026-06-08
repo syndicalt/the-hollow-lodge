@@ -42,11 +42,17 @@ app = typer.Typer(
     no_args_is_help=True,
 )
 dossier_app = typer.Typer(help="Manage the crew proof dossier.", no_args_is_help=False)
+proof_app = typer.Typer(help="Manage proof fragments.", no_args_is_help=True)
+action_app = typer.Typer(help="Manage submitted actions.", no_args_is_help=True)
+phase_app = typer.Typer(help="Preview and resolve contract phases.", no_args_is_help=True)
 packet_lead_app = typer.Typer(help="Manage Packet Lead votes.", no_args_is_help=True)
 admin_app = typer.Typer(help="Manage Lodge administration.", no_args_is_help=True)
 codex_app = typer.Typer(help="Configure Codex integration.", no_args_is_help=True)
 deal_app = typer.Typer(help="Manage escrowed artifact deals.", no_args_is_help=True)
 app.add_typer(dossier_app, name="dossier")
+app.add_typer(proof_app, name="proof")
+app.add_typer(action_app, name="action")
+app.add_typer(phase_app, name="phase")
 app.add_typer(packet_lead_app, name="packet-lead")
 app.add_typer(admin_app, name="admin")
 app.add_typer(codex_app, name="codex")
@@ -426,6 +432,21 @@ def check(
     typer.echo(f"{result['fragment_id']} provenance: {', '.join(result['provenance_flags'])}")
 
 
+@proof_app.command("transfer")
+def proof_transfer(
+    fragment_id: str = typer.Argument(..., help="Proof fragment id."),
+    recipient: str = typer.Argument(..., help="Recipient player id."),
+    config: Path = typer.Option(DEFAULT_CONFIG_PATH, "--config", help="Local config path."),
+) -> None:
+    """Transfer a proof fragment to another player."""
+    response = _api_from_config(load_config(config)).transfer_proof_fragment(
+        fragment_id=fragment_id,
+        recipient_player_id=recipient,
+        idempotency_key=new_command_key("proof-transfer"),
+    )
+    typer.echo(f"{response['fragment_id']} transferred")
+
+
 @app.command()
 def act(
     intent: str = typer.Argument(..., help="Freeform action intent."),
@@ -458,6 +479,74 @@ def act(
         idempotency_key=new_command_key("action-submit"),
     )
     typer.echo(response["action_id"])
+
+
+@action_app.command("edit")
+def action_edit(
+    action_id: str = typer.Argument(..., help="Submitted action id."),
+    intent: str = typer.Argument(..., help="Replacement action intent."),
+    config: Path = typer.Option(DEFAULT_CONFIG_PATH, "--config", help="Local config path."),
+) -> None:
+    """Edit a submitted action before phase lock."""
+    response = _api_from_config(load_config(config)).edit_action(
+        action_id=action_id,
+        intent=intent,
+        idempotency_key=new_command_key("action-edit"),
+    )
+    typer.echo(f"{response['action_id']} {response['status']}")
+
+
+@action_app.command("cancel")
+def action_cancel(
+    action_id: str = typer.Argument(..., help="Submitted action id."),
+    confirm: bool = typer.Option(False, "--confirm", help="Cancel the action on the server."),
+    config: Path = typer.Option(DEFAULT_CONFIG_PATH, "--config", help="Local config path."),
+) -> None:
+    """Cancel a submitted action before phase lock."""
+    if not confirm:
+        typer.echo(f"no server mutation occurred; rerun with --confirm to cancel {action_id}")
+        return
+    response = _api_from_config(load_config(config)).cancel_action(
+        action_id=action_id,
+        idempotency_key=new_command_key("action-cancel"),
+    )
+    typer.echo(f"{response['action_id']} {response['status']}")
+
+
+@phase_app.command("preview-lock")
+def phase_preview_lock(
+    contract_id: str = typer.Argument("contract_false_finger", help="Contract id."),
+    hours_elapsed: int = typer.Option(6, "--hours-elapsed", help="Elapsed hours to submit on lock."),
+    config: Path = typer.Option(DEFAULT_CONFIG_PATH, "--config", help="Local config path."),
+) -> None:
+    """Preview phase lock consequences without mutation."""
+    current = load_config(config)
+    api = _api_from_config(current)
+    board = api.contracts()
+    _echo_phase_lock_preview(
+        contract=_contract_for_preview(board, contract_id),
+        contract_id=contract_id,
+        hours_elapsed=hours_elapsed,
+    )
+
+
+@phase_app.command("lock")
+def phase_lock(
+    contract_id: str = typer.Argument("contract_false_finger", help="Contract id."),
+    hours_elapsed: int = typer.Option(6, "--hours-elapsed", help="Elapsed hours to submit on lock."),
+    confirm: bool = typer.Option(False, "--confirm", help="Perform the server phase lock."),
+    config: Path = typer.Option(DEFAULT_CONFIG_PATH, "--config", help="Local config path."),
+) -> None:
+    """Lock and resolve a phase when confirmed."""
+    if not confirm:
+        typer.echo(f"no server mutation occurred; rerun with --confirm to lock {contract_id}")
+        return
+    response = _api_from_config(load_config(config)).lock_auction_preview_phase(
+        contract_id=contract_id,
+        hours_elapsed=hours_elapsed,
+        idempotency_key=new_command_key("phase-lock"),
+    )
+    typer.echo(f"{response.get('status', 'resolved')} {len(response.get('standings', []))} standings")
 
 
 @deal_app.command("list")
@@ -630,6 +719,64 @@ def dossier_claim(
     typer.echo(response)
 
 
+@dossier_app.command("cite-artifact")
+def dossier_cite_artifact(
+    artifact_id: str = typer.Argument(..., help="Artifact id."),
+    claim: str = typer.Option(..., "--claim", help="Claim supported by the artifact."),
+    quote: str = typer.Option(..., "--quote", help="Short quoted support from the artifact."),
+    crew_id: str | None = typer.Option(None, "--crew-id", help="Crew id; defaults to active crew."),
+    config: Path = typer.Option(DEFAULT_CONFIG_PATH, "--config", help="Local config path."),
+) -> None:
+    """Cite an artifact directly in the crew proof dossier."""
+    current = load_config(config)
+    target_crew_id = _target_crew_id(current, crew_id)
+    response = _api_from_config(current).cite_artifact_in_dossier(
+        crew_id=target_crew_id,
+        artifact_id=artifact_id,
+        claim=claim,
+        quote=quote,
+        idempotency_key=new_command_key("dossier-cite-artifact"),
+    )
+    typer.echo(response)
+
+
+@dossier_app.command("frame")
+def dossier_frame(
+    claim: str | None = typer.Option(None, "--claim", help="Dossier claim."),
+    evidence_id: list[str] | None = typer.Option(None, "--evidence-id", help="Evidence id."),
+    reasoning: str | None = typer.Option(None, "--reasoning", help="Dossier reasoning."),
+    weaknesses: str | None = typer.Option(None, "--weaknesses", help="Known weaknesses."),
+    provenance_concerns: str | None = typer.Option(
+        None,
+        "--provenance-concerns",
+        help="Known provenance concerns.",
+    ),
+    crew_id: str | None = typer.Option(None, "--crew-id", help="Crew id; defaults to active crew."),
+    config: Path = typer.Option(DEFAULT_CONFIG_PATH, "--config", help="Local config path."),
+) -> None:
+    """Update supplied dossier framing fields."""
+    if (
+        claim is None
+        and evidence_id is None
+        and reasoning is None
+        and weaknesses is None
+        and provenance_concerns is None
+    ):
+        raise typer.BadParameter("at least one framing field is required")
+    current = load_config(config)
+    target_crew_id = _target_crew_id(current, crew_id)
+    response = _api_from_config(current).update_dossier_framing(
+        crew_id=target_crew_id,
+        claim=claim,
+        evidence_ids=evidence_id,
+        reasoning=reasoning,
+        weaknesses=weaknesses,
+        provenance_concerns=provenance_concerns,
+        idempotency_key=new_command_key("dossier-frame"),
+    )
+    typer.echo(response)
+
+
 @packet_lead_app.command("vote")
 def packet_lead_vote(
     player_id: str,
@@ -663,6 +810,27 @@ def _deal_by_id(response: dict, deal_id: str) -> dict:
         if deal["deal_id"] == deal_id:
             return deal
     raise typer.BadParameter("deal not found")
+
+
+def _contract_for_preview(response: dict, contract_id: str) -> dict:
+    contracts = response.get("contracts", [])
+    for contract in contracts:
+        if contract.get("contract_id") == contract_id:
+            return contract
+    if len(contracts) == 1:
+        return contracts[0]
+    raise typer.BadParameter("contract not found")
+
+
+def _echo_phase_lock_preview(*, contract: dict, contract_id: str, hours_elapsed: int) -> None:
+    phase = contract.get("phase", {})
+    phase_name = phase.get("name", "Auction Preview")
+    remaining_hours = phase.get("remaining_hours")
+    typer.echo(f"preview only: {contract_id} {phase_name}")
+    if remaining_hours is not None:
+        typer.echo(f"remaining hours: {remaining_hours}")
+    typer.echo(f"lock request would use hours_elapsed={hours_elapsed}")
+    typer.echo("no server mutation occurred; use `phase lock --confirm` to lock and resolve")
 
 
 def _echo_packet(packet, *, as_json: bool) -> None:

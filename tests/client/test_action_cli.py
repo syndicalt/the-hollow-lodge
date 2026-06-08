@@ -19,6 +19,24 @@ class FakeApi:
         )
         return {"action_id": "action_000001", "status": "submitted"}
 
+    def edit_action(self, *, action_id: str, intent: str, idempotency_key: str):
+        self.calls.append(
+            (
+                "edit_action",
+                {"action_id": action_id, "intent": intent, "idempotency_key": idempotency_key},
+            )
+        )
+        return {"action_id": action_id, "intent": intent, "status": "submitted"}
+
+    def cancel_action(self, *, action_id: str, idempotency_key: str):
+        self.calls.append(
+            (
+                "cancel_action",
+                {"action_id": action_id, "idempotency_key": idempotency_key},
+            )
+        )
+        return {"action_id": action_id, "status": "canceled"}
+
 
 def test_act_command_stores_draft_without_confirmation(tmp_path, monkeypatch):
     runner = CliRunner()
@@ -108,3 +126,99 @@ def test_act_command_confirms_and_submits(tmp_path, monkeypatch):
             },
         )
     ]
+
+
+def test_action_edit_and_cancel_commands_call_server_routes_with_confirm(tmp_path, monkeypatch):
+    runner = CliRunner()
+    created_clients: list[FakeApi] = []
+
+    def fake_client(**kwargs):
+        client = FakeApi(**kwargs)
+        created_clients.append(client)
+        return client
+
+    monkeypatch.setattr(cli, "HollowLodgeApi", fake_client)
+    monkeypatch.setattr(cli, "new_command_key", lambda prefix: f"{prefix}-key")
+    config_path = tmp_path / "config.json"
+    save_config(
+        config_path,
+        ClientConfig(
+            server_url="http://testserver",
+            player_id="player_0001",
+            token="token",
+            active_crew_id="crew_0001",
+        ),
+    )
+
+    edited = runner.invoke(
+        cli.app,
+        [
+            "action",
+            "edit",
+            "action_000001",
+            "Inspect the ledger under candlelight.",
+            "--config",
+            str(config_path),
+        ],
+    )
+    canceled = runner.invoke(
+        cli.app,
+        ["action", "cancel", "action_000001", "--confirm", "--config", str(config_path)],
+    )
+
+    assert edited.exit_code == 0
+    assert "action_000001 submitted" in edited.output
+    assert canceled.exit_code == 0
+    assert "action_000001 canceled" in canceled.output
+    assert created_clients[0].calls == [
+        (
+            "edit_action",
+            {
+                "action_id": "action_000001",
+                "intent": "Inspect the ledger under candlelight.",
+                "idempotency_key": "action-edit-key",
+            },
+        )
+    ]
+    assert created_clients[1].calls == [
+        (
+            "cancel_action",
+            {
+                "action_id": "action_000001",
+                "idempotency_key": "action-cancel-key",
+            },
+        )
+    ]
+
+
+def test_action_cancel_without_confirm_does_not_call_server(tmp_path, monkeypatch):
+    runner = CliRunner()
+    created_clients: list[FakeApi] = []
+
+    def fake_client(**kwargs):
+        client = FakeApi(**kwargs)
+        created_clients.append(client)
+        return client
+
+    monkeypatch.setattr(cli, "HollowLodgeApi", fake_client)
+    monkeypatch.setattr(cli, "new_command_key", lambda prefix: f"{prefix}-key")
+    config_path = tmp_path / "config.json"
+    save_config(
+        config_path,
+        ClientConfig(
+            server_url="http://testserver",
+            player_id="player_0001",
+            token="token",
+            active_crew_id="crew_0001",
+        ),
+    )
+
+    result = runner.invoke(
+        cli.app,
+        ["action", "cancel", "action_000001", "--config", str(config_path)],
+    )
+
+    assert result.exit_code == 0
+    assert "no server mutation occurred" in result.output
+    assert "--confirm" in result.output
+    assert created_clients == []
