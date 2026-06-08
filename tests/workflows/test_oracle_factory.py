@@ -4,6 +4,7 @@ import pytest
 
 from hollow_lodge.workflows.deterministic_oracle import DeterministicResolutionOracle
 from hollow_lodge.workflows.oracle_factory import resolution_oracle_from_env
+from hollow_lodge.workflows.openai_oracle import OpenAIResolutionOracle
 
 
 def test_factory_defaults_to_deterministic_oracle_when_provider_unset(monkeypatch):
@@ -31,6 +32,17 @@ def test_openai_provider_without_api_key_returns_deterministic_oracle(monkeypatc
     oracle = resolution_oracle_from_env()
 
     assert isinstance(oracle, DeterministicResolutionOracle)
+
+
+def test_openai_provider_with_api_key_returns_openai_oracle(monkeypatch):
+    monkeypatch.setenv("HOLLOW_LODGE_ORACLE_PROVIDER", "openai")
+    monkeypatch.setenv("HOLLOW_LODGE_OPENAI_API_KEY", "test-key")
+    monkeypatch.setenv("HOLLOW_LODGE_ORACLE_MODEL", "gpt-test")
+    monkeypatch.delenv("HOLLOW_LODGE_ORACLE_TIMEOUT_SECONDS", raising=False)
+
+    oracle = resolution_oracle_from_env()
+
+    assert isinstance(oracle, OpenAIResolutionOracle)
 
 
 def test_factory_rejects_zero_timeout(monkeypatch):
