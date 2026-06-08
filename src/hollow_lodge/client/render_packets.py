@@ -261,6 +261,7 @@ def _shape_crew_legacy(legacy: dict[str, Any]) -> dict[str, Any]:
         "counterintelligence": _shape_counterintelligence(
             legacy.get("counterintelligence", {})
         ),
+        "rumor_memory": _shape_rumor_memory(legacy.get("rumor_memory", {})),
         "completed_contracts": [
             {
                 key: contract[key]
@@ -305,6 +306,33 @@ def _shape_counterintelligence(counterintelligence: dict[str, Any]) -> dict[str,
         "heat_from_containment": int(
             counterintelligence.get("heat_from_containment", 0)
         ),
+    }
+
+
+def _shape_rumor_memory(memory: dict[str, Any]) -> dict[str, Any]:
+    return {
+        "verified_count": int(memory.get("verified_count", 0)),
+        "assessment_counts": {
+            str(assessment): int(count)
+            for assessment, count in sorted(
+                dict(memory.get("assessment_counts", {})).items()
+            )
+        },
+        "recent": [
+            {
+                key: item[key]
+                for key in (
+                    "rumor_id",
+                    "contract_id",
+                    "pressure",
+                    "assessment",
+                    "confidence",
+                    "summary",
+                )
+                if key in item
+            }
+            for item in memory.get("recent", [])
+        ][:5],
     }
 
 
@@ -1028,6 +1056,15 @@ def build_crew_board_packet(board: dict[str, Any]) -> RenderPacket:
             "Heat from containment: "
             f"{legacy['counterintelligence']['heat_from_containment']}"
         ),
+        "Rumor memory:",
+        f"Verified rumors: {legacy['rumor_memory']['verified_count']}",
+        f"Assessments: {_render_assessment_counts(legacy['rumor_memory']['assessment_counts'])}",
+        "Recent rumor checks:",
+        *(
+            [_render_rumor_memory_item(item) for item in legacy["rumor_memory"]["recent"]]
+            if legacy["rumor_memory"]["recent"]
+            else ["- none"]
+        ),
         "Scars:",
         *(
             [f"- {scar}" for scar in legacy["scars"]]
@@ -1150,6 +1187,23 @@ def build_crew_board_packet(board: dict[str, Any]) -> RenderPacket:
                 requires_confirmation=True,
             ),
         ],
+    )
+
+
+def _render_assessment_counts(counts: dict[str, int]) -> str:
+    if not counts:
+        return "none"
+    return "; ".join(
+        f"{assessment} {count}"
+        for assessment, count in counts.items()
+    )
+
+
+def _render_rumor_memory_item(item: dict[str, Any]) -> str:
+    confidence = item.get("confidence") or "unknown"
+    return (
+        f"- {item.get('rumor_id', '')}: {item.get('assessment', '')} "
+        f"({confidence}) - {item.get('summary', '')}"
     )
 
 

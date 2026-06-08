@@ -103,6 +103,10 @@ def crew_legacy_from_contracts(
         crew_id=crew_id,
         events=events or [],
     )
+    rumor_memory = rumor_memory_from_events(
+        crew_id=crew_id,
+        events=events or [],
+    )
     explicit_completed_keys: set[tuple[str, str, str]] = set()
 
     for event in events or []:
@@ -194,6 +198,7 @@ def crew_legacy_from_contracts(
         "scars": scars,
         "deal_conduct": deal_conduct,
         "counterintelligence": counterintelligence,
+        "rumor_memory": rumor_memory,
         "completed_contracts": completed_contracts,
         "future_opportunities": future_opportunities,
     }
@@ -393,6 +398,40 @@ def counterintelligence_from_events(
         "investigations_started": investigations_started,
         "containments_started": containments_started,
         "heat_from_containment": heat_from_containment,
+    }
+
+
+def rumor_memory_from_events(
+    *,
+    crew_id: str,
+    events: list[GameEvent],
+) -> dict[str, Any]:
+    assessment_counts: dict[str, int] = {}
+    recent: list[dict[str, Any]] = []
+
+    for event in events:
+        if event.type != "contract.rumor.verified":
+            continue
+        payload = event.payload
+        if payload.get("crew_id") != crew_id:
+            continue
+        assessment = str(payload.get("assessment", "unknown"))
+        assessment_counts[assessment] = assessment_counts.get(assessment, 0) + 1
+        memory = {
+            "rumor_id": str(payload.get("rumor_id", "")),
+            "pressure": str(payload.get("pressure", "")),
+            "assessment": assessment,
+            "confidence": str(payload.get("confidence", "")),
+            "summary": str(payload.get("summary", "")),
+        }
+        if payload.get("contract_id"):
+            memory["contract_id"] = str(payload["contract_id"])
+        recent.append(memory)
+
+    return {
+        "verified_count": len(recent),
+        "assessment_counts": dict(sorted(assessment_counts.items())),
+        "recent": recent[-5:],
     }
 
 

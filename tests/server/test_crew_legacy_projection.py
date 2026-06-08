@@ -38,6 +38,11 @@ def test_crew_legacy_is_empty_before_resolved_contracts():
             "containments_started": 0,
             "heat_from_containment": 0,
         },
+        "rumor_memory": {
+            "verified_count": 0,
+            "assessment_counts": {},
+            "recent": [],
+        },
         "completed_contracts": [],
         "future_opportunities": [],
     }
@@ -300,3 +305,91 @@ def test_fulfilled_deals_create_reliable_broker_context_without_terms_or_artifac
     ]
     assert "artifact_secret_ledger" not in str(legacy)
     assert "Do not cite us." not in str(legacy)
+
+
+def test_verified_rumors_create_safe_long_term_crew_memory():
+    contracts = [
+        {
+            "contract_id": "contract_ash_window",
+            "title": "The Ash Window",
+            "phase": {"name": "Cinder Preview", "remaining_hours": 4},
+        }
+    ]
+    events = [
+        GameEvent.new(
+            sequence=10,
+            event_type="contract.rumor.verified",
+            actor_id="player_0001",
+            visibility=EventVisibility.crews(["crew_0001"]),
+            payload={
+                "schema_version": 1,
+                "rumor_id": "rumor_msg_000001",
+                "action_id": "action_000001",
+                "crew_id": "crew_0001",
+                "source_type": "crew_chat",
+                "source_id": "message_private_000001",
+                "pressure": "artifact_reference_detected",
+                "assessment": "credible_artifact_signal",
+                "confidence": "medium",
+                "summary": (
+                    "The investigation found a credible artifact signal, but "
+                    "not enough to expose the private source."
+                ),
+                "contract_id": "contract_false_finger",
+                "suspected_crew_ids": ["crew_0002"],
+                "artifact_ids": ["artifact_secret_ledger"],
+                "private_body": "The ledger proves the forgery.",
+            },
+            previous_hash=None,
+            idempotency_key="rumor-verified-1",
+        ),
+        GameEvent.new(
+            sequence=11,
+            event_type="contract.rumor.verified",
+            actor_id="player_0002",
+            visibility=EventVisibility.crews(["crew_0002"]),
+            payload={
+                "schema_version": 1,
+                "rumor_id": "rumor_msg_000002",
+                "action_id": "action_000002",
+                "crew_id": "crew_0002",
+                "source_type": "deal",
+                "source_id": "deal_private_000001",
+                "pressure": "escrow_terms_detected",
+                "assessment": "credible_arrangement_signal",
+                "confidence": "medium",
+                "summary": "A different crew found a private arrangement signal.",
+                "contract_id": "contract_false_finger",
+            },
+            previous_hash=None,
+            idempotency_key="rumor-verified-2",
+        ),
+    ]
+
+    legacy = crew_legacy_from_contracts(
+        crew_id="crew_0001",
+        contracts=contracts,
+        events=events,
+    )
+
+    assert legacy["rumor_memory"] == {
+        "verified_count": 1,
+        "assessment_counts": {"credible_artifact_signal": 1},
+        "recent": [
+            {
+                "rumor_id": "rumor_msg_000001",
+                "contract_id": "contract_false_finger",
+                "pressure": "artifact_reference_detected",
+                "assessment": "credible_artifact_signal",
+                "confidence": "medium",
+                "summary": (
+                    "The investigation found a credible artifact signal, but "
+                    "not enough to expose the private source."
+                ),
+            }
+        ],
+    }
+    assert "message_private_000001" not in str(legacy)
+    assert "artifact_secret_ledger" not in str(legacy)
+    assert "The ledger proves the forgery." not in str(legacy)
+    assert "crew_0002" not in str(legacy["rumor_memory"])

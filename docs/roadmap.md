@@ -341,9 +341,14 @@ Status:
   assessment, confidence, and summary, giving the investigating crew a result
   trail without exposing private message bodies, artifact IDs, deal terms,
   suspected crew IDs, or participant-only details.
+- Eighth social-pressure slice completed: verified rumor results now feed a
+  crew-scoped long-term `rumor_memory` projection and Codex crew-board render
+  block, preserving assessment counts and recent safe summaries without
+  carrying source IDs, private message bodies, artifact IDs, deal terms, or
+  suspected crew IDs into legacy context.
 - Escrowed deal acceptance remains participant-scoped and server-enforced.
-- Deferred: richer rumor verification sources, long-term rumor memory, and
-  escalation paths after repeated credible signals.
+- Deferred: richer rumor verification sources and escalation paths after
+  repeated credible signals.
 
 Likely files:
 
@@ -844,6 +849,24 @@ Expected verification:
 
 - `pytest tests/client/test_render_packets.py::test_contract_board_packet_renders_campaign_arc_progress_without_hidden_fields tests/client/test_render_packets.py::test_contract_board_arc_progress_counts_phase_locked_contracts tests/client/test_render_packets.py::test_contract_board_agent_context_omits_hidden_upstream_fields -q`
 - `pytest tests/client/test_render_packets.py tests/client/test_contract_board.py tests/client/test_codex_session.py tests/test_mcp_server.py tests/e2e/test_codex_render_surfaces.py tests/e2e/test_contract_content_pipeline.py -q`
+- `pytest -q`
+
+### Slice 31: Crew Rumor Memory
+
+Status: completed.
+
+Turn verified rumor checks into durable crew context. The crew legacy projection
+now derives a bounded `rumor_memory` aggregate from crew-scoped
+`contract.rumor.verified` events, including verification count, assessment
+counts, and recent player-safe summaries. Codex crew boards render that memory
+near counterintelligence so players and local agents can see what the crew has
+already verified, while omitting source IDs, private message bodies, artifact
+IDs, deal terms, suspected crew IDs, and other upstream private fields.
+
+Expected verification:
+
+- `pytest tests/server/test_crew_legacy_projection.py::test_verified_rumors_create_safe_long_term_crew_memory tests/client/test_render_packets.py::test_crew_board_packet_renders_legacy_and_future_modifiers_without_hidden_fields tests/server/test_crew_routes.py::test_crew_board_legacy_remembers_verified_rumors_without_private_sources -q`
+- `pytest tests/server/test_crew_legacy_projection.py tests/server/test_crew_routes.py tests/client/test_render_packets.py -q`
 - `pytest -q`
 
 ## Completion Standard

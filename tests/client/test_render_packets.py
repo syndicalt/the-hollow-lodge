@@ -818,6 +818,26 @@ def test_crew_board_packet_renders_legacy_and_future_modifiers_without_hidden_fi
                     "heat_from_containment": 1,
                     "artifact_ids": ["artifact_private_ledger"],
                 },
+                "rumor_memory": {
+                    "verified_count": 1,
+                    "assessment_counts": {"credible_artifact_signal": 1},
+                    "recent": [
+                        {
+                            "rumor_id": "rumor_msg_000001",
+                            "contract_id": "contract_false_finger",
+                            "pressure": "artifact_reference_detected",
+                            "assessment": "credible_artifact_signal",
+                            "confidence": "medium",
+                            "summary": (
+                                "The investigation found a credible artifact signal, "
+                                "but not enough to expose the private source."
+                            ),
+                            "source_id": "message_private_000001",
+                            "artifact_ids": ["artifact_private_ledger"],
+                            "private_body": "The ledger proves the forgery.",
+                        }
+                    ],
+                },
                 "completed_contracts": [
                     {
                         "contract_id": "contract_false_finger",
@@ -933,6 +953,13 @@ def test_crew_board_packet_renders_legacy_and_future_modifiers_without_hidden_fi
     assert "- Bruised by The Saint's False Finger" in packet.player_markdown
     assert "Counterintelligence:" in packet.player_markdown
     assert "Investigations: 1; Containments: 1; Heat from containment: 1" in packet.player_markdown
+    assert "Rumor memory:" in packet.player_markdown
+    assert "Verified rumors: 1" in packet.player_markdown
+    assert "Assessments: credible_artifact_signal 1" in packet.player_markdown
+    assert (
+        "- rumor_msg_000001: credible_artifact_signal (medium) - The investigation found a credible artifact signal, but not enough to expose the private source."
+        in packet.player_markdown
+    )
     assert "- The Saint's False Finger: Strong lead (82)" in packet.player_markdown
     assert "Future modifiers:" in packet.player_markdown
     assert (
@@ -942,6 +969,8 @@ def test_crew_board_packet_renders_legacy_and_future_modifiers_without_hidden_fi
     assert "hidden" not in packet.player_markdown
     assert "artifact_private_ledger" not in packet.player_markdown
     assert "Do not cite us." not in packet.player_markdown
+    assert "message_private_000001" not in packet.player_markdown
+    assert "The ledger proves the forgery." not in packet.player_markdown
     assert packet.agent_context["legacy"] == {
         "reputation": 2,
         "heat": 1,
@@ -960,6 +989,23 @@ def test_crew_board_packet_renders_legacy_and_future_modifiers_without_hidden_fi
             "investigations_started": 1,
             "containments_started": 1,
             "heat_from_containment": 1,
+        },
+        "rumor_memory": {
+            "verified_count": 1,
+            "assessment_counts": {"credible_artifact_signal": 1},
+            "recent": [
+                {
+                    "rumor_id": "rumor_msg_000001",
+                    "contract_id": "contract_false_finger",
+                    "pressure": "artifact_reference_detected",
+                    "assessment": "credible_artifact_signal",
+                    "confidence": "medium",
+                    "summary": (
+                        "The investigation found a credible artifact signal, "
+                        "but not enough to expose the private source."
+                    ),
+                }
+            ],
         },
         "completed_contracts": [
             {

@@ -196,6 +196,78 @@ def test_crew_board_legacy_changes_future_contract_risk_and_opportunity(tmp_path
     assert ash["crew_modifiers"] == future["contract_ash_window"]["modifiers"]
 
 
+def test_crew_board_legacy_remembers_verified_rumors_without_private_sources(tmp_path):
+    client = TestClient(create_app(data_dir=tmp_path, invite_codes=["a", "b", "c"]))
+    ada = register(client, "a", "Ada")
+    grace = register(client, "b", "Grace")
+    linus = register(client, "c", "Linus")
+    gilt = client.post(
+        "/crews",
+        headers=command_auth(ada["token"], "crew-create-gilt"),
+        json={"name": "The Gilt Knives"},
+    ).json()
+    moth = client.post(
+        "/crews",
+        headers=command_auth(grace["token"], "crew-create-moth"),
+        json={"name": "The Moth Choir"},
+    ).json()
+    ash = client.post(
+        "/crews",
+        headers=command_auth(linus["token"], "crew-create-ash"),
+        json={"name": "The Ash Keys"},
+    ).json()
+    leaked = client.post(
+        "/chat/crew-to-crew",
+        headers=command_auth(ada["token"], "chat-gilt-moth-ledger"),
+        json={
+            "sender_crew_id": gilt["crew_id"],
+            "recipient_crew_id": moth["crew_id"],
+            "body": "The ledger proves our leverage. Keep quiet.",
+            "artifact_ids": ["artifact_ledger_rubric"],
+        },
+    )
+    submitted = client.post(
+        "/actions",
+        headers=command_auth(linus["token"], "action-investigate-rumor"),
+        json={
+            "crew_id": ash["crew_id"],
+            "intent": "Quietly verify the artifact rumor through the auction clerk.",
+            "confirmed": True,
+            "rumor_id": "rumor_msg_000001",
+        },
+    )
+
+    response = client.get(f"/crews/{ash['crew_id']}/board", headers=auth(linus["token"]))
+
+    assert leaked.status_code == 201
+    assert submitted.status_code == 201
+    assert response.status_code == 200
+    memory = response.json()["legacy"]["rumor_memory"]
+    assert memory == {
+        "verified_count": 1,
+        "assessment_counts": {"credible_artifact_signal": 1},
+        "recent": [
+            {
+                "rumor_id": "rumor_msg_000001",
+                "pressure": "artifact_reference_detected",
+                "assessment": "credible_artifact_signal",
+                "confidence": "medium",
+                "summary": (
+                    "The investigation found a credible artifact signal, but "
+                    "not enough to expose the private source."
+                ),
+            }
+        ],
+    }
+    memory_text = str(memory)
+    assert "source_id" not in memory_text
+    assert "chat.message.created" not in memory_text
+    assert "The ledger proves our leverage" not in memory_text
+    assert "artifact_ledger_rubric" not in memory_text
+    assert gilt["crew_id"] not in memory_text
+    assert moth["crew_id"] not in memory_text
+
+
 def test_crew_board_pending_decisions_include_dossier_needs_and_action(tmp_path):
     client = TestClient(create_app(data_dir=tmp_path, invite_codes=["a"]))
     ada = register(client, "a", "Ada")
