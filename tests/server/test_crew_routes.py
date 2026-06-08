@@ -108,6 +108,118 @@ def test_crew_board_shows_member_roster_contracts_and_dossier(tmp_path):
     assert "join_code" not in body["crew"]
 
 
+def test_crew_board_shapes_contracts_and_dossier_at_server_boundary(tmp_path):
+    client = TestClient(create_app(data_dir=tmp_path, invite_codes=["a"]))
+    ada = register(client, "a", "Ada")
+    crew = client.post(
+        "/crews",
+        headers=command_auth(ada["token"], "crew-create-gilt"),
+        json={"name": "The Gilt Knives"},
+    ).json()
+
+    class ContractServiceStub:
+        def board_for_player(self, player_id: str):
+            assert player_id == "player_0001"
+            return {
+                "contracts": [
+                    {
+                        "contract_id": "contract_false_finger",
+                        "title": "The Saint's False Finger",
+                        "phase": {
+                            "name": "Auction Preview",
+                            "remaining_hours": 6,
+                            "status": "active",
+                            "server_timer_seed": "hidden",
+                        },
+                        "crew_heat": 0,
+                        "proof_dossier_needs": ["provenance chain"],
+                        "phase_result": {
+                            "standings": [
+                                {
+                                    "crew_id": crew["crew_id"],
+                                    "standing": "Strong lead",
+                                    "score": 82,
+                                    "server_tiebreaker": 17,
+                                }
+                            ],
+                            "hidden_truth": "forged reliquary",
+                        },
+                        "server_only_truth": "forged reliquary",
+                    }
+                ]
+            }
+
+    class ProofServiceStub:
+        def dossier_for_crew(self, *, crew_id: str, player_id: str):
+            assert crew_id == crew["crew_id"]
+            assert player_id == "player_0001"
+            return {
+                "dossier_id": "dossier_crew_0001",
+                "crew_id": crew_id,
+                "packet_lead_player_id": player_id,
+                "claim": "The relic is false.",
+                "evidence_ids": ["fragment_0001"],
+                "reasoning": "Ledger mismatch.",
+                "weaknesses": "Missing witness.",
+                "provenance_concerns": "Ink after binding.",
+                "member_contributions": [
+                    {
+                        "player_id": player_id,
+                        "note": "Checked the lot card.",
+                        "evidence_ids": ["fragment_0001"],
+                        "server_notes": "hidden",
+                    }
+                ],
+                "server_notes": "hidden",
+            }
+
+    client.app.state.contract_service = ContractServiceStub()
+    client.app.state.proof_service = ProofServiceStub()
+
+    response = client.get(f"/crews/{crew['crew_id']}/board", headers=auth(ada["token"]))
+
+    assert response.status_code == 200
+    body = response.json()
+    contract = body["active_contracts"][0]
+    assert contract == {
+        "contract_id": "contract_false_finger",
+        "title": "The Saint's False Finger",
+        "phase": {
+            "name": "Auction Preview",
+            "remaining_hours": 6,
+            "status": "active",
+        },
+        "crew_heat": 0,
+        "proof_dossier_needs": ["provenance chain"],
+        "phase_result": {
+            "standings": [
+                {
+                    "crew_id": crew["crew_id"],
+                    "standing": "Strong lead",
+                    "score": 82,
+                }
+            ]
+        },
+    }
+    assert body["dossier"] == {
+        "dossier_id": "dossier_crew_0001",
+        "crew_id": crew["crew_id"],
+        "packet_lead_player_id": "player_0001",
+        "claim": "The relic is false.",
+        "evidence_ids": ["fragment_0001"],
+        "reasoning": "Ledger mismatch.",
+        "weaknesses": "Missing witness.",
+        "provenance_concerns": "Ink after binding.",
+        "member_contributions": [
+            {
+                "player_id": "player_0001",
+                "note": "Checked the lot card.",
+                "evidence_ids": ["fragment_0001"],
+            }
+        ],
+    }
+
+
 def test_crew_board_is_crew_scoped(tmp_path):
     client = TestClient(create_app(data_dir=tmp_path, invite_codes=["a", "b"]))
     ada = register(client, "a", "Ada")

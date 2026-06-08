@@ -93,6 +93,9 @@ def test_crew_board_packet_shows_packet_lead_and_dossier_status():
     assert packet.surface == "crew_board"
     assert "Crew Board: The Gilt Knives" in packet.player_markdown
     assert "Packet Lead: player_0001" in packet.player_markdown
+    assert "hidden" not in packet.player_markdown
+    assert "hidden_truth" not in packet.player_markdown
+    assert "server_notes" not in packet.player_markdown
     assert packet.agent_context["crew"]["crew_id"] == "crew_0001"
     assert "join_code" not in packet.agent_context["crew"]
     assert "hidden_truth" not in packet.agent_context["active_contracts"][0]

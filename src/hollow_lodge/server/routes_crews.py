@@ -81,16 +81,21 @@ def crew_board(
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="crew not found")
     if not crew_service.is_member(crew_id=crew_id, player_id=player.player_id):
         raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="not a crew member")
+    active_contracts = _contract_service(request).board_for_player(player.player_id)[
+        "contracts"
+    ]
+    dossier = _proof_service(request).dossier_for_crew(
+        crew_id=crew_id,
+        player_id=player.player_id,
+    )
     return {
         "player_id": player.player_id,
         "crew": crew_service.summary(crew_id),
-        "active_contracts": _contract_service(request).board_for_player(player.player_id)[
-            "contracts"
+        "active_contracts": [
+            _crew_board_contract(contract)
+            for contract in active_contracts
         ],
-        "dossier": _proof_service(request).dossier_for_crew(
-            crew_id=crew_id,
-            player_id=player.player_id,
-        ),
+        "dossier": _crew_board_dossier(dossier),
     }
 
 
@@ -103,6 +108,58 @@ def _crew_response(crew, *, include_join_code: bool = True) -> CrewResponse:
         readiness_warning=crew.readiness_warning,
         join_code=crew.join_code if include_join_code else None,
     )
+
+
+def _crew_board_contract(contract: dict) -> dict:
+    shaped = {
+        key: contract[key]
+        for key in ("contract_id", "title", "crew_heat", "proof_dossier_needs")
+        if key in contract
+    }
+    if "phase" in contract:
+        shaped["phase"] = {
+            key: contract["phase"][key]
+            for key in ("name", "remaining_hours", "status")
+            if key in contract["phase"]
+        }
+    if "phase_result" in contract:
+        shaped["phase_result"] = {
+            "standings": [
+                {
+                    key: standing[key]
+                    for key in ("crew_id", "standing", "score")
+                    if key in standing
+                }
+                for standing in contract["phase_result"].get("standings", [])
+            ]
+        }
+    return shaped
+
+
+def _crew_board_dossier(dossier: dict) -> dict:
+    shaped = {
+        key: dossier[key]
+        for key in (
+            "dossier_id",
+            "crew_id",
+            "packet_lead_player_id",
+            "claim",
+            "evidence_ids",
+            "reasoning",
+            "weaknesses",
+            "provenance_concerns",
+        )
+        if key in dossier
+    }
+    shaped["member_contributions"] = [
+        {
+            key: contribution[key]
+            for key in ("player_id", "note", "evidence_ids")
+            if key in contribution
+        }
+        for contribution in dossier.get("member_contributions", [])
+    ]
+    return shaped
 
 
 def _contract_service(request: Request) -> ContractService:
