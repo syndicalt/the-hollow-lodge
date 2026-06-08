@@ -534,6 +534,10 @@ def test_contract_board_agent_context_omits_hidden_upstream_fields():
                             "crew_id": "crew_0001",
                             "standing": "Strong lead",
                             "score": 82,
+                            "strengths": ["clean provenance contradiction"],
+                            "weaknesses": ["thin witness chain"],
+                            "penalties": ["crew heat drew attention"],
+                            "revealed_clues": ["Auction house provenance is now suspect."],
                             "hidden_tiebreaker": 17,
                         }
                     ],
@@ -547,6 +551,14 @@ def test_contract_board_agent_context_omits_hidden_upstream_fields():
     }
 
     packet = build_contract_board_packet(board)
+
+    assert "Reasoning:" in packet.player_markdown
+    assert "strengths: clean provenance contradiction" in packet.player_markdown
+    assert "weaknesses: thin witness chain" in packet.player_markdown
+    assert "penalties: crew heat drew attention" in packet.player_markdown
+    assert "clues: Auction house provenance is now suspect." in packet.player_markdown
+    assert "hidden_tiebreaker" not in packet.player_markdown
+    assert "saint-bone forgery" not in packet.player_markdown
 
     assert packet.agent_context == {
         "campaign": {
@@ -566,6 +578,12 @@ def test_contract_board_agent_context_omits_hidden_upstream_fields():
                             "crew_id": "crew_0001",
                             "standing": "Strong lead",
                             "score": 82,
+                            "score_reasoning": {
+                                "strengths": ["clean provenance contradiction"],
+                                "weaknesses": ["thin witness chain"],
+                                "penalties": ["crew heat drew attention"],
+                                "revealed_clues": ["Auction house provenance is now suspect."],
+                            },
                         }
                     ]
                 },

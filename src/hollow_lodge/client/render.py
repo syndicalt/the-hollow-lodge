@@ -23,7 +23,25 @@ def render_contract_board(board: dict[str, Any]) -> str:
                 lines.append(f"- {state}")
             for standing in contract["phase_result"].get("standings", []):
                 lines.append(f"- {standing['crew_id']}: {standing['standing']} ({standing['score']})")
+                reasoning_lines = _render_standing_reasoning_lines(standing)
+                if reasoning_lines:
+                    lines.append("  Reasoning:")
+                    lines.extend(f"  - {line}" for line in reasoning_lines)
     return "\n".join(lines)
+
+
+def _render_standing_reasoning_lines(standing: dict[str, Any]) -> list[str]:
+    rendered: list[str] = []
+    for source_key, label in (
+        ("strengths", "strengths"),
+        ("weaknesses", "weaknesses"),
+        ("penalties", "penalties"),
+        ("revealed_clues", "clues"),
+    ):
+        values = [str(value) for value in standing.get(source_key, []) if str(value)]
+        if values:
+            rendered.append(f"{label}: {', '.join(values)}")
+    return rendered
 
 
 def render_crew_board(board: dict[str, Any]) -> str:

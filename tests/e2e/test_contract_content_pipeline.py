@@ -104,7 +104,26 @@ def test_activated_contract_seed_plays_and_renders_through_codex(tmp_path, monke
 
     assert "The Ash Window" in contracts.player_markdown
     assert "Phase result:" in contracts.player_markdown
+    assert "Reasoning:" in contracts.player_markdown
     assert "Fire chronology is now suspect." in contracts.player_markdown
+    ash_contract = next(
+        contract
+        for contract in contracts.agent_context["contracts"]
+        if contract["contract_id"] == "contract_ash_window"
+    )
+    ash_standings = ash_contract["phase_result"]["standings"]
+    assert "score_reasoning" in ash_standings[0]
+    assert {"strengths", "weaknesses", "penalties", "revealed_clues"} <= set(
+        ash_standings[0]["score_reasoning"]
+    )
+    assert "Fire chronology is now suspect." in ash_contract["phase_result"]["contract_state"]
+    assert any(
+        standing["score_reasoning"]["strengths"]
+        or standing["score_reasoning"]["weaknesses"]
+        or standing["score_reasoning"]["penalties"]
+        or standing["score_reasoning"]["revealed_clues"]
+        for standing in ash_standings
+    )
     assert "Ash Lot Notice" in artifacts.player_markdown
     assert "Soot Sample Receipt" in artifacts.player_markdown
     assert "future-burn" not in artifacts.player_markdown

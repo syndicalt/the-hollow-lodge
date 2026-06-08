@@ -513,6 +513,22 @@ Expected verification:
 - `pytest tests/server/test_phase_resolution.py tests/server/test_resolution_oracle.py tests/workflows/test_oracle_boundary.py tests/workflows/test_deterministic_oracle.py tests/workflows/test_openai_oracle.py tests/workflows/test_oracle_factory.py -q`
 - `pytest -q`
 
+### Slice 15: Player-Safe Score Reasoning
+
+Status: completed.
+
+Expose validated post-resolution score reasoning in Codex-facing contract board
+packets without projecting oracle inputs, server-only audit records, hidden
+truth, or artifact graph internals. Render packets now map each resolved
+standing's public strengths, weaknesses, penalties, and revealed clues into a
+bounded `score_reasoning` object, and contract-board markdown shows a compact
+Reasoning section under each standing.
+
+Expected verification:
+
+- `pytest tests/client/test_render_packets.py tests/client/test_phase_render.py tests/e2e/test_contract_content_pipeline.py -q`
+- `pytest -q`
+
 ## Completion Standard
 
 Each slice must:

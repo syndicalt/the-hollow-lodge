@@ -52,16 +52,26 @@ def _shape_phase(phase: dict[str, Any]) -> dict[str, Any]:
 def _shape_phase_result(phase_result: dict[str, Any]) -> dict[str, Any]:
     shaped = {
         "standings": [
-            {
-                key: standing[key]
-                for key in ("crew_id", "standing", "score")
-                if key in standing
-            }
+            _shape_phase_standing(standing)
             for standing in phase_result.get("standings", [])
         ]
     }
     if "contract_state" in phase_result:
         shaped["contract_state"] = list(phase_result["contract_state"])
+    return shaped
+
+
+def _shape_phase_standing(standing: dict[str, Any]) -> dict[str, Any]:
+    shaped = {
+        key: standing[key]
+        for key in ("crew_id", "standing", "score")
+        if key in standing
+    }
+    reasoning = {
+        key: list(standing.get(key, []))
+        for key in ("strengths", "weaknesses", "penalties", "revealed_clues")
+    }
+    shaped["score_reasoning"] = reasoning
     return shaped
 
 
@@ -654,6 +664,10 @@ def build_contract_board_packet(board: dict[str, Any]) -> RenderPacket:
                 lines.append(
                     f"- {standing['crew_id']}: {standing['standing']} ({standing['score']})"
                 )
+                reasoning_lines = _render_standing_reasoning_lines(standing)
+                if reasoning_lines:
+                    lines.append("  Reasoning:")
+                    lines.extend(f"  - {line}" for line in reasoning_lines)
         lines.append("")
     visible_artifacts = board.get("visible_artifacts", [])
     if visible_artifacts:
@@ -685,6 +699,20 @@ def build_contract_board_packet(board: dict[str, Any]) -> RenderPacket:
             RenderAction(label="Draft action", intent="draft_action", requires_confirmation=False),
         ],
     )
+
+
+def _render_standing_reasoning_lines(standing: dict[str, Any]) -> list[str]:
+    rendered: list[str] = []
+    for source_key, label in (
+        ("strengths", "strengths"),
+        ("weaknesses", "weaknesses"),
+        ("penalties", "penalties"),
+        ("revealed_clues", "clues"),
+    ):
+        values = [str(value) for value in standing.get(source_key, []) if str(value)]
+        if values:
+            rendered.append(f"{label}: {', '.join(values)}")
+    return rendered
 
 
 def build_crew_board_packet(board: dict[str, Any]) -> RenderPacket:

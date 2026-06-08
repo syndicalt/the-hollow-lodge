@@ -17,6 +17,10 @@ def test_contract_board_renders_resolved_score_reveal_without_hidden_truth():
                                 "crew_id": "crew_0001",
                                 "standing": "Strong lead",
                                 "score": 82,
+                                "strengths": ["clean provenance contradiction"],
+                                "weaknesses": ["thin witness chain"],
+                                "penalties": ["crew heat drew attention"],
+                                "revealed_clues": ["Auction house provenance is now suspect."],
                             }
                         ]
                     },
@@ -27,4 +31,9 @@ def test_contract_board_renders_resolved_score_reveal_without_hidden_truth():
 
     assert "Phase result:" in rendered
     assert "crew_0001: Strong lead (82)" in rendered
+    assert "Reasoning:" in rendered
+    assert "strengths: clean provenance contradiction" in rendered
+    assert "weaknesses: thin witness chain" in rendered
+    assert "penalties: crew heat drew attention" in rendered
+    assert "clues: Auction house provenance is now suspect." in rendered
     assert "saint-bone forgery" not in rendered
