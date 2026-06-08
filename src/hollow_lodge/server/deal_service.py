@@ -77,6 +77,10 @@ class DealService:
                 payload=payload,
                 idempotency_key=idempotency_key,
             )
+            self._append_deal_rumor_if_needed(
+                deal=payload,
+                idempotency_key=idempotency_key,
+            )
             return self._deal_by_id(payload["deal_id"])
 
     def accept(
@@ -300,6 +304,37 @@ class DealService:
     def _next_deal_id(self) -> str:
         count = sum(1 for event in self._event_store.read() if event.type == "deal.proposed")
         return f"deal_{count + 1:06d}"
+
+    def _append_deal_rumor_if_needed(self, *, deal: dict, idempotency_key: str) -> None:
+        participant_crew_ids = {
+            deal["proposer_crew_id"],
+            deal["recipient_crew_id"],
+        }
+        bystander_crew_ids = [
+            crew_id
+            for crew_id in self._crew_service.crew_ids()
+            if crew_id not in participant_crew_ids
+        ]
+        if not bystander_crew_ids:
+            return
+        self._event_store.append_command(
+            event_type="contract.rumor.leaked",
+            actor_id="server",
+            visibility=EventVisibility.crews(bystander_crew_ids),
+            payload={
+                "rumor_id": f"rumor_{deal['deal_id']}",
+                "source_type": "deal.proposed",
+                "source_id": deal["deal_id"],
+                "contract_id": deal["contract_id"],
+                "suspected_crew_ids": [
+                    deal["proposer_crew_id"],
+                    deal["recipient_crew_id"],
+                ],
+                "summary": f"A side arrangement is circulating around {deal['contract_id']}.",
+                "pressure": "escrow_terms_detected",
+            },
+            idempotency_key=f"{idempotency_key}.rumor",
+        )
 
     def _deal_by_id(self, deal_id: str) -> dict:
         for row in deal_rows_from_events(self._event_store.read()):

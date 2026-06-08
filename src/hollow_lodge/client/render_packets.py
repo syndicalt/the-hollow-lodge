@@ -204,6 +204,22 @@ def _shape_chat_message(payload: dict[str, Any], sequence: int) -> dict[str, Any
     }
 
 
+def _shape_rumor(payload: dict[str, Any]) -> dict[str, Any]:
+    return {
+        key: payload[key]
+        for key in (
+            "rumor_id",
+            "source_type",
+            "source_id",
+            "contract_id",
+            "suspected_crew_ids",
+            "summary",
+            "pressure",
+        )
+        if key in payload
+    }
+
+
 def _shape_activity_event(event: dict[str, Any]) -> dict[str, Any]:
     sequence = int(event["sequence"])
     event_type = event["type"]
@@ -240,6 +256,8 @@ def _shape_activity_event(event: dict[str, Any]) -> dict[str, Any]:
     elif event_type == "contract.phase.resolved":
         reveal = payload.get("reveal", {})
         shaped["phase_result"] = _shape_phase_result(reveal)
+    elif event_type == "contract.rumor.leaked":
+        shaped["rumor"] = _shape_rumor(payload)
     return shaped
 
 
@@ -347,6 +365,8 @@ def _render_activity_event(event: dict[str, Any]) -> str:
             f"{sequence} phase result: {leader.get('crew_id')} "
             f"{leader.get('standing')} {leader.get('score')}"
         )
+    if event_type == "contract.rumor.leaked":
+        return f"{sequence} rumor: {payload.get('summary')}"
     return f"{sequence} {event_type}"
 
 
@@ -725,6 +745,15 @@ def build_crew_board_packet(board: dict[str, Any]) -> RenderPacket:
             lines.extend(_render_deal_lines(deal))
     else:
         lines.append("- none")
+    lines.extend(["", "Rumors:"])
+    rumors = [_shape_rumor(rumor) for rumor in board.get("rumors", [])]
+    if rumors:
+        lines.extend(
+            f"- {rumor['rumor_id']}: {rumor['summary']}"
+            for rumor in rumors
+        )
+    else:
+        lines.append("- none")
     lines.extend(
         [
             "",
@@ -769,6 +798,7 @@ def build_crew_board_packet(board: dict[str, Any]) -> RenderPacket:
                 for artifact in board.get("visible_artifacts", [])
             ],
             "deals": [_shape_deal(deal) for deal in board.get("deals", [])],
+            "rumors": rumors,
             "pending_decisions": pending_decisions,
             "urgent_items": pending_decisions,
         },

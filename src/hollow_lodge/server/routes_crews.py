@@ -6,6 +6,7 @@ from fastapi import APIRouter, Depends, Header, HTTPException, Request, status
 from hollow_lodge.domain.identity import Player
 from hollow_lodge.server.artifact_service import ArtifactService
 from hollow_lodge.server.auth import current_player
+from hollow_lodge.eventlog.visibility import Principal
 from hollow_lodge.server.pending_decisions import pending_decisions_for_player
 from hollow_lodge.server.runtime_services import ensure_deal_service
 from hollow_lodge.server.projections import (
@@ -117,6 +118,7 @@ def crew_board(
         "dossier": _crew_board_dossier(dossier),
         "visible_artifacts": _visible_artifacts_for_player(request, player.player_id),
         "deals": deals,
+        "rumors": _rumors_for_crew(request, crew_id),
         "pending_decisions": pending_decisions_for_player(
             player_id=player.player_id,
             crew_ids=[crew_id],
@@ -230,6 +232,30 @@ def _deals_for_crew(request: Request, player_id: str, crew_id: str) -> list[dict
         for deal in _deals_for_player(request, player_id)
         if deal["proposer_crew_id"] == crew_id or deal["recipient_crew_id"] == crew_id
     ]
+
+
+def _rumors_for_crew(request: Request, crew_id: str) -> list[dict]:
+    rumors: list[dict] = []
+    for event in request.app.state.event_store.read_for_principal(Principal.crew(crew_id)):
+        if event.type != "contract.rumor.leaked":
+            continue
+        payload = event.payload
+        rumors.append(
+            {
+                key: payload[key]
+                for key in (
+                    "rumor_id",
+                    "source_type",
+                    "source_id",
+                    "contract_id",
+                    "suspected_crew_ids",
+                    "summary",
+                    "pressure",
+                )
+                if key in payload
+            }
+        )
+    return rumors
 
 
 def _proof_service(request: Request) -> ProofService:

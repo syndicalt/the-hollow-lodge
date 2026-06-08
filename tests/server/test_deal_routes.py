@@ -76,6 +76,79 @@ def test_deal_routes_propose_list_accept(tmp_path):
     assert accept.json()["status"] == "fulfilled"
 
 
+def test_deal_proposal_leaks_partial_rumor_to_bystander_crew_without_deal_terms(tmp_path):
+    app = create_app(data_dir=tmp_path, invite_codes=["a", "b", "c"])
+    client = TestClient(app)
+    ada = register(client, "a", "Ada")
+    bela = register(client, "b", "Bela")
+    caro = register(client, "c", "Caro")
+    gilt = create_crew(client, ada["token"], "Gilt Knives", "crew-gilt")
+    moth = create_crew(client, bela["token"], "Moth Lanterns", "crew-moth")
+    ash = create_crew(client, caro["token"], "Ash Keys", "crew-ash")
+    app.state.artifact_service.grant_artifact_access(
+        artifact_id="artifact_chapel_debt_mark",
+        actor_id="server",
+        player_ids=[],
+        crew_ids=[moth["crew_id"]],
+        reason="test setup",
+        idempotency_key="grant-chapel",
+    )
+
+    propose = client.post(
+        "/deals",
+        headers=command_auth(ada["token"], "deal-propose"),
+        json=proposed_deal_payload(gilt, moth),
+    )
+    bystander_deals = client.get("/deals", headers=auth(caro["token"]))
+    bystander_events = client.get("/events", headers=auth(caro["token"])).json()["events"]
+    bystander_board = client.get(f"/crews/{ash['crew_id']}/board", headers=auth(caro["token"]))
+    participant_events = client.get("/events", headers=auth(ada["token"])).json()["events"]
+    accepted = client.post(
+        f"/deals/{propose.json()['deal_id']}/accept",
+        headers=command_auth(bela["token"], "deal-accept"),
+        json={},
+    )
+
+    assert propose.status_code == 201
+    assert bystander_deals.status_code == 200
+    assert bystander_deals.json()["deals"] == []
+    rumor_events = [
+        event for event in bystander_events
+        if event["type"] == "contract.rumor.leaked"
+    ]
+    assert len(rumor_events) == 1
+    rumor = rumor_events[0]["payload"]
+    assert rumor == {
+        "rumor_id": "rumor_deal_000001",
+        "source_type": "deal.proposed",
+        "source_id": "deal_000001",
+        "contract_id": "contract_false_finger",
+        "suspected_crew_ids": [gilt["crew_id"], moth["crew_id"]],
+        "summary": "A side arrangement is circulating around contract_false_finger.",
+        "pressure": "escrow_terms_detected",
+    }
+    assert "artifact_ledger_rubric" not in str(rumor_events)
+    assert "artifact_chapel_debt_mark" not in str(rumor_events)
+    assert "Do not cite us." not in str(rumor_events)
+    assert bystander_board.status_code == 200
+    assert bystander_board.json()["deals"] == []
+    assert bystander_board.json()["rumors"] == [rumor]
+    assert "artifact_ledger_rubric" not in str(bystander_board.json()["rumors"])
+    assert "artifact_chapel_debt_mark" not in str(bystander_board.json()["rumors"])
+    assert "Do not cite us." not in str(bystander_board.json()["rumors"])
+    assert not any(
+        event["type"] == "contract.rumor.leaked"
+        for event in participant_events
+    )
+    assert accepted.status_code == 200
+    assert accepted.json()["status"] == "fulfilled"
+    assert ash["crew_id"] not in {
+        event["payload"].get("recipient_crew_id")
+        for event in participant_events
+        if event["type"] == "deal.proposed"
+    }
+
+
 def test_persisted_deals_render_after_restart_before_deals_route(tmp_path):
     app = create_app(data_dir=tmp_path, invite_codes=["a", "b"])
     client = TestClient(app)

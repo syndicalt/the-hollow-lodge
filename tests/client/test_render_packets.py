@@ -260,6 +260,20 @@ def test_crew_board_packet_shows_packet_lead_and_dossier_status():
                     "hidden_note": "server-only",
                 }
             ],
+            "rumors": [
+                {
+                    "rumor_id": "rumor_deal_000001",
+                    "source_type": "deal.proposed",
+                    "source_id": "deal_000001",
+                    "contract_id": "contract_false_finger",
+                    "suspected_crew_ids": ["crew_0002", "crew_0003"],
+                    "summary": "A side arrangement is circulating around contract_false_finger.",
+                    "pressure": "escrow_terms_detected",
+                    "offered_artifact_ids": ["artifact_private_escrow"],
+                    "soft_terms": ["Do not cite us."],
+                    "server_notes": "hidden",
+                }
+            ],
             "pending_decisions": [
                 {
                     "kind": "dossier_need",
@@ -281,8 +295,12 @@ def test_crew_board_packet_shows_packet_lead_and_dossier_status():
     assert "- artifact_ledger_rubric: The ledger contradicts the public lot card." in packet.player_markdown
     assert "Artifacts:" in packet.player_markdown
     assert "- artifact_lot_card: Auction Lot Card" in packet.player_markdown
+    assert "Rumors:" in packet.player_markdown
+    assert "- rumor_deal_000001: A side arrangement is circulating around contract_false_finger." in packet.player_markdown
     assert "Pending decisions:" in packet.player_markdown
     assert "- Dossier needs provenance chain: The Saint's False Finger still needs dossier coverage for provenance chain." in packet.player_markdown
+    assert "artifact_private_escrow" not in packet.player_markdown
+    assert "Do not cite us." not in packet.player_markdown
     assert "hidden" not in packet.player_markdown
     assert "hidden_truth" not in packet.player_markdown
     assert "server_notes" not in packet.player_markdown
@@ -304,6 +322,17 @@ def test_crew_board_packet_shows_packet_lead_and_dossier_status():
             "title": "Auction Lot Card",
             "kind": "lot_card",
             "public_summary": "A vellum card attributes the reliquary finger.",
+        }
+    ]
+    assert packet.agent_context["rumors"] == [
+        {
+            "rumor_id": "rumor_deal_000001",
+            "source_type": "deal.proposed",
+            "source_id": "deal_000001",
+            "contract_id": "contract_false_finger",
+            "suspected_crew_ids": ["crew_0002", "crew_0003"],
+            "summary": "A side arrangement is circulating around contract_false_finger.",
+            "pressure": "escrow_terms_detected",
         }
     ]
     assert packet.agent_context["pending_decisions"] == [
@@ -622,6 +651,23 @@ def test_activity_summary_packet_shapes_visible_events_without_server_only_field
                     "server_notes": "hidden",
                 },
             },
+            {
+                "origin": "server",
+                "event_id": "evt_3",
+                "sequence": 3,
+                "type": "contract.rumor.leaked",
+                "payload": {
+                    "rumor_id": "rumor_deal_000001",
+                    "source_type": "deal.proposed",
+                    "source_id": "deal_000001",
+                    "contract_id": "contract_false_finger",
+                    "suspected_crew_ids": ["crew_0001", "crew_0002"],
+                    "summary": "A side arrangement is circulating around contract_false_finger.",
+                    "pressure": "escrow_terms_detected",
+                    "offered_artifact_ids": ["artifact_ledger_rubric"],
+                    "soft_terms": ["Do not cite us."],
+                },
+            },
         ]
     )
 
@@ -629,13 +675,17 @@ def test_activity_summary_packet_shapes_visible_events_without_server_only_field
     assert "Recent visible activity:" in packet.player_markdown
     assert "1 chat player_0002: No public claims until lock." in packet.player_markdown
     assert "2 proof fragment fragment_1: A chipped reliquary seal." in packet.player_markdown
+    assert "3 rumor: A side arrangement is circulating around contract_false_finger." in packet.player_markdown
     assert "server-only" not in packet.player_markdown
     assert "hidden" not in packet.player_markdown
+    assert "artifact_ledger_rubric" not in packet.player_markdown
+    assert "Do not cite us." not in packet.player_markdown
     assert packet.agent_context == {
-        "visible_event_count": 2,
+        "visible_event_count": 3,
         "event_type_counts": {
             "chat.message.created": 1,
             "proof.fragment.transferred": 1,
+            "contract.rumor.leaked": 1,
         },
         "recent_events": [
             {
@@ -656,6 +706,19 @@ def test_activity_summary_packet_shapes_visible_events_without_server_only_field
                 "proof_fragment": {
                     "fragment_id": "fragment_1",
                     "content_summary": "A chipped reliquary seal.",
+                },
+            },
+            {
+                "sequence": 3,
+                "type": "contract.rumor.leaked",
+                "rumor": {
+                    "rumor_id": "rumor_deal_000001",
+                    "source_type": "deal.proposed",
+                    "source_id": "deal_000001",
+                    "contract_id": "contract_false_finger",
+                    "suspected_crew_ids": ["crew_0001", "crew_0002"],
+                    "summary": "A side arrangement is circulating around contract_false_finger.",
+                    "pressure": "escrow_terms_detected",
                 },
             },
         ],

@@ -600,6 +600,10 @@ class CrewService:
                 if player_id in crew.member_ids
             ]
 
+    def crew_ids(self) -> list[str]:
+        with self._lock:
+            return sorted(self._crews)
+
     def member_ids(self, crew_id: str) -> list[str]:
         with self._lock:
             return list(self._crews[crew_id].member_ids)

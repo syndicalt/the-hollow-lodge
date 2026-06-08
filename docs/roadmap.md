@@ -272,6 +272,16 @@ Proof gate:
 - A private arrangement can become partially discoverable through game
   mechanics, while artifact escrow still resolves reliably.
 
+Status:
+
+- First social-pressure slice completed: brokered artifact deal proposals now
+  emit redacted `contract.rumor.leaked` events to nonparticipant crews, visible
+  in recent activity and crew boards without exposing artifact IDs, soft terms,
+  player IDs, or deal acceptance state.
+- Escrowed deal acceptance remains participant-scoped and server-enforced.
+- Deferred: chat-originated pressure, reputation consequences for deal conduct,
+  deliberate cleanup/counterintelligence actions, and richer rumor verification.
+
 Likely files:
 
 - `src/hollow_lodge/domain/chat.py`
