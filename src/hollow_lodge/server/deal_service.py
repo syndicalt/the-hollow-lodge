@@ -107,6 +107,10 @@ class DealService:
                 artifact_ids=deal["requested_artifact_ids"],
                 crew_id=deal["recipient_crew_id"],
             )
+            self._preflight_accepted_deal_fulfillment(
+                deal=deal,
+                idempotency_key=idempotency_key,
+            )
 
             self._event_store.append_command(
                 event_type="deal.accepted",
@@ -135,14 +139,15 @@ class DealService:
     ) -> dict:
         with self._lock:
             deal = self._deal_by_id(deal_id)
+            self._require_member(crew_id=deal["recipient_crew_id"], player_id=actor_player_id)
             replay = self._matching_lifecycle_replay(
                 idempotency_key=idempotency_key,
                 expected_type="deal.declined",
                 expected_payload={"deal_id": deal_id},
+                expected_actor_id=actor_player_id,
             )
             if replay is not None:
                 return self._deal_by_id(deal_id)
-            self._require_member(crew_id=deal["recipient_crew_id"], player_id=actor_player_id)
             if deal["status"] != "proposed":
                 raise ValueError("deal not proposed")
             self._append_simple_lifecycle_event(
@@ -162,14 +167,15 @@ class DealService:
     ) -> dict:
         with self._lock:
             deal = self._deal_by_id(deal_id)
+            self._require_member(crew_id=deal["proposer_crew_id"], player_id=actor_player_id)
             replay = self._matching_lifecycle_replay(
                 idempotency_key=idempotency_key,
                 expected_type="deal.canceled",
                 expected_payload={"deal_id": deal_id},
+                expected_actor_id=actor_player_id,
             )
             if replay is not None:
                 return self._deal_by_id(deal_id)
-            self._require_member(crew_id=deal["proposer_crew_id"], player_id=actor_player_id)
             if deal["status"] != "proposed":
                 raise ValueError("deal not proposed")
             self._append_simple_lifecycle_event(
@@ -223,6 +229,29 @@ class DealService:
             idempotency_key=f"{idempotency_key}.fulfilled",
         )
         return self._deal_by_id(deal["deal_id"])
+
+    def _preflight_accepted_deal_fulfillment(
+        self,
+        *,
+        deal: dict,
+        idempotency_key: str,
+    ) -> None:
+        for index, artifact_id in enumerate(deal["offered_artifact_ids"]):
+            self._artifact_service.preflight_copy_artifact_for_deal(
+                source_artifact_id=artifact_id,
+                source_crew_id=deal["proposer_crew_id"],
+                recipient_crew_id=deal["recipient_crew_id"],
+                deal_id=deal["deal_id"],
+                idempotency_key=f"{idempotency_key}.recipient.{index}",
+            )
+        for index, artifact_id in enumerate(deal["requested_artifact_ids"]):
+            self._artifact_service.preflight_copy_artifact_for_deal(
+                source_artifact_id=artifact_id,
+                source_crew_id=deal["recipient_crew_id"],
+                recipient_crew_id=deal["proposer_crew_id"],
+                deal_id=deal["deal_id"],
+                idempotency_key=f"{idempotency_key}.proposer.{index}",
+            )
 
     def _next_deal_id(self) -> str:
         count = sum(1 for event in self._event_store.read() if event.type == "deal.proposed")
@@ -304,11 +333,16 @@ class DealService:
         idempotency_key: str,
         expected_type: str,
         expected_payload: dict[str, Any],
+        expected_actor_id: str,
     ) -> GameEvent | None:
         existing = self._event_by_idempotency_key(idempotency_key)
         if existing is None:
             return None
-        if existing.type != expected_type or existing.payload != expected_payload:
+        if (
+            existing.type != expected_type
+            or existing.payload != expected_payload
+            or existing.actor_id != expected_actor_id
+        ):
             raise ValueError("idempotency key conflict")
         return existing
 

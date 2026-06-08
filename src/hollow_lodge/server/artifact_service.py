@@ -194,6 +194,27 @@ class ArtifactService:
             )
             return surface
 
+    def preflight_copy_artifact_for_deal(
+        self,
+        *,
+        source_artifact_id: str,
+        source_crew_id: str,
+        recipient_crew_id: str,
+        deal_id: str,
+        idempotency_key: str,
+    ) -> None:
+        with self._lock:
+            self._matching_deal_copy_replay(
+                idempotency_key=idempotency_key,
+                source_artifact_id=source_artifact_id,
+                source_crew_id=source_crew_id,
+                recipient_crew_id=recipient_crew_id,
+                deal_id=deal_id,
+            )
+            artifact = STARTER_ARTIFACT_GRAPH.artifact_by_id(source_artifact_id)
+            if artifact.copy_policy == "sealed":
+                raise ValueError("artifact cannot be transferred")
+
     def grant_artifact_access(
         self,
         *,
