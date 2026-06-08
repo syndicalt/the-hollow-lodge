@@ -1,9 +1,9 @@
 from __future__ import annotations
 
 from pathlib import Path
-from typing import Any
 
 from mcp.server.fastmcp import FastMCP
+from mcp.types import CallToolResult, TextContent
 
 from hollow_lodge.client.paths import DEFAULT_CONFIG_PATH, DEFAULT_LOCAL_LOG_PATH
 from hollow_lodge.client.codex_session import CodexGameSession
@@ -20,11 +20,11 @@ mcp = FastMCP(
 )
 
 
-def packet_response(packet: RenderPacket) -> dict[str, Any]:
-    return {
-        "content": [{"type": "text", "text": packet.player_markdown}],
-        "structuredContent": packet.model_dump(mode="json"),
-    }
+def packet_response(packet: RenderPacket) -> CallToolResult:
+    return CallToolResult(
+        content=[TextContent(type="text", text=packet.player_markdown)],
+        structuredContent=packet.model_dump(mode="json"),
+    )
 
 
 def _session(
@@ -39,32 +39,21 @@ def _session(
 
 
 @mcp.tool()
-def render_inbox(config_path: str | None = None, local_log_path: str | None = None) -> dict[str, Any]:
-    return packet_response(
-        _session(config_path=config_path, local_log_path=local_log_path).render_inbox()
-    )
+def render_inbox() -> CallToolResult:
+    return packet_response(_session().render_inbox())
 
 
 @mcp.tool()
-def render_contract_board(
-    config_path: str | None = None,
-    local_log_path: str | None = None,
-) -> dict[str, Any]:
-    return packet_response(
-        _session(config_path=config_path, local_log_path=local_log_path).render_contract_board()
-    )
+def render_contract_board() -> CallToolResult:
+    return packet_response(_session().render_contract_board())
 
 
 @mcp.tool()
 def render_crew_board(
     crew_id: str | None = None,
-    config_path: str | None = None,
-    local_log_path: str | None = None,
-) -> dict[str, Any]:
+) -> CallToolResult:
     return packet_response(
-        _session(config_path=config_path, local_log_path=local_log_path).render_crew_board(
-            crew_id=crew_id
-        )
+        _session().render_crew_board(crew_id=crew_id)
     )
 
 
