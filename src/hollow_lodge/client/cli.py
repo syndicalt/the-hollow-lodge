@@ -4,6 +4,7 @@ import typer
 
 from hollow_lodge import __version__
 from hollow_lodge.client.api import HollowLodgeApi, new_command_key
+from hollow_lodge.client.codex_mcp_config import install_codex_mcp_server
 from hollow_lodge.client.config import (
     ClientConfig,
     OnboardingConfig,
@@ -36,9 +37,11 @@ app = typer.Typer(
 dossier_app = typer.Typer(help="Manage the crew proof dossier.", no_args_is_help=False)
 packet_lead_app = typer.Typer(help="Manage Packet Lead votes.", no_args_is_help=True)
 admin_app = typer.Typer(help="Manage Lodge administration.", no_args_is_help=True)
+codex_app = typer.Typer(help="Configure Codex integration.", no_args_is_help=True)
 app.add_typer(dossier_app, name="dossier")
 app.add_typer(packet_lead_app, name="packet-lead")
 app.add_typer(admin_app, name="admin")
+app.add_typer(codex_app, name="codex")
 
 
 @app.callback()
@@ -161,6 +164,19 @@ def admin_invite_create(
         idempotency_key=new_command_key("admin-invite-create"),
     )
     typer.echo(response["invite_code"])
+
+
+@codex_app.command("install-mcp")
+def codex_install_mcp(
+    config: Path = typer.Option(
+        Path.home() / ".codex" / "config.toml",
+        "--config",
+        help="Codex config.toml path.",
+    ),
+) -> None:
+    """Register The Hollow Lodge MCP server with Codex."""
+    changed = install_codex_mcp_server(config)
+    typer.echo("registered the-hollow-lodge MCP server" if changed else "the-hollow-lodge MCP server already registered")
 
 
 @app.command("crew-create")

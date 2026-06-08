@@ -8,6 +8,7 @@ def test_install_script_bootstraps_cli_and_runs_onboarding():
 
     assert "uv tool install" in script
     assert "git+https://github.com/syndicalt/the-hollow-lodge.git" in script
+    assert "hollow-lodge codex install-mcp" in script
     assert "hollow-lodge onboard" in script
     assert "HOLLOW_LODGE_SKIP_ONBOARD" in script
 

@@ -11,6 +11,8 @@ fi
 
 uv tool install "$PACKAGE" --force
 
+hollow-lodge codex install-mcp
+
 if [ "${HOLLOW_LODGE_SKIP_ONBOARD:-0}" = "1" ]; then
   printf '%s\n' "Installed hollow-lodge. Run 'hollow-lodge onboard' when ready."
   exit 0
