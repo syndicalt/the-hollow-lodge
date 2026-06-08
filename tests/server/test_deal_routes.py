@@ -1,4 +1,5 @@
 from fastapi.testclient import TestClient
+import pytest
 
 from hollow_lodge.server.app import create_app
 
@@ -105,3 +106,19 @@ def test_non_member_cannot_accept_deal(tmp_path):
 
     assert accept.status_code == 403
     assert accept.json()["detail"] == "not a crew member"
+
+
+@pytest.mark.parametrize("action", ["accept", "decline", "cancel"])
+def test_missing_deal_returns_deal_not_found(tmp_path, action):
+    app = create_app(data_dir=tmp_path, invite_codes=["a"])
+    client = TestClient(app)
+    ada = register(client, "a", "Ada")
+
+    response = client.post(
+        f"/deals/deal_missing/{action}",
+        headers=command_auth(ada["token"], f"deal-missing-{action}"),
+        json={},
+    )
+
+    assert response.status_code == 404
+    assert response.json()["detail"] == "deal not found"

@@ -66,7 +66,7 @@ def accept_deal(
             idempotency_key=idempotency_key,
         )
     except (PermissionError, KeyError, ValueError) as exc:
-        raise _deal_http_exception(exc) from exc
+        raise _deal_http_exception(exc, deal_id=deal_id) from exc
 
 
 @router.post("/{deal_id}/decline")
@@ -83,7 +83,7 @@ def decline_deal(
             idempotency_key=idempotency_key,
         )
     except (PermissionError, KeyError, ValueError) as exc:
-        raise _deal_http_exception(exc) from exc
+        raise _deal_http_exception(exc, deal_id=deal_id) from exc
 
 
 @router.post("/{deal_id}/cancel")
@@ -100,17 +100,24 @@ def cancel_deal(
             idempotency_key=idempotency_key,
         )
     except (PermissionError, KeyError, ValueError) as exc:
-        raise _deal_http_exception(exc) from exc
+        raise _deal_http_exception(exc, deal_id=deal_id) from exc
 
 
 def _deal_service(request: Request) -> DealService:
     return request.app.state.deal_service
 
 
-def _deal_http_exception(exc: PermissionError | KeyError | ValueError) -> HTTPException:
+def _deal_http_exception(
+    exc: PermissionError | KeyError | ValueError,
+    *,
+    deal_id: str | None = None,
+) -> HTTPException:
     if isinstance(exc, PermissionError):
         return HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail=str(exc))
     if isinstance(exc, KeyError):
-        detail = "crew not found" if exc.args == ("crew not found",) else "artifact not found"
+        if deal_id is not None and exc.args == (deal_id,):
+            detail = "deal not found"
+        else:
+            detail = "crew not found" if exc.args == ("crew not found",) else "artifact not found"
         return HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=detail)
     return HTTPException(status_code=status.HTTP_409_CONFLICT, detail=str(exc))
