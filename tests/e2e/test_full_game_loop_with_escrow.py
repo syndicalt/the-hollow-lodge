@@ -1,0 +1,35 @@
+import importlib.util
+from pathlib import Path
+
+
+def _load_run_mock():
+    script_path = Path(__file__).resolve().parents[2] / "scripts" / "mock_full_game_loop.py"
+    spec = importlib.util.spec_from_file_location("mock_full_game_loop", script_path)
+    assert spec is not None
+    assert spec.loader is not None
+    module = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(module)
+    return module.run_mock
+
+
+def test_full_game_loop_with_escrow_trade(tmp_path):
+    run_mock = _load_run_mock()
+    result = run_mock(str(tmp_path))
+
+    assert result["deal"]["status"] == "fulfilled"
+    assert result["deal"]["proposer_received_artifact_ids"]
+    assert result["deal"]["recipient_received_artifact_ids"]
+    assert {deal["status"] for deal in result["gilt_board"]["deals"]} == {"fulfilled"}
+    assert {deal["status"] for deal in result["moth_board"]["deals"]} == {"fulfilled"}
+    assert result["gilt_board"]["dossier"]["artifact_citations"]
+    assert result["moth_board"]["dossier"]["artifact_citations"]
+    assert result["reveal"]["standings"]
+    assert result["timeline"] == [
+        "deal.proposed",
+        "deal.accepted",
+        "artifact.deal_copied",
+        "artifact.deal_copied.internal",
+        "artifact.deal_copied",
+        "artifact.deal_copied.internal",
+        "deal.fulfilled",
+    ]
