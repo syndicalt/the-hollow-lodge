@@ -953,6 +953,10 @@ class ContractService:
             dict.fromkeys(
                 (
                     STARTER_FRAGMENT.fragment_id,
+                    *(
+                        artifact.artifact_id
+                        for artifact in STARTER_ARTIFACT_GRAPH.artifacts
+                    ),
                     *(asset.asset_id for asset in STARTER_CONTRACT.evidence_assets),
                     *(
                         evidence_id
@@ -984,6 +988,8 @@ class ContractService:
                     weaknesses=score_input.weaknesses,
                     provenance_concerns=score_input.provenance_concerns,
                     evidence_ids=tuple(score_input.evidence_ids),
+                    artifact_citations=tuple(score_input.artifact_citations),
+                    known_edges=tuple(score_input.known_edges),
                     exposed_assets=tuple(score_input.exposed_assets),
                     action_intents=tuple(score_input.action_intents),
                     crew_noise=score_input.crew_noise,
@@ -1034,6 +1040,7 @@ class ContractService:
             citation_artifact_ids = tuple(
                 citation["artifact_id"] for citation in dossier.artifact_citations
             )
+            known_edges = self._known_edges_for_artifacts(citation_artifact_ids)
             evidence_ids = tuple(dict.fromkeys((*dossier.evidence_ids, *citation_artifact_ids)))
             citation_reasoning = "\n".join(
                 f"{citation['artifact_id']}: {citation['claim']}"
@@ -1062,6 +1069,8 @@ class ContractService:
                     reasoning=reasoning,
                     weaknesses=dossier.weaknesses,
                     provenance_concerns=provenance_concerns,
+                    artifact_citations=dossier.artifact_citations,
+                    known_edges=known_edges,
                     exposed_assets=tuple(
                         dict.fromkeys(
                             (
@@ -1079,6 +1088,12 @@ class ContractService:
                 )
             )
         return score_inputs
+
+    def _known_edges_for_artifacts(self, artifact_ids: tuple[str, ...]) -> tuple[dict, ...]:
+        if len(artifact_ids) < 2:
+            return ()
+        visible = STARTER_ARTIFACT_GRAPH.visible_slice(set(artifact_ids))
+        return tuple(visible["edges"])
 
     def _current_dossier_for_scoring(self, crew_id: str) -> ProofDossier:
         current: ProofDossier | None = None

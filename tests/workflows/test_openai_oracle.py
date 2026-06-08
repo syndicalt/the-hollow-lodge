@@ -105,6 +105,8 @@ def test_openai_oracle_uses_structured_outputs_parse_contract():
     assert parse_call["text_format"] is OpenAIAuctionPreviewResolution
     assert "text" not in parse_call
     assert "contract_false_finger" in str(parse_call["input"])
+    assert "Reward cited artifacts" in parse_call["input"][0]["content"]
+    assert "graph contradictions" in parse_call["input"][0]["content"]
 
 
 def test_openai_oracle_does_not_require_real_api_when_client_injected():

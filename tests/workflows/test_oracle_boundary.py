@@ -209,3 +209,36 @@ def test_oracle_boundary_models_are_immutable():
 
     with pytest.raises(ValidationError):
         result.standings[0].score = 80
+
+
+def test_oracle_packet_accepts_artifact_citations_and_known_edges():
+    packet = AuctionPreviewOraclePacket(
+        contract_id="contract_false_finger",
+        phase="Auction Preview",
+        hidden_truth_summary="server hidden truth",
+        crews=(
+            AuctionPreviewCrewPacket(
+                crew_id="crew_0001",
+                claim="The ledger contradicts the lot card.",
+                evidence_ids=("artifact_ledger_rubric",),
+                artifact_citations=(
+                    {
+                        "artifact_id": "artifact_ledger_rubric",
+                        "claim": "The ledger contradicts the lot card.",
+                        "quote": "The last hand is redder and later than the binding.",
+                    },
+                ),
+                known_edges=(
+                    {
+                        "source_id": "artifact_lot_card",
+                        "relation": "contradicts",
+                        "target_id": "artifact_ledger_rubric",
+                    },
+                ),
+            ),
+        ),
+        allowed_evidence_ids=("artifact_ledger_rubric",),
+    )
+
+    assert packet.crews[0].artifact_citations[0]["artifact_id"] == "artifact_ledger_rubric"
+    assert packet.crews[0].known_edges[0]["relation"] == "contradicts"

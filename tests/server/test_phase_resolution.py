@@ -131,15 +131,33 @@ def test_artifact_citations_flow_into_oracle_scoring_packet(tmp_path):
             "quote": "The last hand is redder and later than the binding.",
         },
     )
+    lot_cite = client.post(
+        f"/proofs/dossiers/{gilt['crew_id']}/artifact-citations",
+        headers=command_auth(ada["token"], "cite-lot-card"),
+        json={
+            "artifact_id": "artifact_lot_card",
+            "claim": "The lot card claims chapel custody.",
+            "quote": "Held under sealed preview by Venn & Bell.",
+        },
+    )
 
     response = lock_preview(client, ada, "phase-lock-1")
 
     assert cite.status_code == 201
+    assert lot_cite.status_code == 201
     assert response.status_code == 200
     assert oracle.packet is not None
     crew_packet = oracle.packet.crews[0]
     assert "artifact_ledger_rubric" in crew_packet.evidence_ids
+    assert crew_packet.artifact_citations[0]["artifact_id"] == "artifact_ledger_rubric"
+    assert {
+        "source_id": "artifact_lot_card",
+        "target_id": "artifact_ledger_rubric",
+        "relation": "contradicts",
+        "public_summary": "The public lot card and copied ledger disagree on custody.",
+    } in crew_packet.known_edges
     assert "artifact_ledger_rubric" in oracle.packet.allowed_evidence_ids
+    assert "artifact_lot_card" in oracle.packet.allowed_evidence_ids
     assert "The ledger contradicts the public lot card." in crew_packet.reasoning
     assert "The last hand is redder and later than the binding." in crew_packet.provenance_concerns
 

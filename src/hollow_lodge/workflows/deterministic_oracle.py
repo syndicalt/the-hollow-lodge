@@ -30,8 +30,9 @@ class DeterministicResolutionOracle:
         self,
         packet: AuctionPreviewOraclePacket,
     ) -> AuctionPreviewOracleResult:
-        scores = [
-            score_auction_preview(
+        scores = []
+        for crew in packet.crews:
+            score = score_auction_preview(
                 AuctionPreviewScoreInput(
                     crew_id=crew.crew_id,
                     claim=crew.claim,
@@ -44,8 +45,29 @@ class DeterministicResolutionOracle:
                     crew_noise=crew.crew_noise,
                 )
             )
-            for crew in packet.crews
-        ]
+            bonus = min(12, 4 * len(crew.artifact_citations)) + min(
+                8,
+                4 * len(crew.known_edges),
+            )
+            strengths = list(score.strengths)
+            if crew.artifact_citations:
+                strengths.append("cited artifact source material")
+            if crew.known_edges:
+                strengths.append("mapped evidence contradiction")
+            adjusted_total = min(packet.score_max, score.total + bonus)
+            adjusted_strengths = tuple(dict.fromkeys(strengths))
+            scores.append(
+                score.model_copy(
+                    update={
+                        "total": adjusted_total,
+                        "standing": _standing(
+                            total=adjusted_total,
+                            strengths=adjusted_strengths,
+                        ),
+                        "strengths": adjusted_strengths,
+                    }
+                )
+            )
         result = AuctionPreviewOracleResult(
             provider=OracleProviderMetadata(
                 provider="deterministic",
@@ -72,3 +94,13 @@ class DeterministicResolutionOracle:
             validation_warnings=(),
         )
         return validate_auction_preview_result(packet=packet, result=result)
+
+
+def _standing(*, total: int, strengths: tuple[str, ...]) -> str:
+    if total >= 70:
+        return "Strong lead"
+    if "occult clue may unlock alternate lane" in strengths:
+        return "Viable but unstable"
+    if total >= 40:
+        return "Viable"
+    return "Weak"

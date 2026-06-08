@@ -88,7 +88,10 @@ def _system_prompt() -> str:
         "schema. Preserve the hidden truth: never reveal, paraphrase, or confirm "
         "hidden_truth_summary content. Public clue output in contract_state and "
         "revealed_clues must use only exact strings from allowed_reveal_strings. "
-        "Score each crew from the packet evidence, rubric hooks, and noise fields."
+        "Score each crew from the packet evidence, rubric hooks, and noise fields. "
+        "Reward cited artifacts, direct quotes, and graph contradictions. "
+        "Penalize claims that lack artifact citations or rely only on broad action prose. "
+        "Do not reveal hidden graph nodes unless they are in allowed reveal strings."
     )
 
 

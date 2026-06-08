@@ -9,6 +9,8 @@ class AuctionPreviewScoreInput(BaseModel):
     crew_id: str = Field(min_length=1)
     claim: str = ""
     evidence_ids: tuple[str, ...] | list[str] = ()
+    artifact_citations: tuple[dict, ...] | list[dict] = ()
+    known_edges: tuple[dict, ...] | list[dict] = ()
     exposed_assets: tuple[str, ...] | list[str] = ()
     reasoning: str = ""
     weaknesses: str = ""

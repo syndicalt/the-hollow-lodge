@@ -17,9 +17,11 @@ class AuctionPreviewCrewPacket(BaseModel):
     weaknesses: str = ""
     provenance_concerns: str = ""
     evidence_ids: tuple[str, ...] = ()
+    artifact_citations: tuple[dict, ...] = ()
+    known_edges: tuple[dict, ...] = ()
     exposed_assets: tuple[str, ...] = ()
     action_intents: tuple[str, ...] = ()
-    crew_noise: int = Field(ge=0)
+    crew_noise: int = Field(default=0, ge=0)
 
 
 class AuctionPreviewOraclePacket(BaseModel):

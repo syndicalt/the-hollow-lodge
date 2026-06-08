@@ -65,3 +65,43 @@ def test_deterministic_oracle_preserves_current_scoring_shape():
         "Auction house provenance is now suspect.",
         "Rival alternate clue paths remain open.",
     )
+
+
+def test_deterministic_oracle_rewards_artifact_citations_and_known_edges():
+    packet = AuctionPreviewOraclePacket(
+        contract_id="contract_false_finger",
+        phase="Auction Preview",
+        hidden_truth_summary="The finger is a saint-bone forgery.",
+        allowed_reveal_strings=(
+            "Auction house provenance is now suspect.",
+            "Rival alternate clue paths remain open.",
+        ),
+        rubric_hooks=("provenance quality",),
+        crews=(
+            AuctionPreviewCrewPacket(
+                crew_id="crew_gilt",
+                claim="The ledger contradicts the lot card.",
+                evidence_ids=("artifact_lot_card", "artifact_ledger_rubric"),
+                artifact_citations=(
+                    {
+                        "artifact_id": "artifact_ledger_rubric",
+                        "claim": "The ledger contradicts the lot card.",
+                        "quote": "The last hand is redder and later than the binding.",
+                    },
+                ),
+                known_edges=(
+                    {
+                        "source_id": "artifact_lot_card",
+                        "relation": "contradicts",
+                        "target_id": "artifact_ledger_rubric",
+                    },
+                ),
+            ),
+        ),
+        allowed_evidence_ids=("artifact_lot_card", "artifact_ledger_rubric"),
+    )
+
+    result = DeterministicResolutionOracle().resolve_auction_preview(packet)
+
+    assert "cited artifact source material" in result.standings[0].strengths
+    assert "mapped evidence contradiction" in result.standings[0].strengths
