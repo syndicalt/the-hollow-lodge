@@ -16,7 +16,10 @@ def artifacts(
     request: Request,
     player: Player = Depends(current_player),
 ):
-    return _artifact_service(request).visible_artifacts_for_player(player.player_id)
+    return _artifact_service(request).visible_artifacts_for_player(
+        player.player_id,
+        crew_ids=_crew_ids_for_player(request, player.player_id),
+    )
 
 
 @router.get("/{artifact_id}")
@@ -29,6 +32,7 @@ def inspect_artifact(
         return _artifact_service(request).inspect_artifact(
             artifact_id=artifact_id,
             player_id=player.player_id,
+            crew_ids=_crew_ids_for_player(request, player.player_id),
         )
     except KeyError as exc:
         raise HTTPException(
@@ -49,6 +53,7 @@ def record_artifact_inspection(
             artifact_id=artifact_id,
             player_id=player.player_id,
             idempotency_key=idempotency_key,
+            crew_ids=_crew_ids_for_player(request, player.player_id),
         )
     except KeyError as exc:
         raise HTTPException(
@@ -68,3 +73,7 @@ def _artifact_service(request: Request) -> ArtifactService:
             event_store=request.app.state.event_store,
         )
     return request.app.state.artifact_service
+
+
+def _crew_ids_for_player(request: Request, player_id: str) -> list[str]:
+    return request.app.state.crew_service.crew_ids_for_player(player_id)

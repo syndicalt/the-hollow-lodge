@@ -85,7 +85,7 @@ def test_inspection_idempotency_conflict_returns_409(tmp_path):
     assert second_response.json()["detail"] == "idempotency key conflict"
 
 
-def test_crew_scoped_artifact_access_is_available_to_service_only(tmp_path):
+def test_crew_scoped_artifact_access_is_visible_through_routes(tmp_path):
     client = TestClient(create_app(data_dir=tmp_path, invite_codes=["a"]))
     ada = register(client, "a", "Ada")
     crew_response = client.post(
@@ -108,23 +108,20 @@ def test_crew_scoped_artifact_access_is_available_to_service_only(tmp_path):
         idempotency_key="grant-chapel-to-crew",
     )
 
-    service_view = client.app.state.artifact_service.visible_artifacts_for_player(
-        player_id=ada["player_id"],
-        crew_ids=[crew["crew_id"]],
-    )
-    service_artifact_ids = {
-        artifact["artifact_id"]
-        for artifact in service_view["artifacts"]
-    }
     route_response = client.get("/artifacts", headers=auth(ada["token"]))
     route_artifact_ids = {
         artifact["artifact_id"]
         for artifact in route_response.json()["artifacts"]
     }
+    inspect_response = client.get(
+        "/artifacts/artifact_chapel_debt_mark",
+        headers=auth(ada["token"]),
+    )
 
-    assert "artifact_chapel_debt_mark" in service_artifact_ids
     assert route_response.status_code == 200
-    assert "artifact_chapel_debt_mark" not in route_artifact_ids
+    assert "artifact_chapel_debt_mark" in route_artifact_ids
+    assert inspect_response.status_code == 200
+    assert inspect_response.json()["artifact_id"] == "artifact_chapel_debt_mark"
 
 
 def test_graph_seed_event_is_server_only_and_appended_once(tmp_path):
