@@ -315,9 +315,14 @@ Status:
   explicit response mode. The default `investigate` path preserves prior
   behavior, while deliberate `contain` counterintelligence records a sanitized
   containment outcome and adds a visible crew heat cost.
+- Seventh social-pressure slice completed: investigate-mode rumor responses
+  now append a crew-visible `contract.rumor.verified` event with a bounded
+  assessment, confidence, and summary, giving the investigating crew a result
+  trail without exposing private message bodies, artifact IDs, deal terms,
+  suspected crew IDs, or participant-only details.
 - Escrowed deal acceptance remains participant-scoped and server-enforced.
-- Deferred: deeper rumor verification results beyond the initial response and
-  containment outcomes.
+- Deferred: richer rumor verification sources, long-term rumor memory, and
+  escalation paths after repeated credible signals.
 
 Likely files:
 
@@ -686,6 +691,26 @@ Expected verification:
 
 - `pytest tests/server/test_identity_routes.py::test_admin_player_detail_lookup_returns_crews_without_auth_material tests/client/test_api.py::test_api_gets_admin_player_detail_with_admin_token tests/client/test_cli_commands.py::test_admin_player_command_shows_sanitized_player_detail -q`
 - `pytest tests/server/test_identity_routes.py tests/client/test_api.py tests/client/test_cli_commands.py tests/client/test_installer_script.py -q`
+- `pytest -q`
+
+### Slice 24: Rumor Verification Results
+
+Status: completed.
+
+Give investigate-mode rumor responses a bounded result trail. When a confirmed
+rumor-linked action uses the default `investigate` mode, the server now appends
+a crew-visible `contract.rumor.verified` event with a deterministic assessment,
+confidence, and player-safe summary. Containment remains containment-only. The
+activity packet renders the verification while omitting private chat bodies,
+artifact IDs, artifact titles, deal terms, suspected crew IDs, participant-only
+state, and hidden server context.
+
+Expected verification:
+
+- `pytest tests/server/test_action_routes.py::test_investigating_rumor_appends_sanitized_verification_result tests/server/test_action_routes.py::test_rumor_action_can_start_containment_with_visible_heat_cost tests/server/test_action_routes.py::test_rumor_action_replay_checks_rumor_reference_and_cancel_reopens_decision -q`
+- `pytest tests/client/test_render_packets.py::test_activity_summary_packet_shapes_visible_events_without_server_only_fields -q`
+- `pytest tests/server/test_action_routes.py tests/server/test_crew_routes.py tests/server/test_crew_legacy_projection.py -q`
+- `pytest tests/client/test_render_packets.py tests/client/test_codex_session.py tests/test_mcp_server.py tests/client/test_action_cli.py tests/client/test_api.py -q`
 - `pytest -q`
 
 ## Completion Standard

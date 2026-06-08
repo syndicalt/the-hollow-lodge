@@ -855,6 +855,31 @@ def test_activity_summary_packet_shapes_visible_events_without_server_only_field
                 "origin": "server",
                 "event_id": "evt_5",
                 "sequence": 5,
+                "type": "contract.rumor.verified",
+                "payload": {
+                    "schema_version": 1,
+                    "rumor_id": "rumor_msg_000001",
+                    "action_id": "action_000001",
+                    "crew_id": "crew_0003",
+                    "source_type": "chat.message.created",
+                    "source_id": "msg_000001",
+                    "contract_id": "contract_saints_false_finger",
+                    "pressure": "artifact_reference_detected",
+                    "assessment": "credible_artifact_signal",
+                    "confidence": "medium",
+                    "summary": (
+                        "The investigation found a credible artifact signal, but "
+                        "not enough to expose the private source."
+                    ),
+                    "body": "The ledger proves our leverage. Keep quiet.",
+                    "artifact_ids": ["artifact_ledger_rubric"],
+                    "suspected_crew_ids": ["crew_0001", "crew_0002"],
+                },
+            },
+            {
+                "origin": "server",
+                "event_id": "evt_6",
+                "sequence": 6,
                 "type": "crew.legacy.delta.recorded",
                 "payload": {
                     "schema_version": 1,
@@ -894,7 +919,11 @@ def test_activity_summary_packet_shapes_visible_events_without_server_only_field
         "to contain a leaked rumor."
     ) in packet.player_markdown
     assert (
-        "5 legacy crew_0001: Strong lead on The Saint's False Finger: "
+        "5 rumor verification action_000001: The investigation found a credible "
+        "artifact signal, but not enough to expose the private source."
+    ) in packet.player_markdown
+    assert (
+        "6 legacy crew_0001: Strong lead on The Saint's False Finger: "
         "reputation +2, heat +1, favors +1."
     ) in packet.player_markdown
     assert "server-only" not in packet.player_markdown
@@ -903,12 +932,13 @@ def test_activity_summary_packet_shapes_visible_events_without_server_only_field
     assert "Do not cite us." not in packet.player_markdown
     assert "The ledger proves our leverage" not in packet.player_markdown
     assert packet.agent_context == {
-        "visible_event_count": 5,
+        "visible_event_count": 6,
         "event_type_counts": {
             "chat.message.created": 1,
             "proof.fragment.transferred": 1,
             "contract.rumor.leaked": 1,
             "contract.rumor.responded": 1,
+            "contract.rumor.verified": 1,
             "crew.legacy.delta.recorded": 1,
         },
         "recent_events": [
@@ -964,6 +994,26 @@ def test_activity_summary_packet_shapes_visible_events_without_server_only_field
             },
             {
                 "sequence": 5,
+                "type": "contract.rumor.verified",
+                "rumor_verification": {
+                    "schema_version": 1,
+                    "rumor_id": "rumor_msg_000001",
+                    "action_id": "action_000001",
+                    "crew_id": "crew_0003",
+                    "source_type": "chat.message.created",
+                    "source_id": "msg_000001",
+                    "contract_id": "contract_saints_false_finger",
+                    "pressure": "artifact_reference_detected",
+                    "assessment": "credible_artifact_signal",
+                    "confidence": "medium",
+                    "summary": (
+                        "The investigation found a credible artifact signal, but "
+                        "not enough to expose the private source."
+                    ),
+                },
+            },
+            {
+                "sequence": 6,
                 "type": "crew.legacy.delta.recorded",
                 "legacy_delta": {
                     "schema_version": 1,

@@ -400,6 +400,78 @@ def test_rumor_action_appends_sanitized_crew_visible_response_outcome(tmp_path):
     assert all(event["type"] != "contract.rumor.responded" for event in ada_events)
 
 
+def test_investigating_rumor_appends_sanitized_verification_result(tmp_path):
+    client = TestClient(create_app(data_dir=tmp_path, invite_codes=["a", "b", "c"]))
+    ada = register(client, "a", "Ada")
+    grace = register(client, "b", "Grace")
+    linus = register(client, "c", "Linus")
+    gilt = create_crew(client, ada["token"])
+    moth = client.post(
+        "/crews",
+        headers=command_auth(grace["token"], "crew-create-moth"),
+        json={"name": "The Moth Choir"},
+    ).json()
+    ash = client.post(
+        "/crews",
+        headers=command_auth(linus["token"], "crew-create-ash"),
+        json={"name": "The Ash Keys"},
+    ).json()
+    client.post(
+        "/chat/crew-to-crew",
+        headers=command_auth(ada["token"], "chat-gilt-moth-ledger"),
+        json={
+            "sender_crew_id": gilt["crew_id"],
+            "recipient_crew_id": moth["crew_id"],
+            "body": "The ledger proves our leverage. Keep quiet.",
+            "artifact_ids": ["artifact_ledger_rubric"],
+        },
+    )
+
+    submitted = client.post(
+        "/actions",
+        headers=command_auth(linus["token"], "action-investigate-rumor"),
+        json={
+            "crew_id": ash["crew_id"],
+            "intent": "Quietly verify the artifact rumor through the auction clerk.",
+            "confirmed": True,
+            "rumor_id": "rumor_msg_000001",
+        },
+    )
+    linus_events = client.get("/events", headers=auth(linus["token"])).json()["events"]
+    ada_events = client.get("/events", headers=auth(ada["token"])).json()["events"]
+
+    assert submitted.status_code == 201
+    verifications = [
+        event
+        for event in linus_events
+        if event["type"] == "contract.rumor.verified"
+    ]
+    assert len(verifications) == 1
+    verification = verifications[0]
+    assert verification["actor_id"] == linus["player_id"]
+    assert verification["payload"] == {
+        "schema_version": 1,
+        "rumor_id": "rumor_msg_000001",
+        "action_id": submitted.json()["action_id"],
+        "crew_id": ash["crew_id"],
+        "source_type": "chat.message.created",
+        "source_id": "msg_000001",
+        "pressure": "artifact_reference_detected",
+        "assessment": "credible_artifact_signal",
+        "confidence": "medium",
+        "summary": (
+            "The investigation found a credible artifact signal, but not enough "
+            "to expose the private source."
+        ),
+    }
+    verification_text = str(verifications)
+    assert "The ledger proves our leverage" not in verification_text
+    assert "artifact_ledger_rubric" not in verification_text
+    assert gilt["crew_id"] not in verification_text
+    assert moth["crew_id"] not in verification_text
+    assert all(event["type"] != "contract.rumor.verified" for event in ada_events)
+
+
 def test_rumor_action_can_start_containment_with_visible_heat_cost(tmp_path):
     client = TestClient(create_app(data_dir=tmp_path, invite_codes=["a", "b", "c"]))
     ada = register(client, "a", "Ada")
@@ -473,6 +545,10 @@ def test_rumor_action_can_start_containment_with_visible_heat_cost(tmp_path):
     assert "artifact_ledger_rubric" not in str(outcomes)
     assert gilt["crew_id"] not in str(outcomes)
     assert moth["crew_id"] not in str(outcomes)
+    assert all(
+        event["type"] != "contract.rumor.verified"
+        for event in client.get("/events", headers=auth(linus["token"])).json()["events"]
+    )
 
 
 def test_rumor_response_mode_requires_visible_rumor_reference(tmp_path):
@@ -624,15 +700,22 @@ def test_rumor_action_replay_checks_rumor_reference_and_cancel_reopens_decision(
         and decision.get("rumor_id") == "rumor_msg_000001"
         for decision in after_cancel.json()["pending_decisions"]
     )
+    events = client.get("/events", headers=auth(linus["token"])).json()["events"]
     response_events = [
         event
-        for event in client.get("/events", headers=auth(linus["token"])).json()["events"]
+        for event in events
         if event["type"] == "contract.rumor.responded"
     ]
+    verification_events = [
+        event
+        for event in events
+        if event["type"] == "contract.rumor.verified"
+    ]
     assert len(response_events) == 1
+    assert len(verification_events) == 1
 
 
-def test_deal_rumor_action_response_preserves_contract_id_without_terms(tmp_path):
+def test_deal_rumor_investigation_preserves_contract_id_without_terms(tmp_path):
     app = create_app(data_dir=tmp_path, invite_codes=["a", "b", "c"])
     client = TestClient(app)
     ada = register(client, "a", "Ada")
@@ -690,6 +773,11 @@ def test_deal_rumor_action_response_preserves_contract_id_without_terms(tmp_path
         for event in events
         if event["type"] == "contract.rumor.responded"
     ]
+    verifications = [
+        event["payload"]
+        for event in events
+        if event["type"] == "contract.rumor.verified"
+    ]
     assert outcomes == [
         {
             "rumor_id": "rumor_deal_000001",
@@ -705,9 +793,30 @@ def test_deal_rumor_action_response_preserves_contract_id_without_terms(tmp_path
             "summary": "The crew committed an action to investigate or answer a leaked rumor.",
         }
     ]
+    assert verifications == [
+        {
+            "schema_version": 1,
+            "rumor_id": "rumor_deal_000001",
+            "action_id": submitted.json()["action_id"],
+            "crew_id": ash["crew_id"],
+            "source_type": "deal.proposed",
+            "source_id": proposed.json()["deal_id"],
+            "contract_id": "contract_false_finger",
+            "pressure": "escrow_terms_detected",
+            "assessment": "credible_arrangement_signal",
+            "confidence": "medium",
+            "summary": (
+                "The investigation found a credible arrangement signal, but "
+                "not enough to expose the private source."
+            ),
+        }
+    ]
     assert "artifact_ledger_rubric" not in str(outcomes)
     assert "artifact_chapel_debt_mark" not in str(outcomes)
     assert "Do not cite us." not in str(outcomes)
+    assert "artifact_ledger_rubric" not in str(verifications)
+    assert "artifact_chapel_debt_mark" not in str(verifications)
+    assert "Do not cite us." not in str(verifications)
 
 
 def test_action_ids_do_not_collide_across_crews_for_multi_crew_member(tmp_path):

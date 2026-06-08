@@ -2294,6 +2294,16 @@ class ActionService:
                     != rumor_response_mode
                 ):
                     raise ValueError("idempotency key conflict")
+                if rumor_id is not None:
+                    rumor = self._require_visible_rumor(crew_id=crew_id, rumor_id=rumor_id)
+                    self._append_rumor_response_outcome(
+                        player_id=player_id,
+                        crew_id=crew_id,
+                        action=existing.payload["action"],
+                        rumor=rumor,
+                        rumor_response_mode=rumor_response_mode,
+                        idempotency_key=idempotency_key,
+                    )
                 self._award_action_artifacts(
                     action=existing.payload["action"],
                     player_id=player_id,
@@ -2393,6 +2403,72 @@ class ActionService:
             visibility=EventVisibility.crews([crew_id]),
             payload=payload,
             idempotency_key=f"{idempotency_key}:rumor-response",
+        )
+        if rumor_response_mode == "investigate":
+            self._append_rumor_verification_result(
+                player_id=player_id,
+                crew_id=crew_id,
+                action=action,
+                rumor=rumor,
+                idempotency_key=idempotency_key,
+            )
+
+    def _append_rumor_verification_result(
+        self,
+        *,
+        player_id: str,
+        crew_id: str,
+        action: dict,
+        rumor: dict,
+        idempotency_key: str,
+    ) -> None:
+        assessment, summary = self._rumor_verification_assessment(rumor)
+        payload = {
+            "schema_version": 1,
+            "rumor_id": rumor["rumor_id"],
+            "action_id": action["action_id"],
+            "crew_id": crew_id,
+            "source_type": rumor["source_type"],
+            "source_id": rumor["source_id"],
+            "pressure": rumor["pressure"],
+            "assessment": assessment,
+            "confidence": "medium",
+            "summary": summary,
+        }
+        if "contract_id" in rumor:
+            payload["contract_id"] = rumor["contract_id"]
+        self._event_store.append_command(
+            event_type="contract.rumor.verified",
+            actor_id=player_id,
+            visibility=EventVisibility.crews([crew_id]),
+            payload=payload,
+            idempotency_key=f"{idempotency_key}:rumor-verification",
+        )
+
+    def _rumor_verification_assessment(self, rumor: dict) -> tuple[str, str]:
+        pressure = rumor.get("pressure")
+        if pressure == "artifact_reference_detected":
+            return (
+                "credible_artifact_signal",
+                (
+                    "The investigation found a credible artifact signal, but "
+                    "not enough to expose the private source."
+                ),
+            )
+        if pressure == "escrow_terms_detected":
+            return (
+                "credible_arrangement_signal",
+                (
+                    "The investigation found a credible arrangement signal, but "
+                    "not enough to expose the private source."
+                ),
+            )
+        return (
+            "inconclusive_signal",
+            (
+                "The investigation found a rumor signal, but not enough to "
+                "expose the private source."
+            ),
         )
 
     def edit_action(
