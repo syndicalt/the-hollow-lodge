@@ -6,6 +6,7 @@ from fastapi import APIRouter, Depends, Header, HTTPException, Request, status
 from hollow_lodge.domain.identity import Player
 from hollow_lodge.server.artifact_service import ArtifactService
 from hollow_lodge.server.auth import current_player
+from hollow_lodge.server.runtime_services import ensure_deal_service
 from hollow_lodge.server.services import ContractService, ProofService
 
 
@@ -192,10 +193,7 @@ def _visible_artifacts_for_player(request: Request, player_id: str) -> list[dict
 
 
 def _deals_for_player(request: Request, player_id: str) -> list[dict]:
-    deal_service = getattr(request.app.state, "deal_service", None)
-    if deal_service is None:
-        return []
-    return deal_service.list_for_player(player_id)
+    return ensure_deal_service(request).list_for_player(player_id)
 
 
 def _deals_for_crew(request: Request, player_id: str, crew_id: str) -> list[dict]:

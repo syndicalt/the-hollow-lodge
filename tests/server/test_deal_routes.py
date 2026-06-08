@@ -76,6 +76,37 @@ def test_deal_routes_propose_list_accept(tmp_path):
     assert accept.json()["status"] == "fulfilled"
 
 
+def test_persisted_deals_render_after_restart_before_deals_route(tmp_path):
+    app = create_app(data_dir=tmp_path, invite_codes=["a", "b"])
+    client = TestClient(app)
+    ada = register(client, "a", "Ada")
+    bela = register(client, "b", "Bela")
+    gilt = create_crew(client, ada["token"], "Gilt Knives", "crew-gilt")
+    moth = create_crew(client, bela["token"], "Moth Lanterns", "crew-moth")
+    app.state.artifact_service.grant_artifact_access(
+        artifact_id="artifact_chapel_debt_mark",
+        actor_id="server",
+        player_ids=[],
+        crew_ids=[moth["crew_id"]],
+        reason="test setup",
+        idempotency_key="grant-chapel",
+    )
+    proposed = client.post(
+        "/deals",
+        headers=command_auth(ada["token"], "deal-propose"),
+        json=proposed_deal_payload(gilt, moth),
+    ).json()
+
+    restarted = TestClient(create_app(data_dir=tmp_path, invite_codes=[]))
+    inbox = restarted.get("/inbox", headers=auth(bela["token"]))
+    crew_board = restarted.get(f"/crews/{moth['crew_id']}/board", headers=auth(bela["token"]))
+
+    assert inbox.status_code == 200
+    assert [deal["deal_id"] for deal in inbox.json()["deals"]] == [proposed["deal_id"]]
+    assert crew_board.status_code == 200
+    assert [deal["deal_id"] for deal in crew_board.json()["deals"]] == [proposed["deal_id"]]
+
+
 def test_non_member_cannot_accept_deal(tmp_path):
     app = create_app(data_dir=tmp_path, invite_codes=["a", "b", "c"])
     client = TestClient(app)
