@@ -269,7 +269,9 @@ def test_inbox_agent_context_omits_hidden_upstream_fields_and_serializes_actions
             "Active contracts:\n"
             "- The Saint's False Finger (Auction Preview)\n\n"
             "incoming proof fragments:\n"
-            "- fragment_0001: A chipped reliquary seal."
+            "- fragment_0001: A chipped reliquary seal.\n\n"
+            "Incoming deals:\n"
+            "- none"
         ),
         "agent_context": {
             "player_id": "player_0001",
@@ -289,6 +291,7 @@ def test_inbox_agent_context_omits_hidden_upstream_fields_and_serializes_actions
                 }
             ],
             "visible_artifacts": [],
+            "deals": [],
             "urgent_items": [{"kind": "proof_fragment", "fragment_id": "fragment_0001"}],
         },
         "suggested_prompts": [

@@ -34,6 +34,7 @@ def inbox(
     payload = _contract_service(request).inbox_for_player(player.player_id)
     payload["display_name"] = player.display_name
     payload["visible_artifacts"] = _visible_artifacts_for_player(request, player.player_id)
+    payload["deals"] = _deals_for_player(request, player.player_id)
     return payload
 
 
@@ -81,3 +82,10 @@ def _visible_artifacts_for_player(request: Request, player_id: str) -> list[dict
         player_id,
         crew_ids=request.app.state.crew_service.crew_ids_for_player(player_id),
     )["artifacts"]
+
+
+def _deals_for_player(request: Request, player_id: str) -> list[dict]:
+    deal_service = getattr(request.app.state, "deal_service", None)
+    if deal_service is None:
+        return []
+    return deal_service.list_for_player(player_id)

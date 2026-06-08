@@ -84,6 +84,26 @@ def _shape_artifact(artifact: dict[str, Any]) -> dict[str, Any]:
     }
 
 
+def _shape_deal(deal: dict[str, Any]) -> dict[str, Any]:
+    return {
+        key: deal[key]
+        for key in (
+            "deal_id",
+            "contract_id",
+            "proposer_crew_id",
+            "recipient_crew_id",
+            "status",
+            "offered_artifact_ids",
+            "requested_artifact_ids",
+            "soft_terms",
+            "expires_phase",
+            "proposer_received_artifact_ids",
+            "recipient_received_artifact_ids",
+        )
+        if key in deal
+    }
+
+
 def _shape_crew(crew: dict[str, Any]) -> dict[str, Any]:
     return {
         key: crew[key]
@@ -222,6 +242,12 @@ def build_crew_board_packet(board: dict[str, Any]) -> RenderPacket:
         )
     else:
         lines.append("- none")
+    lines.extend(["", "Deals:"])
+    deals = board.get("deals", [])
+    if deals:
+        lines.extend(f"- {deal['deal_id']} {deal['status']}" for deal in deals)
+    else:
+        lines.append("- none")
     lines.extend(
         [
             "",
@@ -264,6 +290,7 @@ def build_crew_board_packet(board: dict[str, Any]) -> RenderPacket:
                 _shape_artifact(artifact)
                 for artifact in board.get("visible_artifacts", [])
             ],
+            "deals": [_shape_deal(deal) for deal in board.get("deals", [])],
             "urgent_items": [],
         },
         suggested_prompts=[
@@ -303,6 +330,13 @@ def build_inbox_packet(inbox: dict[str, Any]) -> RenderPacket:
         lines.extend(f"- {fragment['fragment_id']}: {fragment['summary']}" for fragment in fragments)
     else:
         lines.append("incoming proof fragments: none")
+    deals = inbox.get("deals", [])
+    lines.append("")
+    lines.append("Incoming deals:")
+    if deals:
+        lines.extend(f"- {deal['deal_id']} {deal['status']}" for deal in deals)
+    else:
+        lines.append("- none")
     artifacts = inbox.get("visible_artifacts", [])
     if artifacts:
         lines.append("")
@@ -329,6 +363,7 @@ def build_inbox_packet(inbox: dict[str, Any]) -> RenderPacket:
             _shape_artifact(artifact)
             for artifact in inbox.get("visible_artifacts", [])
         ],
+        "deals": [_shape_deal(deal) for deal in inbox.get("deals", [])],
         "urgent_items": urgent_items,
     }
     if inbox.get("display_name"):

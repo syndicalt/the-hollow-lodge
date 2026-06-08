@@ -98,6 +98,7 @@ def crew_board(
         ],
         "dossier": _crew_board_dossier(dossier),
         "visible_artifacts": _visible_artifacts_for_player(request, player.player_id),
+        "deals": _deals_for_player(request, player.player_id),
     }
 
 
@@ -188,6 +189,13 @@ def _visible_artifacts_for_player(request: Request, player_id: str) -> list[dict
         player_id,
         crew_ids=request.app.state.crew_service.crew_ids_for_player(player_id),
     )["artifacts"]
+
+
+def _deals_for_player(request: Request, player_id: str) -> list[dict]:
+    deal_service = getattr(request.app.state, "deal_service", None)
+    if deal_service is None:
+        return []
+    return deal_service.list_for_player(player_id)
 
 
 def _proof_service(request: Request) -> ProofService:
