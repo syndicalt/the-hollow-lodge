@@ -677,7 +677,11 @@ class ContractService:
         resolution_oracle: ResolutionOracle | None = None,
     ):
         self._event_store = event_store
-        self._resolution_oracle = resolution_oracle or DeterministicResolutionOracle()
+        self._resolution_oracle = (
+            resolution_oracle
+            if resolution_oracle is not None
+            else DeterministicResolutionOracle()
+        )
         self._lock = threading.RLock()
         self._seed_starter_contract()
 

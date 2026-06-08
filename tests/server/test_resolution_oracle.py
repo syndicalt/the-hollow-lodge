@@ -3,7 +3,9 @@ from __future__ import annotations
 from fastapi.testclient import TestClient
 
 from hollow_lodge.domain.events import EventVisibility
+from hollow_lodge.eventlog.jsonl_store import JsonlEventStore
 from hollow_lodge.server.app import create_app
+from hollow_lodge.server.services import ContractService
 from hollow_lodge.workflows.oracle_boundary import (
     AuctionPreviewCrewResult,
     AuctionPreviewOracleResult,
@@ -38,6 +40,14 @@ class UnknownCrewOracle:
             narration="Invalid provider output.",
             validation_warnings=(),
         )
+
+
+class FalseyOracle:
+    def __bool__(self) -> bool:
+        return False
+
+    def resolve_auction_preview(self, packet):
+        raise AssertionError("falsey oracle identity test should not resolve phases")
 
 
 def auth(token: str) -> dict[str, str]:
@@ -80,6 +90,24 @@ def submit_action(client: TestClient, player: dict, crew: dict) -> dict:
     )
     assert response.status_code == 201
     return response.json()
+
+
+def test_create_app_preserves_falsey_injected_oracle(tmp_path):
+    oracle = FalseyOracle()
+
+    app = create_app(data_dir=tmp_path, invite_codes=["a"], resolution_oracle=oracle)
+
+    assert app.state.resolution_oracle is oracle
+    assert app.state.contract_service._resolution_oracle is oracle
+
+
+def test_contract_service_preserves_falsey_injected_oracle(tmp_path):
+    oracle = FalseyOracle()
+    event_store = JsonlEventStore(tmp_path / "server-events.jsonl")
+
+    service = ContractService(event_store=event_store, resolution_oracle=oracle)
+
+    assert service._resolution_oracle is oracle
 
 
 def test_invalid_oracle_result_falls_back_and_is_audited(tmp_path):

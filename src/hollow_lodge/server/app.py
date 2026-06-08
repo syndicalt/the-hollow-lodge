@@ -39,7 +39,7 @@ def create_app(
     )
     root = Path(data_dir) if data_dir is not None else Path(os.environ.get("HOLLOW_LODGE_DATA_DIR", ".hollow-lodge"))
     event_store = JsonlEventStore(root / "server-events.jsonl")
-    resolved_oracle = resolution_oracle or resolution_oracle_from_env()
+    resolved_oracle = resolution_oracle if resolution_oracle is not None else resolution_oracle_from_env()
     app.state.event_store = event_store
     app.state.resolution_oracle = resolved_oracle
     identity_service = IdentityService(
