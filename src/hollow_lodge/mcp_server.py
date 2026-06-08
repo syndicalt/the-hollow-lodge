@@ -57,5 +57,15 @@ def render_crew_board(
     )
 
 
+@mcp.tool()
+def render_artifacts() -> CallToolResult:
+    return packet_response(_session().render_artifacts())
+
+
+@mcp.tool()
+def render_artifact(artifact_id: str) -> CallToolResult:
+    return packet_response(_session().render_artifact(artifact_id))
+
+
 def main() -> None:
     mcp.run()

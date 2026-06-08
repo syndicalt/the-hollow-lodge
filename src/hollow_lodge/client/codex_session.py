@@ -3,6 +3,10 @@ from __future__ import annotations
 from pathlib import Path
 
 from hollow_lodge.client.api import HollowLodgeApi
+from hollow_lodge.client.artifact_render import (
+    build_artifact_graph_packet,
+    build_artifact_packet,
+)
 from hollow_lodge.client.config import ClientConfig, load_config, save_config
 from hollow_lodge.client.local_log import LocalEventLog
 from hollow_lodge.client.paths import DEFAULT_CONFIG_PATH, DEFAULT_LOCAL_LOG_PATH
@@ -52,6 +56,14 @@ class CodexGameSession:
         if target_crew_id is None:
             raise ValueError("crew id required when no active crew is configured")
         return build_crew_board_packet(self.api.crew_board(crew_id=target_crew_id))
+
+    def render_artifacts(self) -> RenderPacket:
+        self.sync()
+        return build_artifact_graph_packet(self.api.artifacts())
+
+    def render_artifact(self, artifact_id: str) -> RenderPacket:
+        self.sync()
+        return build_artifact_packet(self.api.artifact(artifact_id=artifact_id))
 
     def _refresh_display_name(self) -> None:
         if self.config.display_name or not hasattr(self.api, "me"):

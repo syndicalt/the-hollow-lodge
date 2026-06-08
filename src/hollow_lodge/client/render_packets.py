@@ -16,6 +16,8 @@ class RenderPacket(BaseModel):
         "inbox",
         "contract_board",
         "crew_board",
+        "artifact",
+        "artifact_graph",
     ]
     player_markdown: str = Field(min_length=1)
     agent_context: dict[str, Any]

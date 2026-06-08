@@ -57,6 +57,32 @@ class FakeApi:
             },
         }
 
+    def artifacts(self):
+        self.calls.append("artifacts")
+        return {
+            "contract_id": "contract_false_finger",
+            "artifacts": [
+                {
+                    "artifact_id": "artifact_ledger_rubric",
+                    "title": "Red Ledger Rubric",
+                    "kind": "ledger",
+                    "public_summary": "A copied rubric marks prior ownership.",
+                }
+            ],
+            "edges": [],
+        }
+
+    def artifact(self, *, artifact_id: str):
+        self.calls.append(f"artifact:{artifact_id}")
+        return {
+            "artifact_id": artifact_id,
+            "title": "Red Ledger Rubric",
+            "kind": "ledger",
+            "public_summary": "A copied rubric marks prior ownership.",
+            "full_text": "Lot 19 passed under chapel seal.",
+            "source_chain": ["archive:lot-card"],
+        }
+
 
 def test_codex_session_does_not_import_cli_module():
     result = subprocess.run(
@@ -175,3 +201,36 @@ def test_codex_session_crew_board_requires_crew_id_without_active_crew(tmp_path)
         assert str(exc) == "crew id required when no active crew is configured"
     else:
         raise AssertionError("expected ValueError")
+
+
+def test_codex_session_renders_artifacts(tmp_path):
+    config_path = tmp_path / "config.json"
+    log_path = tmp_path / "local.jsonl"
+    fake_api = FakeApi()
+    save_config(
+        config_path,
+        ClientConfig(server_url="http://testserver", player_id="player_0001", token="token"),
+    )
+    session = CodexGameSession(config_path=config_path, local_log_path=log_path, api=fake_api)
+
+    packet = session.render_artifacts()
+
+    assert fake_api.synced is True
+    assert fake_api.calls == ["visible_events", "artifacts"]
+    assert packet.surface == "artifact_graph"
+
+
+def test_codex_session_renders_artifact(tmp_path):
+    config_path = tmp_path / "config.json"
+    log_path = tmp_path / "local.jsonl"
+    fake_api = FakeApi()
+    save_config(
+        config_path,
+        ClientConfig(server_url="http://testserver", player_id="player_0001", token="token"),
+    )
+    session = CodexGameSession(config_path=config_path, local_log_path=log_path, api=fake_api)
+
+    packet = session.render_artifact("artifact_ledger_rubric")
+
+    assert packet.surface == "artifact"
+    assert fake_api.calls == ["visible_events", "artifact:artifact_ledger_rubric"]

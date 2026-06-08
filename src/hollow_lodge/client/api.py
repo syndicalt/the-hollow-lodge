@@ -145,6 +145,19 @@ class HollowLodgeApi:
     def crew_board(self, *, crew_id: str) -> dict[str, Any]:
         return self._get(f"/crews/{crew_id}/board")
 
+    def artifacts(self) -> dict[str, Any]:
+        return self._get("/artifacts")
+
+    def artifact(self, *, artifact_id: str) -> dict[str, Any]:
+        return self._get(f"/artifacts/{artifact_id}")
+
+    def inspect_artifact(self, *, artifact_id: str, idempotency_key: str) -> dict[str, Any]:
+        return self._post(
+            f"/artifacts/{artifact_id}/inspect",
+            json={},
+            idempotency_key=idempotency_key,
+        )
+
     def check_provenance(self, *, fragment_id: str, idempotency_key: str) -> dict[str, Any]:
         return self._post(
             f"/proofs/fragments/{fragment_id}/check/provenance",

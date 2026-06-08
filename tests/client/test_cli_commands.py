@@ -187,6 +187,45 @@ class FakeApi:
             },
         }
 
+    def artifacts(self):
+        self.calls.append(("artifacts", {}))
+        return {
+            "contract_id": "contract_false_finger",
+            "artifacts": [
+                {
+                    "artifact_id": "artifact_lot_card",
+                    "title": "Auction Lot Card",
+                    "kind": "lot_card",
+                    "public_summary": "Public lot card.",
+                },
+                {
+                    "artifact_id": "artifact_ledger_rubric",
+                    "title": "Red Ledger Rubric",
+                    "kind": "ledger",
+                    "public_summary": "Copied rubric.",
+                },
+            ],
+            "edges": [
+                {
+                    "source_id": "artifact_lot_card",
+                    "target_id": "artifact_ledger_rubric",
+                    "relation": "contradicts",
+                    "public_summary": "The dates do not agree.",
+                }
+            ],
+        }
+
+    def artifact(self, *, artifact_id: str):
+        self.calls.append(("artifact", {"artifact_id": artifact_id}))
+        return {
+            "artifact_id": artifact_id,
+            "title": "Red Ledger Rubric",
+            "kind": "ledger",
+            "public_summary": "A copied rubric marks prior ownership.",
+            "full_text": "Lot 19 passed under chapel seal.",
+            "source_chain": ["archive:lot-card"],
+        }
+
     def check_provenance(self, *, fragment_id: str, idempotency_key: str):
         self.calls.append(
             (
@@ -730,6 +769,57 @@ def test_crew_board_command_uses_active_crew_and_can_emit_json(tmp_path, monkeyp
     assert result.exit_code == 0
     assert '"surface":"crew_board"' in result.output
     assert '"crew_id":"crew_0001"' in result.output
+
+
+def test_artifacts_command_prints_known_artifact_title(tmp_path, monkeypatch):
+    runner = CliRunner()
+    monkeypatch.setattr(cli, "HollowLodgeApi", FakeApi)
+    config_path = tmp_path / "config.json"
+    save_config(
+        config_path,
+        ClientConfig(server_url="http://testserver", player_id="player_0001", token="token"),
+    )
+
+    result = runner.invoke(cli.app, ["artifacts", "--config", str(config_path)])
+
+    assert result.exit_code == 0
+    assert "Auction Lot Card" in result.output
+    assert "contradicts" in result.output
+
+
+def test_artifact_command_prints_source_material(tmp_path, monkeypatch):
+    runner = CliRunner()
+    monkeypatch.setattr(cli, "HollowLodgeApi", FakeApi)
+    config_path = tmp_path / "config.json"
+    save_config(
+        config_path,
+        ClientConfig(server_url="http://testserver", player_id="player_0001", token="token"),
+    )
+
+    result = runner.invoke(
+        cli.app,
+        ["artifact", "artifact_ledger_rubric", "--config", str(config_path)],
+    )
+
+    assert result.exit_code == 0
+    assert "Lot 19 passed under chapel seal." in result.output
+    assert "archive:lot-card" in result.output
+
+
+def test_artifacts_can_emit_render_packet_json(tmp_path, monkeypatch):
+    runner = CliRunner()
+    monkeypatch.setattr(cli, "HollowLodgeApi", FakeApi)
+    config_path = tmp_path / "config.json"
+    save_config(
+        config_path,
+        ClientConfig(server_url="http://testserver", player_id="player_0001", token="token"),
+    )
+
+    result = runner.invoke(cli.app, ["artifacts", "--json", "--config", str(config_path)])
+
+    assert result.exit_code == 0
+    assert '"surface":"artifact_graph"' in result.output
+    assert "Auction Lot Card" in result.output
 
 
 def test_sync_command_fetches_delta_into_local_log(tmp_path, monkeypatch):

@@ -4,6 +4,10 @@ import typer
 
 from hollow_lodge import __version__
 from hollow_lodge.client.api import HollowLodgeApi, new_command_key
+from hollow_lodge.client.artifact_render import (
+    build_artifact_graph_packet,
+    build_artifact_packet,
+)
 from hollow_lodge.client.codex_mcp_config import install_codex_mcp_server
 from hollow_lodge.client.config import (
     ClientConfig,
@@ -331,6 +335,29 @@ def crew_board(
         _echo_packet(build_crew_board_packet(board), as_json=True)
     else:
         typer.echo(render_crew_board(board))
+
+
+@app.command()
+def artifacts(
+    config: Path = typer.Option(DEFAULT_CONFIG_PATH, "--config", help="Local config path."),
+    as_json: bool = typer.Option(False, "--json", help="Emit Codex render packet JSON."),
+) -> None:
+    """Show visible artifacts and known connections."""
+    packet = build_artifact_graph_packet(_api_from_config(load_config(config)).artifacts())
+    _echo_packet(packet, as_json=as_json)
+
+
+@app.command()
+def artifact(
+    artifact_id: str = typer.Argument(..., help="Artifact id."),
+    config: Path = typer.Option(DEFAULT_CONFIG_PATH, "--config", help="Local config path."),
+    as_json: bool = typer.Option(False, "--json", help="Emit Codex render packet JSON."),
+) -> None:
+    """Inspect a visible artifact."""
+    packet = build_artifact_packet(
+        _api_from_config(load_config(config)).artifact(artifact_id=artifact_id)
+    )
+    _echo_packet(packet, as_json=as_json)
 
 
 @app.command()
