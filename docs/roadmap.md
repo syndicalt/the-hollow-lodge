@@ -293,6 +293,8 @@ Expected verification:
 
 ### Slice 3: Pending Decisions
 
+Status: completed in `cb35474` and refined in `809f3d7`.
+
 Add a shared pending-decision projection used by inbox and crew board packets.
 Deals, packet-lead votes, incomplete dossier needs, and unresolved action
 opportunities should appear as concrete decision prompts.
