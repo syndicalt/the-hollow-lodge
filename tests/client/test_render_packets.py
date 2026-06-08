@@ -398,6 +398,16 @@ def test_crew_board_packet_renders_legacy_and_future_modifiers_without_hidden_fi
                 "favors": 1,
                 "debts": 0,
                 "scars": [],
+                "deal_conduct": {
+                    "score": 2,
+                    "fulfilled_count": 1,
+                    "canceled_count": 0,
+                    "declined_count": 0,
+                    "open_count": 0,
+                    "reliability": "reliable_escrow_partner",
+                    "offered_artifact_ids": ["artifact_private_ledger"],
+                    "soft_terms": ["Do not cite us."],
+                },
                 "completed_contracts": [
                     {
                         "contract_id": "contract_false_finger",
@@ -427,6 +437,16 @@ def test_crew_board_packet_renders_legacy_and_future_modifiers_without_hidden_fi
                                 "description": "Prior heat makes The Ash Window riskier for this crew.",
                                 "value": 1,
                             },
+                            {
+                                "kind": "deal_reliability",
+                                "label": "Deal reliability",
+                                "description": (
+                                    "Recent escrowed trades make this crew easier to trust "
+                                    "on side arrangements for The Ash Window."
+                                ),
+                                "value": 2,
+                                "offered_artifact_ids": ["artifact_private_ledger"],
+                            },
                         ],
                     }
                 ],
@@ -445,7 +465,16 @@ def test_crew_board_packet_renders_legacy_and_future_modifiers_without_hidden_fi
                             "label": "Reputation leverage",
                             "description": "Prior strong work gives this crew an opening on The Ash Window.",
                             "value": 2,
-                        }
+                        },
+                        {
+                            "kind": "deal_reliability",
+                            "label": "Deal reliability",
+                            "description": (
+                                "Recent escrowed trades make this crew easier to trust "
+                                "on side arrangements for The Ash Window."
+                            ),
+                            "value": 2,
+                        },
                     ],
                 }
             ],
@@ -467,16 +496,33 @@ def test_crew_board_packet_renders_legacy_and_future_modifiers_without_hidden_fi
     assert "Legacy:" in packet.player_markdown
     assert "Reputation: 2" in packet.player_markdown
     assert "Heat: 1" in packet.player_markdown
+    assert "Deal conduct:" in packet.player_markdown
+    assert "Conduct score: 2" in packet.player_markdown
+    assert "Reliability: reliable_escrow_partner" in packet.player_markdown
+    assert "Fulfilled: 1; Canceled: 0; Declined: 0; Open: 0" in packet.player_markdown
     assert "- The Saint's False Finger: Strong lead (82)" in packet.player_markdown
     assert "Future modifiers:" in packet.player_markdown
-    assert "- The Ash Window: Reputation leverage +2; Heat attention +1" in packet.player_markdown
+    assert (
+        "- The Ash Window: Reputation leverage +2; Heat attention +1; Deal reliability +2"
+        in packet.player_markdown
+    )
     assert "hidden" not in packet.player_markdown
+    assert "artifact_private_ledger" not in packet.player_markdown
+    assert "Do not cite us." not in packet.player_markdown
     assert packet.agent_context["legacy"] == {
         "reputation": 2,
         "heat": 1,
         "favors": 1,
         "debts": 0,
         "scars": [],
+        "deal_conduct": {
+            "score": 2,
+            "fulfilled_count": 1,
+            "canceled_count": 0,
+            "declined_count": 0,
+            "open_count": 0,
+            "reliability": "reliable_escrow_partner",
+        },
         "completed_contracts": [
             {
                 "contract_id": "contract_false_finger",
@@ -503,6 +549,15 @@ def test_crew_board_packet_renders_legacy_and_future_modifiers_without_hidden_fi
                         "label": "Heat attention",
                         "description": "Prior heat makes The Ash Window riskier for this crew.",
                         "value": 1,
+                    },
+                    {
+                        "kind": "deal_reliability",
+                        "label": "Deal reliability",
+                        "description": (
+                            "Recent escrowed trades make this crew easier to trust on side "
+                            "arrangements for The Ash Window."
+                        ),
+                        "value": 2,
                     },
                 ],
             }

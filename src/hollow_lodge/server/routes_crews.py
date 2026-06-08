@@ -100,15 +100,16 @@ def crew_board(
         _crew_board_contract(contract)
         for contract in active_contracts
     ]
+    deals = _deals_for_crew(request, player.player_id, crew_id)
     legacy = crew_legacy_from_contracts(
         crew_id=crew_id,
         contracts=active_contracts,
+        deals=deals,
     )
     apply_crew_modifiers_to_contracts(
         contracts=shaped_contracts,
         opportunities=legacy["future_opportunities"],
     )
-    deals = _deals_for_crew(request, player.player_id, crew_id)
     rumors = visible_rumors_for_crew(request.app.state.event_store, crew_id)
     crew = crew_service.summary(crew_id)
     return {

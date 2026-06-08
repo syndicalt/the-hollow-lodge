@@ -506,6 +506,81 @@ def test_crew_board_deals_are_scoped_to_requested_crew(tmp_path):
     assert crew_b_deal["deal_id"] not in deal_ids
 
 
+def test_fulfilled_deal_adds_reliable_broker_legacy_to_crew_board(tmp_path, monkeypatch):
+    monkeypatch.setenv("HOLLOW_LODGE_ADMIN_TOKEN", "admin-secret")
+    app = create_app(data_dir=tmp_path, invite_codes=["a", "b"])
+    client = TestClient(app)
+    activate_ash_window(client)
+    ada = register(client, "a", "Ada")
+    bela = register(client, "b", "Bela")
+    gilt = client.post(
+        "/crews",
+        headers=command_auth(ada["token"], "crew-create-gilt"),
+        json={"name": "The Gilt Knives"},
+    ).json()
+    moth = client.post(
+        "/crews",
+        headers=command_auth(bela["token"], "crew-create-moth"),
+        json={"name": "The Moth Choir"},
+    ).json()
+    app.state.artifact_service.grant_artifact_access(
+        artifact_id="artifact_chapel_debt_mark",
+        actor_id="server",
+        player_ids=[],
+        crew_ids=[moth["crew_id"]],
+        reason="test setup",
+        idempotency_key="grant-chapel",
+    )
+    deal = app.state.deal_service.propose(
+        contract_id="contract_false_finger",
+        proposer_crew_id=gilt["crew_id"],
+        recipient_crew_id=moth["crew_id"],
+        offered_artifact_ids=["artifact_ledger_rubric"],
+        requested_artifact_ids=["artifact_chapel_debt_mark"],
+        soft_terms=["Do not cite us."],
+        expires_phase=None,
+        proposer_player_id=ada["player_id"],
+        idempotency_key="deal-propose",
+    )
+    fulfilled = app.state.deal_service.accept(
+        deal_id=deal["deal_id"],
+        actor_player_id=bela["player_id"],
+        idempotency_key="deal-accept",
+    )
+
+    response = client.get(f"/crews/{gilt['crew_id']}/board", headers=auth(ada["token"]))
+
+    assert fulfilled["status"] == "fulfilled"
+    assert response.status_code == 200
+    body = response.json()
+    assert body["legacy"]["deal_conduct"] == {
+        "score": 2,
+        "fulfilled_count": 1,
+        "canceled_count": 0,
+        "declined_count": 0,
+        "open_count": 0,
+        "reliability": "reliable_escrow_partner",
+    }
+    ash_window = next(
+        contract
+        for contract in body["active_contracts"]
+        if contract["contract_id"] == "contract_ash_window"
+    )
+    assert ash_window["crew_modifiers"] == [
+        {
+            "kind": "deal_reliability",
+            "label": "Deal reliability",
+            "description": (
+                "Recent escrowed trades make this crew easier to trust on side "
+                "arrangements for The Ash Window."
+            ),
+            "value": 2,
+        }
+    ]
+    assert "artifact_chapel_debt_mark" not in str(body["legacy"])
+    assert "Do not cite us." not in str(body["legacy"])
+
+
 def test_join_requires_crew_join_code(tmp_path):
     client = TestClient(create_app(data_dir=tmp_path, invite_codes=["a", "b"]))
     ada = register(client, "a", "Ada")

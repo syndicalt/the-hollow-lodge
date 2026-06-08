@@ -48,13 +48,19 @@ def inbox_from_board(*, player_id: str, board: dict[str, Any]) -> dict[str, Any]
     }
 
 
-def crew_legacy_from_contracts(*, crew_id: str, contracts: list[dict[str, Any]]) -> dict[str, Any]:
+def crew_legacy_from_contracts(
+    *,
+    crew_id: str,
+    contracts: list[dict[str, Any]],
+    deals: list[dict[str, Any]] | None = None,
+) -> dict[str, Any]:
     completed_contracts: list[dict[str, Any]] = []
     reputation = 0
     heat = 0
     favors = 0
     debts = 0
     scars: list[str] = []
+    deal_conduct = deal_conduct_from_deals(crew_id=crew_id, deals=deals or [])
 
     for contract in contracts:
         phase_result = contract.get("phase_result")
@@ -88,7 +94,12 @@ def crew_legacy_from_contracts(*, crew_id: str, contracts: list[dict[str, Any]])
     for contract in contracts:
         if contract.get("phase_result"):
             continue
-        modifiers = _future_modifiers(contract=contract, reputation=reputation, heat=heat)
+        modifiers = _future_modifiers(
+            contract=contract,
+            reputation=reputation,
+            heat=heat,
+            deal_conduct=deal_conduct,
+        )
         if modifiers:
             future_opportunities.append(
                 {
@@ -105,8 +116,45 @@ def crew_legacy_from_contracts(*, crew_id: str, contracts: list[dict[str, Any]])
         "favors": favors,
         "debts": debts,
         "scars": scars,
+        "deal_conduct": deal_conduct,
         "completed_contracts": completed_contracts,
         "future_opportunities": future_opportunities,
+    }
+
+
+def deal_conduct_from_deals(*, crew_id: str, deals: list[dict[str, Any]]) -> dict[str, Any]:
+    fulfilled_count = 0
+    canceled_count = 0
+    declined_count = 0
+    open_count = 0
+    score = 0
+
+    for deal in deals:
+        proposer_crew_id = deal.get("proposer_crew_id")
+        recipient_crew_id = deal.get("recipient_crew_id")
+        if crew_id not in {proposer_crew_id, recipient_crew_id}:
+            continue
+        status = deal.get("status")
+        if status == "fulfilled":
+            fulfilled_count += 1
+            score += 2
+        elif status == "canceled":
+            canceled_count += 1
+            if proposer_crew_id == crew_id:
+                score -= 1
+        elif status == "declined":
+            declined_count += 1
+        elif status in {"proposed", "accepted"}:
+            open_count += 1
+
+    clamped_score = max(-3, min(5, score))
+    return {
+        "score": clamped_score,
+        "fulfilled_count": fulfilled_count,
+        "canceled_count": canceled_count,
+        "declined_count": declined_count,
+        "open_count": open_count,
+        "reliability": _deal_reliability_label(clamped_score),
     }
 
 
@@ -140,7 +188,13 @@ def _outcome_key(standing: dict[str, Any]) -> str:
     return "weak"
 
 
-def _future_modifiers(*, contract: dict[str, Any], reputation: int, heat: int) -> list[dict[str, Any]]:
+def _future_modifiers(
+    *,
+    contract: dict[str, Any],
+    reputation: int,
+    heat: int,
+    deal_conduct: dict[str, Any] | None = None,
+) -> list[dict[str, Any]]:
     modifiers: list[dict[str, Any]] = []
     title = contract["title"]
     if reputation:
@@ -161,4 +215,25 @@ def _future_modifiers(*, contract: dict[str, Any], reputation: int, heat: int) -
                 "value": heat,
             }
         )
+    deal_score = (deal_conduct or {}).get("score", 0)
+    if deal_score > 0:
+        modifiers.append(
+            {
+                "kind": "deal_reliability",
+                "label": "Deal reliability",
+                "description": (
+                    "Recent escrowed trades make this crew easier to trust on side "
+                    f"arrangements for {title}."
+                ),
+                "value": deal_score,
+            }
+        )
     return modifiers
+
+
+def _deal_reliability_label(score: int) -> str:
+    if score > 0:
+        return "reliable_escrow_partner"
+    if score < 0:
+        return "strained_escrow_partner"
+    return "unproven"

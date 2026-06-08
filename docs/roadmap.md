@@ -529,6 +529,23 @@ Expected verification:
 - `pytest tests/client/test_render_packets.py tests/client/test_phase_render.py tests/e2e/test_contract_content_pipeline.py -q`
 - `pytest -q`
 
+### Slice 16: Deal Conduct Reputation
+
+Status: completed.
+
+Connect reliable escrowed deal conduct to crew-board legacy and future contract
+context without modeling soft-term betrayal. Crew legacy now includes a
+participant-scoped `deal_conduct` aggregate derived only from server-verifiable
+deal lifecycle facts: fulfilled deals add reliability, proposer-canceled deals
+cost reliability, declined and open deals are counted but not penalized. Future
+contract modifiers can now include `deal_reliability`, while legacy/render
+packets omit artifact IDs, deal copy IDs, soft terms, and rumor-derived claims.
+
+Expected verification:
+
+- `pytest tests/server/test_crew_legacy_projection.py tests/server/test_crew_routes.py tests/server/test_deal_service.py tests/client/test_render_packets.py tests/e2e/test_escrowed_artifact_deals.py tests/e2e/test_full_game_loop_with_escrow.py -q`
+- `pytest -q`
+
 ## Completion Standard
 
 Each slice must:

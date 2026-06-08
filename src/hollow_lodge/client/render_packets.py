@@ -143,6 +143,7 @@ def _shape_crew_legacy(legacy: dict[str, Any]) -> dict[str, Any]:
         "favors": legacy.get("favors", 0),
         "debts": legacy.get("debts", 0),
         "scars": list(legacy.get("scars", [])),
+        "deal_conduct": _shape_deal_conduct(legacy.get("deal_conduct", {})),
         "completed_contracts": [
             {
                 key: contract[key]
@@ -162,6 +163,17 @@ def _shape_crew_legacy(legacy: dict[str, Any]) -> dict[str, Any]:
             }
             for opportunity in legacy.get("future_opportunities", [])
         ],
+    }
+
+
+def _shape_deal_conduct(conduct: dict[str, Any]) -> dict[str, Any]:
+    return {
+        "score": conduct.get("score", 0),
+        "fulfilled_count": conduct.get("fulfilled_count", 0),
+        "canceled_count": conduct.get("canceled_count", 0),
+        "declined_count": conduct.get("declined_count", 0),
+        "open_count": conduct.get("open_count", 0),
+        "reliability": conduct.get("reliability", "unproven"),
     }
 
 
@@ -737,6 +749,15 @@ def build_crew_board_packet(board: dict[str, Any]) -> RenderPacket:
         f"Heat: {legacy['heat']}",
         f"Favors: {legacy['favors']}",
         f"Debts: {legacy['debts']}",
+        "Deal conduct:",
+        f"Conduct score: {legacy['deal_conduct']['score']}",
+        f"Reliability: {legacy['deal_conduct']['reliability']}",
+        (
+            f"Fulfilled: {legacy['deal_conduct']['fulfilled_count']}; "
+            f"Canceled: {legacy['deal_conduct']['canceled_count']}; "
+            f"Declined: {legacy['deal_conduct']['declined_count']}; "
+            f"Open: {legacy['deal_conduct']['open_count']}"
+        ),
         "Completed contracts:",
     ]
     if legacy["completed_contracts"]:
