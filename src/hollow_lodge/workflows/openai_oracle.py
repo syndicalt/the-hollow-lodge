@@ -51,6 +51,13 @@ class OpenAIResolutionOracle:
         self._model = model
         self._timeout_seconds = timeout_seconds
 
+    def runtime_metadata(self) -> OracleProviderMetadata:
+        return OracleProviderMetadata(
+            provider="openai",
+            model=self._model,
+            prompt_version=_PROMPT_VERSION,
+        )
+
     def resolve_auction_preview(
         self,
         packet: AuctionPreviewOraclePacket,
@@ -73,11 +80,7 @@ class OpenAIResolutionOracle:
         )
         parsed = _parse_openai_output(response.output_parsed)
         return AuctionPreviewOracleResult(
-            provider=OracleProviderMetadata(
-                provider="openai",
-                model=self._model,
-                prompt_version=_PROMPT_VERSION,
-            ),
+            provider=self.runtime_metadata(),
             **parsed.model_dump(),
         )
 

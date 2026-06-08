@@ -497,6 +497,22 @@ Expected verification:
 - `pytest tests/server/test_action_routes.py tests/client/test_api.py tests/client/test_codex_session.py tests/test_mcp_server.py tests/client/test_action_cli.py tests/client/test_render_packets.py -q`
 - `pytest -q`
 
+### Slice 14: Oracle Audit Schema Hardening
+
+Status: completed.
+
+Tighten Milestone 3 operator evidence without widening player visibility:
+oracle resolution now writes versioned server-only audit records with attempted
+provider metadata, validation status, failure stage/type, deterministic fallback
+classification, safe summary counts, and an accepted-output hash. Existing
+pre-schema audit records remain replayable so recovery does not duplicate or
+conflict with prior requested/failed audit events.
+
+Expected verification:
+
+- `pytest tests/server/test_phase_resolution.py tests/server/test_resolution_oracle.py tests/workflows/test_oracle_boundary.py tests/workflows/test_deterministic_oracle.py tests/workflows/test_openai_oracle.py tests/workflows/test_oracle_factory.py -q`
+- `pytest -q`
+
 ## Completion Standard
 
 Each slice must:

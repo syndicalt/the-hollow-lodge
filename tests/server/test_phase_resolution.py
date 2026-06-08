@@ -1,3 +1,5 @@
+import hashlib
+
 from fastapi.testclient import TestClient
 
 from hollow_lodge.server.app import create_app
@@ -281,6 +283,7 @@ def test_phase_resolution_records_server_only_oracle_audit_events(tmp_path):
 
     response = lock_preview(client, ada, "phase-lock-1")
     events = client.app.state.event_store.read()
+    visible_events = client.get("/events", headers=auth(ada["token"])).json()["events"]
 
     requested = [event for event in events if event.type == "oracle.resolution.requested"]
     completed = [event for event in events if event.type == "oracle.resolution.completed"]
@@ -290,8 +293,26 @@ def test_phase_resolution_records_server_only_oracle_audit_events(tmp_path):
     assert completed
     assert requested[0].visibility == EventVisibility.server_only()
     assert completed[0].visibility == EventVisibility.server_only()
+    assert requested[0].payload["audit_schema_version"] == 1
+    assert requested[0].payload["provider_attempted"] == "deterministic"
+    assert requested[0].payload["validation_status"] == "not_started"
+    assert completed[0].payload["audit_schema_version"] == 1
     assert completed[0].payload["provider"] == "deterministic"
     assert completed[0].payload["fallback"] is False
+    assert completed[0].payload["validation_status"] == "validated"
+    assert completed[0].payload["crew_count"] == 2
+    assert completed[0].payload["standing_count"] == 2
+    assert completed[0].payload["warning_count"] == 0
+    accepted_output = DeterministicResolutionOracle().resolve_auction_preview(
+        client.app.state.contract_service._build_auction_preview_packet(
+            contract_id="contract_false_finger"
+        )
+    )
+    assert completed[0].payload["accepted_output_hash"] == hashlib.sha256(
+        accepted_output.model_dump_json().encode("utf-8")
+    ).hexdigest()
+    assert "oracle.resolution.requested" not in str(visible_events)
+    assert "oracle.resolution.completed" not in str(visible_events)
 
 
 def test_actions_can_be_canceled_before_lock_and_cannot_mutate_after_lock(tmp_path):

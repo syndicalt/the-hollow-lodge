@@ -31,6 +31,13 @@ def _safe_public_reveals(
 
 
 class DeterministicResolutionOracle:
+    def runtime_metadata(self) -> OracleProviderMetadata:
+        return OracleProviderMetadata(
+            provider="deterministic",
+            model=None,
+            prompt_version="deterministic-v1",
+        )
+
     def resolve_auction_preview(
         self,
         packet: AuctionPreviewOraclePacket,
@@ -74,11 +81,7 @@ class DeterministicResolutionOracle:
                 )
             )
         result = AuctionPreviewOracleResult(
-            provider=OracleProviderMetadata(
-                provider="deterministic",
-                model=None,
-                prompt_version="deterministic-v1",
-            ),
+            provider=self.runtime_metadata(),
             standings=tuple(
                 AuctionPreviewCrewResult(
                     crew_id=score.crew_id,

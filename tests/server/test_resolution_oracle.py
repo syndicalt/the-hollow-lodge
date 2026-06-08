@@ -154,13 +154,28 @@ def test_invalid_oracle_result_falls_back_and_is_audited(tmp_path):
     assert response.json()["standings"][0]["crew_id"] == crew["crew_id"]
     assert len(failed) == 1
     assert failed[0].visibility == EventVisibility.server_only()
+    assert failed[0].payload["audit_schema_version"] == 1
+    assert failed[0].payload["provider_attempted"] == "test-invalid"
+    assert failed[0].payload["model"] == "invalid-v1"
+    assert failed[0].payload["prompt_version"] == "test-v1"
+    assert failed[0].payload["validation_status"] == "rejected"
+    assert failed[0].payload["failure_stage"] == "server_validation"
+    assert failed[0].payload["failure_type"] == "ValueError"
+    assert failed[0].payload["fallback"] is True
+    assert failed[0].payload["fallback_provider"] == "deterministic"
     assert failed[0].payload["fallback_reason"] == "ValueError"
     assert failed[0].payload["input_packet_hash"]
     assert len(completed) == 1
     assert completed[0].visibility == EventVisibility.server_only()
+    assert completed[0].payload["audit_schema_version"] == 1
     assert completed[0].payload["fallback"] is True
     assert completed[0].payload["fallback_reason"] == "ValueError"
     assert completed[0].payload["provider"] == "deterministic"
+    assert completed[0].payload["validation_status"] == "fallback_validated"
+    assert completed[0].payload["crew_count"] == 1
+    assert completed[0].payload["standing_count"] == 1
+    assert completed[0].payload["warning_count"] == 0
+    assert completed[0].payload["accepted_output_hash"]
 
 
 def test_duplicate_phase_lock_does_not_call_oracle_twice(tmp_path):

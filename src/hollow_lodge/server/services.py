@@ -41,6 +41,7 @@ from hollow_lodge.workflows.oracle_boundary import (
     AuctionPreviewCrewPacket,
     AuctionPreviewOraclePacket,
     AuctionPreviewOracleResult,
+    OracleProviderMetadata,
     ResolutionOracle,
     validate_auction_preview_result,
 )
@@ -1202,6 +1203,7 @@ class ContractService:
         resolved_phase = phase or self._contract_by_id(contract_id).phase.name
         packet = self._build_auction_preview_packet(contract_id=contract_id, phase=resolved_phase)
         input_packet_hash = self._oracle_packet_hash(packet)
+        attempted_provider = self._oracle_runtime_metadata()
         completed_audit = self._completed_auction_preview_oracle_audit(
             contract_id=contract_id,
             phase=resolved_phase,
@@ -1220,25 +1222,46 @@ class ContractService:
                 phase=resolved_phase,
                 result=result,
             )
-        self._event_store.append_command(
-            event_type="oracle.resolution.requested",
-            actor_id="server",
-            visibility=EventVisibility.server_only(),
-            payload={
-                "contract_id": contract_id,
-                "phase": resolved_phase,
-                "input_packet_hash": input_packet_hash,
-            },
-            idempotency_key=f"oracle.resolution.{contract_id}.auction-preview.requested",
-        )
+        requested_audit_key = f"oracle.resolution.{contract_id}.auction-preview.requested"
+        requested_audit = self._event_by_idempotency_key(requested_audit_key)
+        if requested_audit is None:
+            self._event_store.append_command(
+                event_type="oracle.resolution.requested",
+                actor_id="server",
+                visibility=EventVisibility.server_only(),
+                payload={
+                    "audit_schema_version": 1,
+                    "contract_id": contract_id,
+                    "phase": resolved_phase,
+                    "input_packet_hash": input_packet_hash,
+                    "provider_attempted": attempted_provider.provider,
+                    "model": attempted_provider.model,
+                    "prompt_version": attempted_provider.prompt_version,
+                    "validation_status": "not_started",
+                },
+                idempotency_key=requested_audit_key,
+            )
         fallback = False
         fallback_reason: str | None = None
+        failure_stage: str | None = None
+        failure_provider = attempted_provider
         try:
             candidate = self._resolution_oracle.resolve_auction_preview(packet)
-            result = validate_auction_preview_result(packet=packet, result=candidate)
         except Exception as exc:
             fallback = True
             fallback_reason = exc.__class__.__name__
+            failure_stage = "provider_call"
+        else:
+            failure_provider = candidate.provider
+            try:
+                result = validate_auction_preview_result(packet=packet, result=candidate)
+            except Exception as exc:
+                fallback = True
+                fallback_reason = exc.__class__.__name__
+                failure_stage = "server_validation"
+        if fallback:
+            assert fallback_reason is not None
+            assert failure_stage is not None
             failed_audit = self._failed_auction_preview_oracle_audit(
                 contract_id=contract_id,
                 phase=resolved_phase,
@@ -1251,9 +1274,22 @@ class ContractService:
                     actor_id="server",
                     visibility=EventVisibility.server_only(),
                     payload={
+                        "audit_schema_version": 1,
                         "contract_id": contract_id,
                         "phase": resolved_phase,
                         "input_packet_hash": input_packet_hash,
+                        "provider_attempted": failure_provider.provider,
+                        "model": failure_provider.model,
+                        "prompt_version": failure_provider.prompt_version,
+                        "validation_status": (
+                            "rejected"
+                            if failure_stage == "server_validation"
+                            else "provider_error"
+                        ),
+                        "failure_stage": failure_stage,
+                        "failure_type": fallback_reason,
+                        "fallback": True,
+                        "fallback_provider": "deterministic",
                         "fallback_reason": fallback_reason,
                     },
                     idempotency_key=f"oracle.resolution.{contract_id}.auction-preview.failed",
@@ -1264,6 +1300,7 @@ class ContractService:
             actor_id="server",
             visibility=EventVisibility.server_only(),
             payload={
+                "audit_schema_version": 1,
                 "contract_id": contract_id,
                 "phase": resolved_phase,
                 "provider": result.provider.provider,
@@ -1271,7 +1308,12 @@ class ContractService:
                 "prompt_version": result.provider.prompt_version,
                 "fallback": fallback,
                 "fallback_reason": fallback_reason,
+                "validation_status": "fallback_validated" if fallback else "validated",
+                "crew_count": len(packet.crews),
+                "standing_count": len(result.standings),
+                "warning_count": len(result.validation_warnings),
                 "input_packet_hash": input_packet_hash,
+                "accepted_output_hash": self._oracle_result_hash(result),
                 "accepted_output": result.model_dump(mode="json"),
             },
             idempotency_key=f"oracle.resolution.{contract_id}.auction-preview.completed",
@@ -1433,6 +1475,19 @@ class ContractService:
 
     def _oracle_packet_hash(self, packet: AuctionPreviewOraclePacket) -> str:
         return hashlib.sha256(packet.model_dump_json().encode("utf-8")).hexdigest()
+
+    def _oracle_result_hash(self, result: AuctionPreviewOracleResult) -> str:
+        return hashlib.sha256(result.model_dump_json().encode("utf-8")).hexdigest()
+
+    def _oracle_runtime_metadata(self) -> OracleProviderMetadata:
+        metadata = getattr(self._resolution_oracle, "runtime_metadata", None)
+        if callable(metadata):
+            return OracleProviderMetadata.model_validate(metadata())
+        return OracleProviderMetadata(
+            provider="unknown",
+            model=None,
+            prompt_version="unknown",
+        )
 
     def _auction_preview_score_inputs(self) -> list[AuctionPreviewScoreInput]:
         crew_ids = self._crew_ids()
