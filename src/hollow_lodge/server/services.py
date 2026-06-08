@@ -980,6 +980,7 @@ class ContractService:
                     "contract_id": seed.contract.contract_id,
                     "lifecycle_status": "active",
                 }
+            self._validate_arc_previous_contract(seed.contract)
             self._event_store.append_command(
                 event_type="campaign.seeded",
                 actor_id=actor_id,
@@ -1202,6 +1203,22 @@ class ContractService:
             if event.idempotency_key == idempotency_key:
                 return event
         return None
+
+    def _validate_arc_previous_contract(self, contract: Contract) -> None:
+        if contract.arc is None or contract.arc.previous_contract_id is None:
+            return
+        for event in self._event_store.read():
+            if event.type != "contract.board.published":
+                continue
+            published = Contract.model_validate(event.payload)
+            if (
+                published.contract_id == contract.arc.previous_contract_id
+                and published.campaign_id == contract.campaign_id
+            ):
+                return
+        raise ValueError(
+            "arc previous contract must reference an existing contract in the same campaign"
+        )
 
     def _activation_seed_payload_matches(
         self,

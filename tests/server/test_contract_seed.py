@@ -366,6 +366,120 @@ def test_contract_activation_replay_rejects_different_arc_metadata(
     assert conflict.json()["detail"] == "idempotency key conflict"
 
 
+def test_contract_activation_rejects_arc_previous_contract_that_is_not_published(
+    tmp_path,
+    monkeypatch,
+):
+    monkeypatch.setenv("HOLLOW_LODGE_ADMIN_TOKEN", "admin-secret")
+    seed = json.loads(Path("tests/fixtures/ash_window_contract.json").read_text(encoding="utf-8"))
+    seed["contract"]["arc"] = {
+        "arc_id": "arc_cinders_below",
+        "title": "Cinders Below",
+        "chapter": 2,
+        "sequence": 20,
+        "public_summary": "The Lodge follows fire omens from auction catalogues into old glass.",
+        "previous_contract_id": "contract_missing",
+    }
+    client = TestClient(create_app(data_dir=tmp_path, invite_codes=["a"]))
+
+    rejected = client.post(
+        "/contracts/admin/activate",
+        headers={
+            "Idempotency-Key": "activate-missing-previous",
+            "X-Hollow-Lodge-Admin-Token": "admin-secret",
+        },
+        json={"seed": seed},
+    )
+    event_log = (tmp_path / "server-events.jsonl").read_text(encoding="utf-8")
+
+    assert rejected.status_code == 422
+    assert rejected.json()["detail"] == (
+        "arc previous contract must reference an existing contract in the same campaign"
+    )
+    assert "contract_ash_window" not in event_log
+
+
+def test_failed_arc_previous_validation_leaves_idempotency_key_reusable(
+    tmp_path,
+    monkeypatch,
+):
+    monkeypatch.setenv("HOLLOW_LODGE_ADMIN_TOKEN", "admin-secret")
+    seed = json.loads(Path("tests/fixtures/ash_window_contract.json").read_text(encoding="utf-8"))
+    seed["contract"]["arc"] = {
+        "arc_id": "arc_cinders_below",
+        "title": "Cinders Below",
+        "chapter": 2,
+        "sequence": 20,
+        "public_summary": "The Lodge follows fire omens from auction catalogues into old glass.",
+        "previous_contract_id": "contract_missing",
+    }
+    corrected_seed = json.loads(json.dumps(seed))
+    corrected_seed["contract"]["arc"]["previous_contract_id"] = "contract_false_finger"
+    client = TestClient(create_app(data_dir=tmp_path, invite_codes=["a"]))
+
+    rejected = client.post(
+        "/contracts/admin/activate",
+        headers={
+            "Idempotency-Key": "activate-arc-retry",
+            "X-Hollow-Lodge-Admin-Token": "admin-secret",
+        },
+        json={"seed": seed},
+    )
+    accepted = client.post(
+        "/contracts/admin/activate",
+        headers={
+            "Idempotency-Key": "activate-arc-retry",
+            "X-Hollow-Lodge-Admin-Token": "admin-secret",
+        },
+        json={"seed": corrected_seed},
+    )
+
+    assert rejected.status_code == 422
+    assert accepted.status_code == 201
+    assert accepted.json() == {
+        "contract_id": "contract_ash_window",
+        "lifecycle_status": "active",
+    }
+
+
+def test_contract_activation_rejects_arc_previous_contract_from_other_campaign(
+    tmp_path,
+    monkeypatch,
+):
+    monkeypatch.setenv("HOLLOW_LODGE_ADMIN_TOKEN", "admin-secret")
+    seed = json.loads(Path("tests/fixtures/ash_window_contract.json").read_text(encoding="utf-8"))
+    seed["campaign"] = {
+        "campaign_id": "campaign_other",
+        "title": "A Different Lodge File",
+    }
+    seed["contract"]["campaign_id"] = "campaign_other"
+    seed["contract"]["arc"] = {
+        "arc_id": "arc_other",
+        "title": "Other Ashes",
+        "chapter": 1,
+        "sequence": 10,
+        "public_summary": "A separate campaign should not borrow prior links.",
+        "previous_contract_id": "contract_false_finger",
+    }
+    client = TestClient(create_app(data_dir=tmp_path, invite_codes=["a"]))
+
+    rejected = client.post(
+        "/contracts/admin/activate",
+        headers={
+            "Idempotency-Key": "activate-wrong-campaign-previous",
+            "X-Hollow-Lodge-Admin-Token": "admin-secret",
+        },
+        json={"seed": seed},
+    )
+    event_log = (tmp_path / "server-events.jsonl").read_text(encoding="utf-8")
+
+    assert rejected.status_code == 422
+    assert rejected.json()["detail"] == (
+        "arc previous contract must reference an existing contract in the same campaign"
+    )
+    assert "contract_ash_window" not in event_log
+
+
 def test_admin_can_archive_contract_and_remove_it_from_active_inbox(tmp_path, monkeypatch):
     monkeypatch.setenv("HOLLOW_LODGE_ADMIN_TOKEN", "admin-secret")
     client = TestClient(create_app(data_dir=tmp_path, invite_codes=["a"]))

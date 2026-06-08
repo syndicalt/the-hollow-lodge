@@ -269,6 +269,10 @@ Status:
 - Scar burden modifiers completed: weak outcomes now leave named scars visible
   on Codex crew boards and add deterministic future risk modifiers on unresolved
   contracts without exposing hidden resolution data.
+- Arc continuity validation completed: contract seed activation now rejects
+  public arc links whose previous contract is not already published in the same
+  campaign, preventing broken multi-contract campaign chains before seed events
+  are appended.
 - Deferred: multi-day campaign arc authoring, deeper death/legacy inheritance,
   and richer long-term unlock paths.
 
@@ -780,6 +784,23 @@ Expected verification:
 
 - `pytest tests/server/test_crew_legacy_projection.py::test_weak_outcome_creates_scar_burden_for_future_contracts tests/client/test_render_packets.py::test_crew_board_packet_renders_legacy_and_future_modifiers_without_hidden_fields -q`
 - `pytest tests/server/test_crew_legacy_projection.py tests/server/test_crew_routes.py tests/client/test_render_packets.py tests/e2e/test_contract_content_pipeline.py -q`
+- `pytest -q`
+
+### Slice 28: Campaign Arc Continuity Validation
+
+Status: completed.
+
+Harden multi-contract campaign authoring by validating public arc links at
+activation time. If a seed declares `contract.arc.previous_contract_id`, the
+server now requires that contract to already be published in the same campaign
+before appending any new seed events. Invalid links return a normal admin seed
+validation error, while idempotent activation replay and existing public arc
+rendering remain unchanged.
+
+Expected verification:
+
+- `pytest tests/server/test_contract_seed.py::test_contract_activation_rejects_arc_previous_contract_that_is_not_published tests/server/test_contract_seed.py::test_failed_arc_previous_validation_leaves_idempotency_key_reusable tests/server/test_contract_seed.py::test_contract_activation_rejects_arc_previous_contract_from_other_campaign -q`
+- `pytest tests/server/test_contract_seed.py tests/server/test_contract_seed_pipeline.py tests/server/test_crew_routes.py::test_crew_board_shapes_contracts_and_dossier_at_server_boundary tests/client/test_render_packets.py::test_contract_board_packet_renders_campaign_arc_metadata_without_hidden_fields -q`
 - `pytest -q`
 
 ## Completion Standard
