@@ -46,3 +46,119 @@ def inbox_from_board(*, player_id: str, board: dict[str, Any]) -> dict[str, Any]
         "active_contracts": board["contracts"],
         "incoming_proof_fragments": [],
     }
+
+
+def crew_legacy_from_contracts(*, crew_id: str, contracts: list[dict[str, Any]]) -> dict[str, Any]:
+    completed_contracts: list[dict[str, Any]] = []
+    reputation = 0
+    heat = 0
+    favors = 0
+    debts = 0
+    scars: list[str] = []
+
+    for contract in contracts:
+        phase_result = contract.get("phase_result")
+        if not phase_result:
+            continue
+        standing = _standing_for_crew(phase_result, crew_id)
+        if standing is None:
+            continue
+        outcome = _outcome_key(standing)
+        completed_contracts.append(
+            {
+                "contract_id": contract["contract_id"],
+                "title": contract["title"],
+                "phase": contract.get("phase", {}).get("name", phase_result.get("phase", "")),
+                "standing": standing["standing"],
+                "score": standing["score"],
+                "outcome": outcome,
+            }
+        )
+        if outcome == "strong_lead":
+            reputation += 2
+            heat += 1
+            favors += 1
+        elif outcome == "viable":
+            reputation += 1
+        else:
+            debts += 1
+            scars.append(f"Bruised by {contract['title']}")
+
+    future_opportunities = []
+    for contract in contracts:
+        if contract.get("phase_result"):
+            continue
+        modifiers = _future_modifiers(contract=contract, reputation=reputation, heat=heat)
+        if modifiers:
+            future_opportunities.append(
+                {
+                    "contract_id": contract["contract_id"],
+                    "title": contract["title"],
+                    "modifiers": modifiers,
+                }
+            )
+
+    return {
+        "crew_id": crew_id,
+        "reputation": reputation,
+        "heat": heat,
+        "favors": favors,
+        "debts": debts,
+        "scars": scars,
+        "completed_contracts": completed_contracts,
+        "future_opportunities": future_opportunities,
+    }
+
+
+def apply_crew_modifiers_to_contracts(
+    *,
+    contracts: list[dict[str, Any]],
+    opportunities: list[dict[str, Any]],
+) -> None:
+    modifiers_by_contract = {
+        opportunity["contract_id"]: opportunity["modifiers"]
+        for opportunity in opportunities
+    }
+    for contract in contracts:
+        modifiers = modifiers_by_contract.get(contract["contract_id"])
+        if modifiers:
+            contract["crew_modifiers"] = modifiers
+
+
+def _standing_for_crew(phase_result: dict[str, Any], crew_id: str) -> dict[str, Any] | None:
+    for standing in phase_result.get("standings", []):
+        if standing.get("crew_id") == crew_id:
+            return standing
+    return None
+
+
+def _outcome_key(standing: dict[str, Any]) -> str:
+    if standing.get("score", 0) >= 70 or standing.get("standing") == "Strong lead":
+        return "strong_lead"
+    if standing.get("score", 0) >= 40 or str(standing.get("standing", "")).startswith("Viable"):
+        return "viable"
+    return "weak"
+
+
+def _future_modifiers(*, contract: dict[str, Any], reputation: int, heat: int) -> list[dict[str, Any]]:
+    modifiers: list[dict[str, Any]] = []
+    title = contract["title"]
+    if reputation:
+        modifiers.append(
+            {
+                "kind": "reputation_leverage",
+                "label": "Reputation leverage",
+                "description": f"Prior strong work gives this crew an opening on {title}.",
+                "value": reputation,
+            }
+        )
+    if heat:
+        modifiers.append(
+            {
+                "kind": "heat_attention",
+                "label": "Heat attention",
+                "description": f"Prior heat makes {title} riskier for this crew.",
+                "value": heat,
+            }
+        )
+    return modifiers

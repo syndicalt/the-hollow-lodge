@@ -235,6 +235,15 @@ Proof gate:
 - Completing a contract changes later visible opportunities or risks for that
   crew.
 
+Status:
+
+- First retention slice completed: resolved contract standings now project into
+  crew legacy, visible crew-board reputation/heat/favor/debt state, and
+  deterministic future opportunity modifiers on unresolved contracts.
+- Deferred: explicit legacy-delta events, multi-day campaign arc authoring,
+  scars/death/legacy inheritance, and unlockable contracts based on long-term
+  history.
+
 Likely files:
 
 - `src/hollow_lodge/domain/identity.py`
@@ -405,6 +414,20 @@ Expected verification:
 
 - `pytest tests/server/test_phase_resolution.py tests/server/test_action_routes.py tests/server/test_artifact_routes.py -q`
 - `pytest tests/e2e/test_contract_content_pipeline.py -q`
+
+### Slice 10: Crew Legacy And Future Modifiers
+
+Status: completed.
+
+Add the first Milestone 6 retention slice: derive crew legacy from resolved
+phase standings, surface reputation/heat/favors/debts/completed contracts on
+the Codex crew board, and annotate later active contracts with deterministic
+opportunity and risk modifiers.
+
+Expected verification:
+
+- `pytest tests/server/test_crew_legacy_projection.py tests/server/test_crew_routes.py -q`
+- `pytest tests/client/test_render_packets.py tests/e2e/test_contract_content_pipeline.py -q`
 
 ## Completion Standard
 

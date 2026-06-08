@@ -65,6 +65,14 @@ def _shape_phase_result(phase_result: dict[str, Any]) -> dict[str, Any]:
     return shaped
 
 
+def _shape_modifier(modifier: dict[str, Any]) -> dict[str, Any]:
+    return {
+        key: modifier[key]
+        for key in ("kind", "label", "description", "value")
+        if key in modifier
+    }
+
+
 def _shape_contract(contract: dict[str, Any]) -> dict[str, Any]:
     shaped = {
         key: contract[key]
@@ -74,6 +82,11 @@ def _shape_contract(contract: dict[str, Any]) -> dict[str, Any]:
     shaped["phase"] = _shape_phase(contract["phase"])
     if "phase_result" in contract:
         shaped["phase_result"] = _shape_phase_result(contract["phase_result"])
+    if "crew_modifiers" in contract:
+        shaped["crew_modifiers"] = [
+            _shape_modifier(modifier)
+            for modifier in contract["crew_modifiers"]
+        ]
     return shaped
 
 
@@ -110,6 +123,35 @@ def _shape_deal(deal: dict[str, Any]) -> dict[str, Any]:
             "recipient_received_artifact_ids",
         )
         if key in deal
+    }
+
+
+def _shape_crew_legacy(legacy: dict[str, Any]) -> dict[str, Any]:
+    return {
+        "reputation": legacy.get("reputation", 0),
+        "heat": legacy.get("heat", 0),
+        "favors": legacy.get("favors", 0),
+        "debts": legacy.get("debts", 0),
+        "scars": list(legacy.get("scars", [])),
+        "completed_contracts": [
+            {
+                key: contract[key]
+                for key in ("contract_id", "title", "phase", "standing", "score", "outcome")
+                if key in contract
+            }
+            for contract in legacy.get("completed_contracts", [])
+        ],
+        "future_opportunities": [
+            {
+                "contract_id": opportunity["contract_id"],
+                "title": opportunity["title"],
+                "modifiers": [
+                    _shape_modifier(modifier)
+                    for modifier in opportunity.get("modifiers", [])
+                ],
+            }
+            for opportunity in legacy.get("future_opportunities", [])
+        ],
     }
 
 
@@ -421,6 +463,15 @@ def _artifact_list(artifact_ids: list[str] | tuple[str, ...]) -> str:
     return ", ".join(artifact_ids) if artifact_ids else "nothing"
 
 
+def _render_modifiers(modifiers: list[dict[str, Any]]) -> str:
+    if not modifiers:
+        return "none"
+    return "; ".join(
+        f"{modifier['label']} +{modifier['value']}"
+        for modifier in modifiers
+    )
+
+
 def _viewer_side(deal: dict[str, Any], viewer_crew_ids: list[str] | tuple[str, ...]) -> str:
     crews = set(viewer_crew_ids)
     if deal["recipient_crew_id"] in crews:
@@ -615,6 +666,7 @@ def build_crew_board_packet(board: dict[str, Any]) -> RenderPacket:
     crew = board["crew"]
     dossier = board["dossier"]
     active_contracts = board.get("active_contracts", [])
+    legacy = _shape_crew_legacy(board.get("legacy", {}))
     pending_decisions = [
         _shape_pending_decision(decision)
         for decision in board.get("pending_decisions", [])
@@ -627,8 +679,32 @@ def build_crew_board_packet(board: dict[str, Any]) -> RenderPacket:
         "",
         *_render_pending_decisions(pending_decisions),
         "",
-        "Active Contracts:",
+        "Legacy:",
+        f"Reputation: {legacy['reputation']}",
+        f"Heat: {legacy['heat']}",
+        f"Favors: {legacy['favors']}",
+        f"Debts: {legacy['debts']}",
+        "Completed contracts:",
     ]
+    if legacy["completed_contracts"]:
+        lines.extend(
+            f"- {contract['title']}: {contract['standing']} ({contract['score']})"
+            for contract in legacy["completed_contracts"]
+        )
+    else:
+        lines.append("- none")
+    lines.append("Future modifiers:")
+    if legacy["future_opportunities"]:
+        lines.extend(
+            f"- {opportunity['title']}: {_render_modifiers(opportunity['modifiers'])}"
+            for opportunity in legacy["future_opportunities"]
+        )
+    else:
+        lines.append("- none")
+    lines.extend([
+        "",
+        "Active Contracts:",
+    ])
     if active_contracts:
         lines.extend(f"- {contract['title']}" for contract in active_contracts)
     else:
@@ -682,6 +758,7 @@ def build_crew_board_packet(board: dict[str, Any]) -> RenderPacket:
         agent_context={
             "player_id": board["player_id"],
             "crew": _shape_crew(crew),
+            "legacy": legacy,
             "active_contracts": [
                 _shape_contract(contract)
                 for contract in active_contracts

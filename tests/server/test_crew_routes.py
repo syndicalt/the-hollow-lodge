@@ -21,6 +21,18 @@ def command_auth(token: str, key: str) -> dict[str, str]:
     return {**auth(token), "Idempotency-Key": key}
 
 
+def activate_ash_window(client: TestClient) -> None:
+    response = client.post(
+        "/contracts/admin/activate",
+        headers={
+            "Idempotency-Key": "activate-ash-window",
+            "X-Hollow-Lodge-Admin-Token": "admin-secret",
+        },
+        json={"seed": "tests/fixtures/ash_window_contract.json"},
+    )
+    assert response.status_code == 201
+
+
 def test_crew_creation_and_join_are_authoritative_events(tmp_path):
     client = TestClient(create_app(data_dir=tmp_path, invite_codes=["a", "b"]))
     ada = register(client, "a", "Ada")
@@ -106,6 +118,82 @@ def test_crew_board_shows_member_roster_contracts_and_dossier(tmp_path):
     assert body["dossier"]["packet_lead_player_id"] == "player_0001"
     assert body["active_contracts"][0]["title"] == "The Saint's False Finger"
     assert "join_code" not in body["crew"]
+
+
+def test_crew_board_legacy_changes_future_contract_risk_and_opportunity(tmp_path, monkeypatch):
+    monkeypatch.setenv("HOLLOW_LODGE_ADMIN_TOKEN", "admin-secret")
+    client = TestClient(create_app(data_dir=tmp_path, invite_codes=["a"]))
+    activate_ash_window(client)
+    ada = register(client, "a", "Ada")
+    crew = client.post(
+        "/crews",
+        headers=command_auth(ada["token"], "crew-create-gilt"),
+        json={"name": "The Gilt Knives"},
+    ).json()
+    action = client.post(
+        "/actions",
+        headers=command_auth(ada["token"], "action-ledger"),
+        json={
+            "crew_id": crew["crew_id"],
+            "intent": "Inspect the red ledger timestamp for forged provenance.",
+            "confirmed": True,
+        },
+    )
+    claim = client.patch(
+        f"/proofs/dossiers/{crew['crew_id']}/framing",
+        headers=command_auth(ada["token"], "claim-ledger"),
+        json={"claim": "The finger is a false relic with forged provenance."},
+    )
+    resolved = client.post(
+        "/contracts/contract_false_finger/phases/auction-preview/lock",
+        headers=command_auth(ada["token"], "phase-lock"),
+        json={"hours_elapsed": 6},
+    )
+
+    response = client.get(f"/crews/{crew['crew_id']}/board", headers=auth(ada["token"]))
+
+    assert action.status_code == 201
+    assert claim.status_code == 200
+    assert resolved.status_code == 200
+    assert response.status_code == 200
+    legacy = response.json()["legacy"]
+    assert legacy["reputation"] == 2
+    assert legacy["heat"] == 1
+    assert legacy["favors"] == 1
+    assert legacy["debts"] == 0
+    assert legacy["completed_contracts"] == [
+        {
+            "contract_id": "contract_false_finger",
+            "title": "The Saint's False Finger",
+            "phase": "Auction Preview",
+            "standing": "Strong lead",
+            "score": 70,
+            "outcome": "strong_lead",
+        }
+    ]
+    future = {
+        opportunity["contract_id"]: opportunity
+        for opportunity in legacy["future_opportunities"]
+    }
+    assert future["contract_ash_window"]["modifiers"] == [
+        {
+            "kind": "reputation_leverage",
+            "label": "Reputation leverage",
+            "description": "Prior strong work gives this crew an opening on The Ash Window.",
+            "value": 2,
+        },
+        {
+            "kind": "heat_attention",
+            "label": "Heat attention",
+            "description": "Prior heat makes The Ash Window riskier for this crew.",
+            "value": 1,
+        },
+    ]
+    ash = {
+        contract["contract_id"]: contract
+        for contract in response.json()["active_contracts"]
+    }["contract_ash_window"]
+    assert ash["crew_modifiers"] == future["contract_ash_window"]["modifiers"]
 
 
 def test_crew_board_pending_decisions_include_dossier_needs_and_action(tmp_path):

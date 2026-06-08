@@ -8,6 +8,10 @@ from hollow_lodge.server.artifact_service import ArtifactService
 from hollow_lodge.server.auth import current_player
 from hollow_lodge.server.pending_decisions import pending_decisions_for_player
 from hollow_lodge.server.runtime_services import ensure_deal_service
+from hollow_lodge.server.projections import (
+    apply_crew_modifiers_to_contracts,
+    crew_legacy_from_contracts,
+)
 from hollow_lodge.server.services import ActionService, ContractService, ProofService
 
 
@@ -95,12 +99,21 @@ def crew_board(
         _crew_board_contract(contract)
         for contract in active_contracts
     ]
+    legacy = crew_legacy_from_contracts(
+        crew_id=crew_id,
+        contracts=active_contracts,
+    )
+    apply_crew_modifiers_to_contracts(
+        contracts=shaped_contracts,
+        opportunities=legacy["future_opportunities"],
+    )
     deals = _deals_for_crew(request, player.player_id, crew_id)
     crew = crew_service.summary(crew_id)
     return {
         "player_id": player.player_id,
         "crew": crew,
         "active_contracts": shaped_contracts,
+        "legacy": legacy,
         "dossier": _crew_board_dossier(dossier),
         "visible_artifacts": _visible_artifacts_for_player(request, player.player_id),
         "deals": deals,

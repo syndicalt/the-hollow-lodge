@@ -319,6 +319,136 @@ def test_crew_board_packet_shows_packet_lead_and_dossier_status():
     assert packet.agent_context["urgent_items"] == packet.agent_context["pending_decisions"]
 
 
+def test_crew_board_packet_renders_legacy_and_future_modifiers_without_hidden_fields():
+    packet = build_crew_board_packet(
+        {
+            "player_id": "player_0001",
+            "crew": {
+                "crew_id": "crew_0001",
+                "name": "The Gilt Knives",
+                "member_ids": ["player_0001"],
+                "member_count": 1,
+                "ready_for_full_contracts": False,
+                "readiness_warning": "Crews should have 3-5 players for full contracts.",
+            },
+            "legacy": {
+                "reputation": 2,
+                "heat": 1,
+                "favors": 1,
+                "debts": 0,
+                "scars": [],
+                "completed_contracts": [
+                    {
+                        "contract_id": "contract_false_finger",
+                        "title": "The Saint's False Finger",
+                        "phase": "Auction Preview",
+                        "standing": "Strong lead",
+                        "score": 82,
+                        "outcome": "strong_lead",
+                        "hidden_truth": "forgery",
+                    }
+                ],
+                "future_opportunities": [
+                    {
+                        "contract_id": "contract_ash_window",
+                        "title": "The Ash Window",
+                        "modifiers": [
+                            {
+                                "kind": "reputation_leverage",
+                                "label": "Reputation leverage",
+                                "description": "Prior strong work gives this crew an opening on The Ash Window.",
+                                "value": 2,
+                                "server_notes": "hidden",
+                            },
+                            {
+                                "kind": "heat_attention",
+                                "label": "Heat attention",
+                                "description": "Prior heat makes The Ash Window riskier for this crew.",
+                                "value": 1,
+                            },
+                        ],
+                    }
+                ],
+                "server_notes": "hidden",
+            },
+            "active_contracts": [
+                {
+                    "contract_id": "contract_ash_window",
+                    "title": "The Ash Window",
+                    "phase": {"name": "Cinder Preview", "remaining_hours": 4},
+                    "crew_heat": 0,
+                    "proof_dossier_needs": ["fire chronology"],
+                    "crew_modifiers": [
+                        {
+                            "kind": "reputation_leverage",
+                            "label": "Reputation leverage",
+                            "description": "Prior strong work gives this crew an opening on The Ash Window.",
+                            "value": 2,
+                        }
+                    ],
+                }
+            ],
+            "dossier": {
+                "dossier_id": "dossier_crew_0001",
+                "crew_id": "crew_0001",
+                "packet_lead_player_id": "player_0001",
+                "claim": "",
+                "evidence_ids": [],
+                "artifact_citations": [],
+                "member_contributions": [],
+            },
+            "visible_artifacts": [],
+            "deals": [],
+            "pending_decisions": [],
+        }
+    )
+
+    assert "Legacy:" in packet.player_markdown
+    assert "Reputation: 2" in packet.player_markdown
+    assert "Heat: 1" in packet.player_markdown
+    assert "- The Saint's False Finger: Strong lead (82)" in packet.player_markdown
+    assert "Future modifiers:" in packet.player_markdown
+    assert "- The Ash Window: Reputation leverage +2; Heat attention +1" in packet.player_markdown
+    assert "hidden" not in packet.player_markdown
+    assert packet.agent_context["legacy"] == {
+        "reputation": 2,
+        "heat": 1,
+        "favors": 1,
+        "debts": 0,
+        "scars": [],
+        "completed_contracts": [
+            {
+                "contract_id": "contract_false_finger",
+                "title": "The Saint's False Finger",
+                "phase": "Auction Preview",
+                "standing": "Strong lead",
+                "score": 82,
+                "outcome": "strong_lead",
+            }
+        ],
+        "future_opportunities": [
+            {
+                "contract_id": "contract_ash_window",
+                "title": "The Ash Window",
+                "modifiers": [
+                    {
+                        "kind": "reputation_leverage",
+                        "label": "Reputation leverage",
+                        "description": "Prior strong work gives this crew an opening on The Ash Window.",
+                        "value": 2,
+                    },
+                    {
+                        "kind": "heat_attention",
+                        "label": "Heat attention",
+                        "description": "Prior heat makes The Ash Window riskier for this crew.",
+                        "value": 1,
+                    },
+                ],
+            }
+        ],
+    }
+
+
 def test_contract_board_agent_context_omits_hidden_upstream_fields():
     board = {
         "campaign": {
