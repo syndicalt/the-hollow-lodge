@@ -5,7 +5,7 @@
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <meta
     name="description"
-    content="The Hollow Lodge is a multiplayer occult heist played through the command line."
+    content="The Hollow Lodge is an asynchronous occult heist game for LLM-native command-line clients."
   >
   <title>The Hollow Lodge</title>
   <style>
@@ -249,79 +249,96 @@
     <header class="banner">
       <img src="docs/assets/the-hollow-lodge-x-banner.png" alt="The Hollow Lodge title over a candlelit evidence table">
       <div class="banner-line">
-        <span>/contracts/saints-and-ledgers/auction-preview</span>
-        <span>authoritative log: sealed</span>
+        <span>/contracts/the-saints-false-finger</span>
+        <span>crew channel: open</span>
       </div>
     </header>
 
     <section class="content">
-      <p class="prompt" data-terminal-step data-type="command">$ tlh open</p>
+      <p class="prompt" data-terminal-step data-type="command">$ curl -fsSL https://www.thehollowlodge.com/install.sh | sh</p>
       <h1 data-terminal-step>The Hollow Lodge</h1>
       <p class="lead" data-terminal-step>
-        A multiplayer occult heist played through the command line. Join a crew,
-        read the contract board, trade proof with rivals, and submit your move
-        before the phase locks.
+        An asynchronous occult heist game for people who live in the terminal.
+        Join a crew, take a contract, build the proof packet, and decide how far
+        you trust the players trying to beat you to the same truth.
       </p>
 
-      <p class="command" data-terminal-step data-type="command">$ tlh inbox</p>
-      <pre class="output" data-terminal-step><span class="brass">INBOX - Gilt Knives</span>
+      <p class="command" data-terminal-step data-type="command">$ hollow-lodge inbox</p>
+      <pre class="output" data-terminal-step><span class="brass">Inbox: Gilt Knives</span>
 
 Contract: The Saint's False Finger
 Phase: Auction Preview
 Time left: 2h 18m
-Crew heat: Low, rising
+Crew heat: Low
 
-You are needed:
-- The proof dossier lacks a verified provenance chain.
-- Moth Choir sent you a copied auction ledger fragment.
-- Handler read: provenance unclear, passed through at least two hands.
-- Packet Lead has marked the current claim as "likely false relic."
-- You have 2 side actions remaining.</pre>
+New since last sync:
+- Moth Choir offered a copied auction ledger.
+- Your Packet Lead marked the current claim as "likely false relic."
+- The dossier still needs provenance, material analysis, and leverage.
+- The phase locks before the auction catalogue goes public.</pre>
 
-      <p class="command" data-terminal-step data-type="command">$ tlh check ledger-fragment-7 provenance</p>
-      <pre class="output" data-terminal-step>Surface read:
-- Fragment appears copied from an auction house ledger.
-- Origin masked before it reached Moth Choir.
-- The handwriting note may be summary, not transcript.
-- Confidence: useful but unsafe as primary proof.</pre>
+      <p class="command" data-terminal-step data-type="command">$ hollow-lodge contracts</p>
+      <pre class="output" data-terminal-step><span class="brass">The Saint's False Finger</span>
 
-      <p class="command" data-terminal-step data-type="command">$ tlh act "pose as a bored clerk correcting bidder credentials..."</p>
+The job is not to steal the relic. Not yet.
+
+Two crews have been asked to prove whether the finger is a saint's remains, a
+well-aged fraud, or something worse. The winning packet is the one that can
+survive the auction house, the church archivist, and a rival crew reading every
+weak sentence like a confession.</pre>
+
+      <p class="command" data-terminal-step data-type="command">$ hollow-lodge dossier --crew-id gilt-knives</p>
+      <pre class="output" data-terminal-step>Packet Lead: Mara
+Current claim: likely false relic
+Evidence:
+- ledger-fragment-7: useful, copied, source masked
+- chapel-timestamp-2: clean timestamp, thin context
+- wax-impression-4: strong material clue, not yet linked
+
+Open risk:
+The packet proves someone lied. It does not yet prove who benefited.</pre>
+
+      <p class="command" data-terminal-step data-type="command">$ hollow-lodge msg moth-choir "What do you want for the original ledger source?"</p>
+      <pre class="output" data-terminal-step>Brokered message sent.
+
+Private conversations are private until they are not. Deals can leak. Fragments
+can be copied. A true statement can still be bait.</pre>
+
+      <p class="command" data-terminal-step data-type="command">$ hollow-lodge act "pose as a bored clerk correcting bidder credentials..."</p>
       <pre class="output" data-terminal-step>Handler frames the action:
-Intent: test ledger authenticity against known chapel timestamp
+Intent: test the ledger against the chapel timestamp
 Approach: deception / provenance analysis
 Risk posture: cautious
 Assets exposed: false clerk identity, chapel timestamp
-Scope: one verification attempt, no theft
-Crew noise: normal
+Scope: one verification attempt
+Heat risk: whole crew, low but real
 
 Confirm? y</pre>
 
-      <p class="command" data-terminal-step data-type="command">$ tlh explain --plain</p>
-      <pre class="output" data-terminal-step>The Hollow Lodge is not a chatbot improvising an adventure around you.
+      <p class="command" data-terminal-step data-type="command">$ hollow-lodge explain --plain</p>
+      <pre class="output" data-terminal-step>The Hollow Lodge is built around crews, contracts, proof, and consequences.
 
-The contract has a hidden truth before play begins. The server keeps it. Your
-crew does not win by sounding dramatic. You win by building the cleaner proof
-dossier: credible evidence, corroboration, source independence, provenance,
-reasoning, and restraint under heat.
+The server keeps the authoritative log. Your local session shows only what your
+player can see: inbox, crew board, contract board, messages, fragments, actions,
+phase results, and heat.
 
-Rival crews can talk. They can trade useful fragments. They can omit context.
-They can give you something true in a form that will poison your argument if
-you trust it too quickly.
+Your local agent helps you with organization, but the decisions are yours.
 
-The terminal is not a retro skin. It is where the game happens: inbox, contract
-board, brokered messages, proof checks, freeform actions, phase lock, result
-reveal.</pre>
+Use it to summarize a thread, shape a risky action, spot gaps in the packet, or
+translate your intent into something the game can resolve. Do not let it choose
+your strategy unless you are willing to live with the result.</pre>
 
-      <p class="command" data-terminal-step data-type="command">$ tlh status</p>
-      <pre class="output" data-terminal-step>Campaign in development: Saints & Ledgers
-Starter contract: The Saint's False Finger
-Current goal: prove the first playable vertical slice.</pre>
+      <p class="command" data-terminal-step data-type="command">$ hollow-lodge onboard</p>
+      <pre class="output" data-terminal-step>Players with an invite can register immediately.
+Players without one can request an access key.
+
+The Lodge opens in small crews first.</pre>
 
       <p class="command cursor" data-terminal-step data-type="command">$</p>
 
       <footer class="status">
-        <pre class="output muted" data-terminal-step>www.thehollowlodge.com
-single-page field note for a game still under construction</pre>
+        <pre class="output muted" data-terminal-step>install: curl -fsSL https://www.thehollowlodge.com/install.sh | sh
+server: server.thehollowlodge.com</pre>
       </footer>
     </section>
   </main>

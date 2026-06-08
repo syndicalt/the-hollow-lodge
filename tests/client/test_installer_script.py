@@ -25,3 +25,10 @@ def test_site_is_self_contained_for_railway_static_deploy():
     assert Path("site/Dockerfile").exists()
     assert Path("site/nginx.conf").exists()
     assert Path("site/docs/assets/the-hollow-lodge-x-banner.png").exists()
+
+
+def test_site_copy_includes_public_installer_and_agent_boundary():
+    html = Path("site/index.html").read_text(encoding="utf-8")
+
+    assert "curl -fsSL https://www.thehollowlodge.com/install.sh | sh" in html
+    assert "Your local agent helps you with organization, but the decisions are yours." in html
