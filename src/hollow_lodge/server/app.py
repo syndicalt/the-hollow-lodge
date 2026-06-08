@@ -7,6 +7,7 @@ from fastapi import FastAPI
 
 from hollow_lodge.eventlog.jsonl_store import JsonlEventStore
 from hollow_lodge.server.artifact_service import ArtifactService
+from hollow_lodge.server.deal_service import DealService
 from hollow_lodge.server.routes_actions import router as actions_router
 from hollow_lodge.server.routes_artifacts import router as artifacts_router
 from hollow_lodge.server.routes_chat import router as chat_router
@@ -54,6 +55,11 @@ def create_app(
     app.state.crew_service = crew_service
     if artifact_service is not None:
         app.state.artifact_service = artifact_service
+        app.state.deal_service = DealService(
+            event_store=event_store,
+            crew_service=crew_service,
+            artifact_service=artifact_service,
+        )
     app.state.chat_service = ChatService(
         event_store=event_store,
         identity_service=identity_service,
