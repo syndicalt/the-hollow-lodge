@@ -184,6 +184,104 @@ def test_chat_message_ids_advance_after_app_recreation(tmp_path):
     assert second.json()["message_id"] == "msg_000002"
 
 
+def test_direct_message_with_artifact_ids_records_references(tmp_path):
+    client = TestClient(create_app(data_dir=tmp_path, invite_codes=["a", "b"]))
+    ada = register(client, "a", "Ada")
+    grace = register(client, "b", "Grace")
+
+    sent = client.post(
+        "/chat/direct",
+        headers=command_auth(ada["token"], "chat-direct-artifact"),
+        json={
+            "recipient_player_id": grace["player_id"],
+            "body": "See the ledger.",
+            "artifact_ids": ["artifact_ledger_rubric"],
+        },
+    )
+
+    assert sent.status_code == 201
+    visible = client.get("/events", headers=auth(grace["token"])).json()["events"]
+    chat_event = [event for event in visible if event["type"] == "chat.message.created"][0]
+    assert chat_event["payload"]["artifact_ids"] == ["artifact_ledger_rubric"]
+
+
+def test_direct_message_with_hidden_artifact_id_returns_404(tmp_path):
+    client = TestClient(create_app(data_dir=tmp_path, invite_codes=["a", "b"]))
+    ada = register(client, "a", "Ada")
+    grace = register(client, "b", "Grace")
+
+    sent = client.post(
+        "/chat/direct",
+        headers=command_auth(ada["token"], "chat-direct-hidden-artifact"),
+        json={
+            "recipient_player_id": grace["player_id"],
+            "body": "See this.",
+            "artifact_ids": ["artifact_chapel_debt_mark"],
+        },
+    )
+
+    assert sent.status_code == 404
+    assert sent.json()["detail"] == "artifact not found"
+
+
+def test_replayed_chat_key_includes_artifact_ids_in_conflict_check(tmp_path):
+    client = TestClient(create_app(data_dir=tmp_path, invite_codes=["a", "b"]))
+    ada = register(client, "a", "Ada")
+    grace = register(client, "b", "Grace")
+    payload = {
+        "recipient_player_id": grace["player_id"],
+        "body": "See the ledger.",
+        "artifact_ids": ["artifact_ledger_rubric"],
+    }
+
+    first = client.post(
+        "/chat/direct",
+        headers=command_auth(ada["token"], "chat-direct-artifact-replay"),
+        json=payload,
+    )
+    replay = client.post(
+        "/chat/direct",
+        headers=command_auth(ada["token"], "chat-direct-artifact-replay"),
+        json=payload,
+    )
+    conflict = client.post(
+        "/chat/direct",
+        headers=command_auth(ada["token"], "chat-direct-artifact-replay"),
+        json={**payload, "artifact_ids": []},
+    )
+
+    assert first.status_code == 201
+    assert replay.status_code == 201
+    assert replay.json()["message_id"] == first.json()["message_id"]
+    assert conflict.status_code == 409
+
+
+def test_recipient_cannot_inspect_attached_artifact_unless_transferred_separately(tmp_path):
+    client = TestClient(create_app(data_dir=tmp_path, invite_codes=["a", "b"]))
+    ada = register(client, "a", "Ada")
+    grace = register(client, "b", "Grace")
+    transfer = client.post(
+        "/artifacts/artifact_ledger_rubric/transfer",
+        headers=command_auth(ada["token"], "transfer-ledger-to-self"),
+        json={"recipient_player_id": ada["player_id"]},
+    )
+    copied_id = transfer.json()["artifact_id"]
+
+    sent = client.post(
+        "/chat/direct",
+        headers=command_auth(ada["token"], "chat-direct-self-copy"),
+        json={
+            "recipient_player_id": grace["player_id"],
+            "body": "Reference only.",
+            "artifact_ids": [copied_id],
+        },
+    )
+    recipient_view = client.get(f"/artifacts/{copied_id}", headers=auth(grace["token"]))
+
+    assert sent.status_code == 201
+    assert recipient_view.status_code == 404
+
+
 def _visible_types(
     client: TestClient,
     token: str,

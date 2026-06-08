@@ -226,6 +226,25 @@ class FakeApi:
             "source_chain": ["archive:lot-card"],
         }
 
+    def transfer_artifact(
+        self,
+        *,
+        artifact_id: str,
+        recipient_player_id: str,
+        idempotency_key: str,
+    ):
+        self.calls.append(
+            (
+                "transfer_artifact",
+                {
+                    "artifact_id": artifact_id,
+                    "recipient_player_id": recipient_player_id,
+                    "idempotency_key": idempotency_key,
+                },
+            )
+        )
+        return {"artifact_id": f"{artifact_id}.copy.{recipient_player_id}.1"}
+
     def check_provenance(self, *, fragment_id: str, idempotency_key: str):
         self.calls.append(
             (
@@ -605,6 +624,48 @@ def test_direct_message_command_uses_saved_config(tmp_path, monkeypatch):
                 "recipient_player_id": "player_0002",
                 "body": "Trade the ledger?",
                 "idempotency_key": "chat-direct-key",
+            },
+        )
+    ]
+
+
+def test_artifact_transfer_command_uses_saved_config(tmp_path, monkeypatch):
+    runner = CliRunner()
+    created_clients: list[FakeApi] = []
+
+    def fake_client(**kwargs):
+        client = FakeApi(**kwargs)
+        created_clients.append(client)
+        return client
+
+    monkeypatch.setattr(cli, "HollowLodgeApi", fake_client)
+    monkeypatch.setattr(cli, "new_command_key", lambda prefix: f"{prefix}-key")
+    config_path = tmp_path / "config.json"
+    save_config(
+        config_path,
+        ClientConfig(server_url="http://testserver", player_id="player_0001", token="token"),
+    )
+
+    result = runner.invoke(
+        cli.app,
+        [
+            "artifact-transfer",
+            "artifact_ledger_rubric",
+            "player_0002",
+            "--config",
+            str(config_path),
+        ],
+    )
+
+    assert result.exit_code == 0
+    assert result.output == "artifact_ledger_rubric.copy.player_0002.1 transferred\n"
+    assert created_clients[0].calls == [
+        (
+            "transfer_artifact",
+            {
+                "artifact_id": "artifact_ledger_rubric",
+                "recipient_player_id": "player_0002",
+                "idempotency_key": "artifact-transfer-key",
             },
         )
     ]

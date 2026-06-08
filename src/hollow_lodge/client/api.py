@@ -82,10 +82,15 @@ class HollowLodgeApi:
         recipient_player_id: str,
         body: str,
         idempotency_key: str,
+        artifact_ids: list[str] | tuple[str, ...] | None = None,
     ) -> dict[str, Any]:
         return self._post(
             "/chat/direct",
-            json={"recipient_player_id": recipient_player_id, "body": body},
+            json={
+                "recipient_player_id": recipient_player_id,
+                "body": body,
+                "artifact_ids": list(artifact_ids or []),
+            },
             idempotency_key=idempotency_key,
         )
 
@@ -95,10 +100,15 @@ class HollowLodgeApi:
         crew_id: str,
         body: str,
         idempotency_key: str,
+        artifact_ids: list[str] | tuple[str, ...] | None = None,
     ) -> dict[str, Any]:
         return self._post(
             "/chat/crew",
-            json={"crew_id": crew_id, "body": body},
+            json={
+                "crew_id": crew_id,
+                "body": body,
+                "artifact_ids": list(artifact_ids or []),
+            },
             idempotency_key=idempotency_key,
         )
 
@@ -109,6 +119,7 @@ class HollowLodgeApi:
         recipient_crew_id: str,
         body: str,
         idempotency_key: str,
+        artifact_ids: list[str] | tuple[str, ...] | None = None,
     ) -> dict[str, Any]:
         return self._post(
             "/chat/crew-to-crew",
@@ -116,6 +127,7 @@ class HollowLodgeApi:
                 "sender_crew_id": sender_crew_id,
                 "recipient_crew_id": recipient_crew_id,
                 "body": body,
+                "artifact_ids": list(artifact_ids or []),
             },
             idempotency_key=idempotency_key,
         )
@@ -155,6 +167,19 @@ class HollowLodgeApi:
         return self._post(
             f"/artifacts/{artifact_id}/inspect",
             json={},
+            idempotency_key=idempotency_key,
+        )
+
+    def transfer_artifact(
+        self,
+        *,
+        artifact_id: str,
+        recipient_player_id: str,
+        idempotency_key: str,
+    ) -> dict[str, Any]:
+        return self._post(
+            f"/artifacts/{artifact_id}/transfer",
+            json={"recipient_player_id": recipient_player_id},
             idempotency_key=idempotency_key,
         )
 

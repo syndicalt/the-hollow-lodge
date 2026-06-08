@@ -512,13 +512,18 @@ class ChatService:
         event_store: JsonlEventStore,
         identity_service: IdentityService,
         crew_service: CrewService,
+        artifact_service: ArtifactService | None = None,
     ):
         self._event_store = event_store
         self._identity_service = identity_service
         self._crew_service = crew_service
+        self._artifact_service = artifact_service
         self._lock = threading.RLock()
         self._message_count = 0
         self._rebuild_from_events()
+
+    def set_artifact_service(self, artifact_service: ArtifactService) -> None:
+        self._artifact_service = artifact_service
 
     def send_direct(
         self,
@@ -527,9 +532,15 @@ class ChatService:
         recipient_player_id: str,
         body: str,
         idempotency_key: str,
+        artifact_ids: list[str] | tuple[str, ...] = (),
     ) -> ChatMessage:
         if not self._identity_service.has_player(recipient_player_id):
             raise KeyError(recipient_player_id)
+        normalized_artifact_ids = tuple(artifact_ids)
+        self._validate_artifact_ids(
+            sender_player_id=sender_player_id,
+            artifact_ids=normalized_artifact_ids,
+        )
         with self._lock:
             replay = self._matching_chat_replay(
                 idempotency_key=idempotency_key,
@@ -537,6 +548,7 @@ class ChatService:
                 sender_player_id=sender_player_id,
                 body=body,
                 recipient_player_id=recipient_player_id,
+                artifact_ids=normalized_artifact_ids,
             )
             if replay is not None:
                 return replay
@@ -545,6 +557,7 @@ class ChatService:
                 sender_player_id=sender_player_id,
                 recipient_player_id=recipient_player_id,
                 body=body,
+                artifact_ids=normalized_artifact_ids,
             )
             self._event_store.append_command(
                 event_type="chat.message.created",
@@ -562,9 +575,15 @@ class ChatService:
         crew_id: str,
         body: str,
         idempotency_key: str,
+        artifact_ids: list[str] | tuple[str, ...] = (),
     ) -> ChatMessage:
         if not self._crew_service.is_member(crew_id=crew_id, player_id=sender_player_id):
             raise PermissionError(crew_id)
+        normalized_artifact_ids = tuple(artifact_ids)
+        self._validate_artifact_ids(
+            sender_player_id=sender_player_id,
+            artifact_ids=normalized_artifact_ids,
+        )
         with self._lock:
             replay = self._matching_chat_replay(
                 idempotency_key=idempotency_key,
@@ -572,6 +591,7 @@ class ChatService:
                 sender_player_id=sender_player_id,
                 body=body,
                 sender_crew_id=crew_id,
+                artifact_ids=normalized_artifact_ids,
             )
             if replay is not None:
                 return replay
@@ -580,6 +600,7 @@ class ChatService:
                 sender_player_id=sender_player_id,
                 sender_crew_id=crew_id,
                 body=body,
+                artifact_ids=normalized_artifact_ids,
             )
             self._event_store.append_command(
                 event_type="chat.message.created",
@@ -598,11 +619,17 @@ class ChatService:
         recipient_crew_id: str,
         body: str,
         idempotency_key: str,
+        artifact_ids: list[str] | tuple[str, ...] = (),
     ) -> ChatMessage:
         if not self._crew_service.is_member(crew_id=sender_crew_id, player_id=sender_player_id):
             raise PermissionError(sender_crew_id)
         if not self._crew_service.has_crew(recipient_crew_id):
             raise KeyError(recipient_crew_id)
+        normalized_artifact_ids = tuple(artifact_ids)
+        self._validate_artifact_ids(
+            sender_player_id=sender_player_id,
+            artifact_ids=normalized_artifact_ids,
+        )
         with self._lock:
             replay = self._matching_chat_replay(
                 idempotency_key=idempotency_key,
@@ -611,6 +638,7 @@ class ChatService:
                 body=body,
                 sender_crew_id=sender_crew_id,
                 recipient_crew_id=recipient_crew_id,
+                artifact_ids=normalized_artifact_ids,
             )
             if replay is not None:
                 return replay
@@ -620,6 +648,7 @@ class ChatService:
                 sender_crew_id=sender_crew_id,
                 recipient_crew_id=recipient_crew_id,
                 body=body,
+                artifact_ids=normalized_artifact_ids,
             )
             self._event_store.append_command(
                 event_type="chat.message.created",
@@ -646,6 +675,24 @@ class ChatService:
                     raise ValueError("idempotency key conflict")
             return message
         return None
+
+    def _validate_artifact_ids(
+        self,
+        *,
+        sender_player_id: str,
+        artifact_ids: tuple[str, ...],
+    ) -> None:
+        if not artifact_ids:
+            return
+        if self._artifact_service is None:
+            raise KeyError(artifact_ids[0])
+        sender_crew_ids = self._crew_service.crew_ids_for_player(sender_player_id)
+        for artifact_id in artifact_ids:
+            self._artifact_service.inspect_artifact(
+                artifact_id=artifact_id,
+                player_id=sender_player_id,
+                crew_ids=sender_crew_ids,
+            )
 
     def _rebuild_from_events(self) -> None:
         for event in self._event_store.read():

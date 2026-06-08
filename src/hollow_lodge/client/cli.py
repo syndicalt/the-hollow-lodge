@@ -360,6 +360,21 @@ def artifact(
     _echo_packet(packet, as_json=as_json)
 
 
+@app.command("artifact-transfer")
+def artifact_transfer(
+    artifact_id: str = typer.Argument(..., help="Artifact id."),
+    recipient: str = typer.Argument(..., help="Recipient player id."),
+    config: Path = typer.Option(DEFAULT_CONFIG_PATH, "--config", help="Local config path."),
+) -> None:
+    """Transfer a copy of a visible artifact to another player."""
+    response = _api_from_config(load_config(config)).transfer_artifact(
+        artifact_id=artifact_id,
+        recipient_player_id=recipient,
+        idempotency_key=new_command_key("artifact-transfer"),
+    )
+    typer.echo(f"{response['artifact_id']} transferred")
+
+
 @app.command()
 def sync(
     config: Path = typer.Option(DEFAULT_CONFIG_PATH, "--config", help="Local config path."),

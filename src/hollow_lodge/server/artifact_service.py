@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import threading
 
+from hollow_lodge.domain.artifacts import ArtifactCopy
 from hollow_lodge.domain.events import EventVisibility
 from hollow_lodge.eventlog.jsonl_store import JsonlEventStore
 from hollow_lodge.eventlog.visibility import Principal
@@ -22,9 +23,14 @@ class ArtifactService:
         player_id: str,
         crew_ids: list[str] | tuple[str, ...] = (),
     ) -> dict:
-        return STARTER_ARTIFACT_GRAPH.visible_slice(
-            self._visible_artifact_ids(player_id, crew_ids=crew_ids)
+        visible_ids = self._visible_artifact_ids(player_id, crew_ids=crew_ids)
+        visible = STARTER_ARTIFACT_GRAPH.visible_slice(visible_ids)
+        visible["artifacts"].extend(
+            surface
+            for surface in self._visible_transferred_copy_surfaces(player_id)
+            if surface["artifact_id"] in visible_ids
         )
+        return visible
 
     def inspect_artifact(
         self,
@@ -34,12 +40,18 @@ class ArtifactService:
         idempotency_key: str | None = None,
         crew_ids: list[str] | tuple[str, ...] = (),
     ) -> dict:
-        artifact = STARTER_ARTIFACT_GRAPH.artifact_by_id(artifact_id)
-        if artifact.artifact_id not in self._visible_artifact_ids(
+        if artifact_id not in self._visible_artifact_ids(
             player_id,
             crew_ids=crew_ids,
         ):
             raise KeyError(artifact_id)
+        try:
+            artifact = STARTER_ARTIFACT_GRAPH.artifact_by_id(artifact_id)
+        except KeyError:
+            copied = self._transferred_copy_surface(artifact_id)
+            if copied is None:
+                raise
+            return copied
         if idempotency_key is not None:
             self._event_store.append_command(
                 event_type="artifact.inspected",
@@ -52,6 +64,71 @@ class ArtifactService:
                 idempotency_key=idempotency_key,
             )
         return artifact.inspection_view()
+
+    def transfer_artifact(
+        self,
+        *,
+        artifact_id: str,
+        sender_player_id: str,
+        recipient_player_id: str,
+        idempotency_key: str,
+        sender_crew_ids: list[str] | tuple[str, ...] = (),
+    ) -> dict:
+        with self._lock:
+            replay = self._matching_transfer_replay(
+                idempotency_key=idempotency_key,
+                source_artifact_id=artifact_id,
+                sender_player_id=sender_player_id,
+                recipient_player_id=recipient_player_id,
+            )
+            if replay is not None:
+                return replay
+
+            artifact = STARTER_ARTIFACT_GRAPH.artifact_by_id(artifact_id)
+            if artifact.artifact_id not in self._visible_artifact_ids(
+                sender_player_id,
+                crew_ids=sender_crew_ids,
+            ):
+                raise KeyError(artifact_id)
+            if artifact.copy_policy == "sealed":
+                raise ValueError("artifact cannot be transferred")
+
+            artifact_copy = ArtifactCopy.from_source(
+                source_artifact_id=artifact.artifact_id,
+                copy_artifact_id=(
+                    f"{artifact.artifact_id}.copy."
+                    f"{recipient_player_id}.{self._next_transfer_number()}"
+                ),
+                contract_id=artifact.contract_id,
+                sender_player_id=sender_player_id,
+                recipient_player_id=recipient_player_id,
+                title=artifact.title,
+                public_summary=artifact.public_summary,
+            )
+            surface = artifact_copy.surface_view()
+            self._event_store.append_command(
+                event_type="artifact.transferred",
+                actor_id=sender_player_id,
+                visibility=EventVisibility.players([sender_player_id, recipient_player_id]),
+                payload={
+                    "sender_player_id": sender_player_id,
+                    "recipient_player_id": recipient_player_id,
+                    "source_artifact_id": artifact.artifact_id,
+                    "surface": surface,
+                },
+                idempotency_key=idempotency_key,
+            )
+            self._event_store.append_command(
+                event_type="artifact.transferred.internal",
+                actor_id="server",
+                visibility=EventVisibility.server_only(),
+                payload={
+                    "transfer_idempotency_key": idempotency_key,
+                    "artifact_copy": artifact_copy.model_dump(mode="json"),
+                },
+                idempotency_key=f"{idempotency_key}.internal",
+            )
+            return surface
 
     def grant_artifact_access(
         self,
@@ -107,4 +184,51 @@ class ArtifactService:
             for event in self._event_store.read_for_principal(principal):
                 if event.type == "artifact.access.granted":
                     visible_ids.add(event.payload["artifact_id"])
+                elif event.type == "artifact.transferred":
+                    visible_ids.add(event.payload["surface"]["artifact_id"])
         return visible_ids
+
+    def _visible_transferred_copy_surfaces(self, player_id: str) -> list[dict]:
+        return [
+            event.payload["surface"]
+            for event in self._event_store.read_for_principal(Principal.player(player_id))
+            if event.type == "artifact.transferred"
+        ]
+
+    def _transferred_copy_surface(self, artifact_id: str) -> dict | None:
+        for event in self._event_store.read():
+            if event.type != "artifact.transferred.internal":
+                continue
+            copied = ArtifactCopy.model_validate(event.payload["artifact_copy"])
+            if copied.artifact_id == artifact_id:
+                return copied.surface_view()
+        return None
+
+    def _matching_transfer_replay(
+        self,
+        *,
+        idempotency_key: str,
+        source_artifact_id: str,
+        sender_player_id: str,
+        recipient_player_id: str,
+    ) -> dict | None:
+        for event in self._event_store.read():
+            if event.idempotency_key != idempotency_key:
+                continue
+            if event.type != "artifact.transferred":
+                raise ValueError("idempotency key conflict")
+            if (
+                event.payload.get("source_artifact_id") != source_artifact_id
+                or event.payload.get("sender_player_id") != sender_player_id
+                or event.payload.get("recipient_player_id") != recipient_player_id
+            ):
+                raise ValueError("idempotency key conflict")
+            return event.payload["surface"]
+        return None
+
+    def _next_transfer_number(self) -> int:
+        return 1 + sum(
+            1
+            for event in self._event_store.read()
+            if event.type == "artifact.transferred.internal"
+        )

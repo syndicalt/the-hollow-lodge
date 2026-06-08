@@ -58,6 +58,7 @@ def create_app(
         event_store=event_store,
         identity_service=identity_service,
         crew_service=crew_service,
+        artifact_service=artifact_service,
     )
     app.state.action_service = ActionService(
         event_store=event_store,

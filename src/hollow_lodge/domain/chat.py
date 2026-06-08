@@ -16,4 +16,7 @@ class ChatMessage:
     recipient_player_id: str | None = None
     sender_crew_id: str | None = None
     recipient_crew_id: str | None = None
+    artifact_ids: tuple[str, ...] = ()
 
+    def __post_init__(self) -> None:
+        object.__setattr__(self, "artifact_ids", tuple(self.artifact_ids))
