@@ -11,7 +11,9 @@ from hollow_lodge.server.runtime_services import ensure_deal_service
 from hollow_lodge.server.rumors import visible_rumors_for_crew
 from hollow_lodge.server.projections import (
     apply_crew_modifiers_to_contracts,
+    apply_contract_unlock_status,
     crew_legacy_from_contracts,
+    unlocked_actionable_contracts,
 )
 from hollow_lodge.server.services import ActionService, ContractService, ProofService
 
@@ -89,13 +91,21 @@ def crew_board(
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="crew not found")
     if not crew_service.is_member(crew_id=crew_id, player_id=player.player_id):
         raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="not a crew member")
-    active_contracts = [
+    contracts = [
         contract
         for contract in _contract_service(request).board_for_player(player.player_id)[
             "contracts"
         ]
         if contract.get("lifecycle_status", "active") != "archived"
     ]
+    deals = _deals_for_crew(request, player.player_id, crew_id)
+    apply_contract_unlock_status(
+        contracts=contracts,
+        crew_ids=[crew_id],
+        events=request.app.state.event_store.read(),
+        deals_by_crew={crew_id: deals},
+    )
+    active_contracts = unlocked_actionable_contracts(contracts)
     dossier = _proof_service(request).dossier_for_crew(
         crew_id=crew_id,
         player_id=player.player_id,
@@ -104,7 +114,6 @@ def crew_board(
         _crew_board_contract(contract)
         for contract in active_contracts
     ]
-    deals = _deals_for_crew(request, player.player_id, crew_id)
     legacy = crew_legacy_from_contracts(
         crew_id=crew_id,
         contracts=active_contracts,

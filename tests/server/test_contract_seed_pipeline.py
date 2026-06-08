@@ -25,6 +25,41 @@ def test_contract_seed_file_loads_typed_contract_and_artifact_graph():
         "witness leverage",
     ]
     assert seed.phase_rewards == ()
+    assert seed.unlock_requirements == ()
+
+
+def test_contract_seed_accepts_data_defined_unlock_requirements():
+    raw = json.loads(FIXTURE.read_text(encoding="utf-8"))
+    raw["unlock_requirements"] = [
+        {
+            "scope": "crew",
+            "metric": "reputation",
+            "minimum": 2,
+            "label": "Reputation 2+",
+            "description": "Complete earlier Lodge work with a strong lead.",
+        }
+    ]
+
+    seed = ContractSeed.model_validate(raw)
+
+    assert seed.unlock_requirements[0].metric == "reputation"
+    assert seed.unlock_requirements[0].minimum == 2
+
+
+def test_contract_seed_rejects_unsupported_unlock_metric():
+    raw = json.loads(FIXTURE.read_text(encoding="utf-8"))
+    raw["unlock_requirements"] = [
+        {
+            "scope": "crew",
+            "metric": "hidden_truth",
+            "minimum": 1,
+            "label": "Hidden truth",
+            "description": "Do not expose server-only truth.",
+        }
+    ]
+
+    with pytest.raises(ValueError):
+        ContractSeed.model_validate(raw)
 
 
 def test_contract_seed_rejects_contract_campaign_mismatch(tmp_path):

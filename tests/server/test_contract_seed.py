@@ -1,3 +1,6 @@
+import json
+from pathlib import Path
+
 from fastapi.testclient import TestClient
 
 from hollow_lodge.server.app import create_app
@@ -106,6 +109,172 @@ def test_admin_can_activate_second_contract_seed_and_render_it(tmp_path, monkeyp
     assert "cinder oracle" not in contracts.text
     assert "contract.hidden_truth.seeded" not in events.text
     assert "cinder oracle" not in events.text
+
+
+def test_legacy_locked_contract_is_visible_but_not_actionable_until_crew_qualifies(
+    tmp_path,
+    monkeypatch,
+):
+    monkeypatch.setenv("HOLLOW_LODGE_ADMIN_TOKEN", "admin-secret")
+    seed = json.loads(Path("tests/fixtures/ash_window_contract.json").read_text(encoding="utf-8"))
+    seed["unlock_requirements"] = [
+        {
+            "scope": "crew",
+            "metric": "reputation",
+            "minimum": 2,
+            "label": "Reputation 2+",
+            "description": "Complete earlier Lodge work with a strong lead.",
+        }
+    ]
+    seed_path = tmp_path / "locked-ash-window.json"
+    seed_path.write_text(json.dumps(seed), encoding="utf-8")
+    client = TestClient(create_app(data_dir=tmp_path, invite_codes=["a"]))
+    ada = register(client, "a", "Ada")
+    crew = client.post(
+        "/crews",
+        headers={
+            **auth(ada["token"]),
+            "Idempotency-Key": "crew-create",
+        },
+        json={"name": "The Gilt Knives"},
+    ).json()
+
+    activated = client.post(
+        "/contracts/admin/activate",
+        headers={
+            "Idempotency-Key": "activate-locked-ash-window",
+            "X-Hollow-Lodge-Admin-Token": "admin-secret",
+        },
+        json={"seed": str(seed_path)},
+    )
+    contracts_before = client.get("/contracts", headers=auth(ada["token"]))
+    inbox_before = client.get("/inbox", headers=auth(ada["token"]))
+    crew_before = client.get(f"/crews/{crew['crew_id']}/board", headers=auth(ada["token"]))
+
+    assert activated.status_code == 201
+    rendered_before = {
+        contract["contract_id"]: contract
+        for contract in contracts_before.json()["contracts"]
+    }
+    locked = rendered_before["contract_ash_window"]
+    assert locked["unlock_status"] == {
+        "state": "locked",
+        "requirements": [
+            {
+                "scope": "crew",
+                "metric": "reputation",
+                "minimum": 2,
+                "current": 0,
+                "label": "Reputation 2+",
+                "description": "Complete earlier Lodge work with a strong lead.",
+                "satisfied": False,
+            }
+        ],
+    }
+    assert "contract_ash_window" not in {
+        contract["contract_id"]
+        for contract in inbox_before.json()["active_contracts"]
+    }
+    assert "contract_ash_window" not in {
+        contract["contract_id"]
+        for contract in crew_before.json()["active_contracts"]
+    }
+    assert not any(
+        decision.get("contract_id") == "contract_ash_window"
+        for decision in crew_before.json()["pending_decisions"]
+    )
+
+    client.post(
+        "/actions",
+        headers={
+            **auth(ada["token"]),
+            "Idempotency-Key": "action-ledger",
+        },
+        json={
+            "crew_id": crew["crew_id"],
+            "intent": "Inspect the red ledger timestamp for forged provenance.",
+            "confirmed": True,
+        },
+    )
+    client.patch(
+        f"/proofs/dossiers/{crew['crew_id']}/framing",
+        headers={
+            **auth(ada["token"]),
+            "Idempotency-Key": "claim-ledger",
+        },
+        json={"claim": "The finger is a false relic with forged provenance."},
+    )
+    resolved = client.post(
+        "/contracts/contract_false_finger/phases/auction-preview/lock",
+        headers={
+            **auth(ada["token"]),
+            "Idempotency-Key": "phase-lock",
+        },
+        json={"hours_elapsed": 6},
+    )
+    contracts_after = client.get("/contracts", headers=auth(ada["token"]))
+    inbox_after = client.get("/inbox", headers=auth(ada["token"]))
+    crew_after = client.get(f"/crews/{crew['crew_id']}/board", headers=auth(ada["token"]))
+    visible_events = client.get("/events", headers=auth(ada["token"]))
+
+    assert resolved.status_code == 200
+    rendered_after = {
+        contract["contract_id"]: contract
+        for contract in contracts_after.json()["contracts"]
+    }
+    assert rendered_after["contract_ash_window"]["unlock_status"]["state"] == "unlocked"
+    assert "contract_ash_window" in {
+        contract["contract_id"]
+        for contract in inbox_after.json()["active_contracts"]
+    }
+    assert "contract_ash_window" in {
+        contract["contract_id"]
+        for contract in crew_after.json()["active_contracts"]
+    }
+    assert "unlock_requirements" not in visible_events.text
+    assert "hidden_truth" not in visible_events.text
+
+
+def test_contract_activation_replay_rejects_different_unlock_requirements(
+    tmp_path,
+    monkeypatch,
+):
+    monkeypatch.setenv("HOLLOW_LODGE_ADMIN_TOKEN", "admin-secret")
+    seed = json.loads(Path("tests/fixtures/ash_window_contract.json").read_text(encoding="utf-8"))
+    locked_seed = {
+        **seed,
+        "unlock_requirements": [
+            {
+                "scope": "crew",
+                "metric": "reputation",
+                "minimum": 2,
+                "label": "Reputation 2+",
+                "description": "Complete earlier Lodge work with a strong lead.",
+            }
+        ],
+    }
+    client = TestClient(create_app(data_dir=tmp_path, invite_codes=["a"]))
+
+    first = client.post(
+        "/contracts/admin/activate",
+        headers={
+            "Idempotency-Key": "activate-ash-window",
+            "X-Hollow-Lodge-Admin-Token": "admin-secret",
+        },
+        json={"seed": seed},
+    )
+    conflict = client.post(
+        "/contracts/admin/activate",
+        headers={
+            "Idempotency-Key": "activate-ash-window",
+            "X-Hollow-Lodge-Admin-Token": "admin-secret",
+        },
+        json={"seed": locked_seed},
+    )
+
+    assert first.status_code == 201
+    assert conflict.status_code == 409
+    assert conflict.json()["detail"] == "idempotency key conflict"
 
 
 def test_admin_can_archive_contract_and_remove_it_from_active_inbox(tmp_path, monkeypatch):

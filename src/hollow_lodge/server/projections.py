@@ -4,6 +4,7 @@ from typing import Any
 
 from hollow_lodge.domain.contracts import Campaign, Contract
 from hollow_lodge.domain.events import GameEvent
+from hollow_lodge.server.contract_seed import ContractUnlockRequirement
 
 
 def contract_board_from_events(events: list[GameEvent]) -> dict[str, Any]:
@@ -50,6 +51,38 @@ def inbox_from_board(*, player_id: str, board: dict[str, Any]) -> dict[str, Any]
         ],
         "incoming_proof_fragments": [],
     }
+
+
+def apply_contract_unlock_status(
+    *,
+    contracts: list[dict[str, Any]],
+    crew_ids: list[str],
+    events: list[GameEvent],
+    deals_by_crew: dict[str, list[dict[str, Any]]] | None = None,
+) -> None:
+    requirements_by_contract = _unlock_requirements_by_contract(events)
+    for contract in contracts:
+        requirements = requirements_by_contract.get(contract["contract_id"], ())
+        if not requirements:
+            continue
+        status = _unlock_status_for_contract(
+            contract=contract,
+            contracts=contracts,
+            crew_ids=crew_ids,
+            events=events,
+            requirements=requirements,
+            deals_by_crew=deals_by_crew or {},
+        )
+        contract["unlock_status"] = status
+
+
+def unlocked_actionable_contracts(contracts: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    return [
+        contract
+        for contract in contracts
+        if contract.get("lifecycle_status", "active") != "archived"
+        and contract.get("unlock_status", {}).get("state") != "locked"
+    ]
 
 
 def crew_legacy_from_contracts(
@@ -163,6 +196,91 @@ def crew_legacy_from_contracts(
         "completed_contracts": completed_contracts,
         "future_opportunities": future_opportunities,
     }
+
+
+def _unlock_requirements_by_contract(
+    events: list[GameEvent],
+) -> dict[str, tuple[ContractUnlockRequirement, ...]]:
+    requirements_by_contract: dict[str, tuple[ContractUnlockRequirement, ...]] = {}
+    for event in events:
+        if event.type != "artifact.graph.seeded":
+            continue
+        payload = event.payload
+        graph_payload = payload.get("graph", payload)
+        contract_id = str(graph_payload.get("contract_id", ""))
+        requirements_by_contract[contract_id] = tuple(
+            ContractUnlockRequirement.model_validate(requirement)
+            for requirement in payload.get("unlock_requirements", ())
+        )
+    return requirements_by_contract
+
+
+def _unlock_status_for_contract(
+    *,
+    contract: dict[str, Any],
+    contracts: list[dict[str, Any]],
+    crew_ids: list[str],
+    events: list[GameEvent],
+    requirements: tuple[ContractUnlockRequirement, ...],
+    deals_by_crew: dict[str, list[dict[str, Any]]],
+) -> dict[str, Any]:
+    if not crew_ids:
+        shaped = [
+            _shape_unlock_requirement(requirement, current=0)
+            for requirement in requirements
+        ]
+        return {"state": "locked", "requirements": shaped}
+
+    per_crew_statuses = [
+        [
+            _shape_unlock_requirement(
+                requirement,
+                current=_unlock_metric_value(
+                    requirement.metric,
+                    crew_legacy_from_contracts(
+                        crew_id=crew_id,
+                        contracts=contracts,
+                        deals=deals_by_crew.get(crew_id, []),
+                        events=events,
+                    ),
+                ),
+            )
+            for requirement in requirements
+        ]
+        for crew_id in crew_ids
+    ]
+    for status in per_crew_statuses:
+        if all(requirement["satisfied"] for requirement in status):
+            return {"state": "unlocked", "requirements": status}
+    best_status = max(
+        per_crew_statuses,
+        key=lambda status: sum(int(requirement["satisfied"]) for requirement in status),
+    )
+    return {"state": "locked", "requirements": best_status}
+
+
+def _shape_unlock_requirement(
+    requirement: ContractUnlockRequirement,
+    *,
+    current: int,
+) -> dict[str, Any]:
+    return {
+        "scope": requirement.scope,
+        "metric": requirement.metric,
+        "minimum": requirement.minimum,
+        "current": current,
+        "label": requirement.label,
+        "description": requirement.description,
+        "satisfied": current >= requirement.minimum,
+    }
+
+
+def _unlock_metric_value(metric: str, legacy: dict[str, Any]) -> int:
+    if metric in {"reputation", "favors"}:
+        return int(legacy.get(metric, 0))
+    if metric == "deal_conduct_score":
+        return int(legacy.get("deal_conduct", {}).get("score", 0))
+    return 0
 
 
 def legacy_delta_for_standing(

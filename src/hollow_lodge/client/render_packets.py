@@ -83,6 +83,28 @@ def _shape_modifier(modifier: dict[str, Any]) -> dict[str, Any]:
     }
 
 
+def _shape_unlock_status(status: dict[str, Any]) -> dict[str, Any]:
+    return {
+        "state": status.get("state", "unlocked"),
+        "requirements": [
+            {
+                key: requirement[key]
+                for key in (
+                    "scope",
+                    "metric",
+                    "minimum",
+                    "current",
+                    "label",
+                    "description",
+                    "satisfied",
+                )
+                if key in requirement
+            }
+            for requirement in status.get("requirements", [])
+        ],
+    }
+
+
 def _shape_contract(contract: dict[str, Any]) -> dict[str, Any]:
     shaped = {
         key: contract[key]
@@ -103,6 +125,8 @@ def _shape_contract(contract: dict[str, Any]) -> dict[str, Any]:
             _shape_modifier(modifier)
             for modifier in contract["crew_modifiers"]
         ]
+    if "unlock_status" in contract:
+        shaped["unlock_status"] = _shape_unlock_status(contract["unlock_status"])
     return shaped
 
 
@@ -781,6 +805,14 @@ def build_contract_board_packet(board: dict[str, Any]) -> RenderPacket:
         lines.append(f"## {contract['title']}")
         if "lifecycle_status" in contract:
             lines.append(f"Status: {contract['lifecycle_status']}")
+        if "unlock_status" in contract:
+            unlock_status = _shape_unlock_status(contract["unlock_status"])
+            lines.append(f"Unlock: {unlock_status['state']}")
+            for requirement in unlock_status["requirements"]:
+                lines.append(
+                    f"- {requirement.get('label', requirement.get('metric', 'Requirement'))}: "
+                    f"{requirement.get('current', 0)}/{requirement.get('minimum', 0)}"
+                )
         lines.append(f"Phase: {phase['name']} ({phase.get('remaining_hours', 0)}h remaining)")
         lines.append(f"Crew Heat: {contract.get('crew_heat', 0)}")
         lines.append("Proof dossier needs:")

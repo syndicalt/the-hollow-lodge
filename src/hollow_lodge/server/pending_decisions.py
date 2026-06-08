@@ -64,6 +64,7 @@ def pending_decisions_for_player(
         contract
         for contract in active_contracts
         if contract.get("phase", {}).get("status", "active") not in {"locked", "resolved"}
+        and contract.get("unlock_status", {}).get("state") != "locked"
     ]
     for crew_id in crew_ids:
         for rumor in rumors_by_crew.get(crew_id, []):

@@ -20,6 +20,20 @@ class PhaseReward(BaseModel):
     reason: str = Field(min_length=1)
 
 
+class ContractUnlockRequirement(BaseModel):
+    model_config = ConfigDict(frozen=True)
+
+    scope: Literal["crew"]
+    metric: Literal[
+        "reputation",
+        "favors",
+        "deal_conduct_score",
+    ]
+    minimum: int = Field(ge=0)
+    label: str = Field(min_length=1)
+    description: str = Field(min_length=1)
+
+
 class ContractSeed(BaseModel):
     model_config = ConfigDict(frozen=True)
 
@@ -30,6 +44,7 @@ class ContractSeed(BaseModel):
     public_artifact_ids: tuple[str, ...] = Field(default_factory=tuple)
     scoring_hints: dict[str, Any] = Field(default_factory=dict)
     phase_rewards: tuple[PhaseReward, ...] = Field(default_factory=tuple)
+    unlock_requirements: tuple[ContractUnlockRequirement, ...] = Field(default_factory=tuple)
 
     @model_validator(mode="after")
     def validate_seed_consistency(self) -> ContractSeed:

@@ -971,6 +971,11 @@ class ContractService:
                     or existing.payload["status"] != "active"
                 ):
                     raise ValueError("idempotency key conflict")
+                if not self._activation_seed_payload_matches(
+                    seed=seed,
+                    idempotency_key=idempotency_key,
+                ):
+                    raise ValueError("idempotency key conflict")
                 return {
                     "contract_id": seed.contract.contract_id,
                     "lifecycle_status": "active",
@@ -1002,6 +1007,10 @@ class ContractService:
                     "scoring_hints": seed.scoring_hints,
                     "phase_rewards": [
                         reward.model_dump(mode="json") for reward in seed.phase_rewards
+                    ],
+                    "unlock_requirements": [
+                        requirement.model_dump(mode="json")
+                        for requirement in seed.unlock_requirements
                     ],
                 },
                 idempotency_key=f"{idempotency_key}.artifact-graph",
@@ -1193,6 +1202,43 @@ class ContractService:
             if event.idempotency_key == idempotency_key:
                 return event
         return None
+
+    def _activation_seed_payload_matches(
+        self,
+        *,
+        seed: ContractSeed,
+        idempotency_key: str,
+    ) -> bool:
+        expected = {
+            f"{idempotency_key}.campaign": seed.campaign.model_dump(mode="json"),
+            f"{idempotency_key}.hidden-truth": {
+                **seed.hidden_truth.model_dump(mode="json"),
+                "contract_id": seed.contract.contract_id,
+            },
+            f"{idempotency_key}.artifact-graph": {
+                "graph": seed.artifact_graph.model_dump(mode="json"),
+                "public_artifact_ids": list(seed.public_artifact_ids),
+                "scoring_hints": seed.scoring_hints,
+                "phase_rewards": [
+                    reward.model_dump(mode="json") for reward in seed.phase_rewards
+                ],
+                "unlock_requirements": [
+                    requirement.model_dump(mode="json")
+                    for requirement in seed.unlock_requirements
+                ],
+            },
+            f"{idempotency_key}.board": seed.contract.model_dump(mode="json"),
+        }
+        events_by_key = {
+            event.idempotency_key: event
+            for event in self._event_store.read()
+            if event.idempotency_key in expected
+        }
+        for key, payload in expected.items():
+            event = events_by_key.get(key)
+            if event is None or event.payload != payload:
+                return False
+        return True
 
     def _contract_lifecycle_status(self, contract_id: str) -> str:
         status = "active"

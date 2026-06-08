@@ -73,6 +73,58 @@ def test_contract_board_packet_renders_archived_lifecycle_status():
     assert packet.agent_context["contracts"][0]["lifecycle_status"] == "archived"
 
 
+def test_contract_board_packet_renders_locked_contract_requirements():
+    packet = build_contract_board_packet(
+        {
+            "campaign": BOARD["campaign"],
+            "contracts": [
+                {
+                    **BOARD["contracts"][0],
+                    "contract_id": "contract_ash_window",
+                    "title": "The Ash Window",
+                    "phase": {"name": "Cinder Preview", "remaining_hours": 4},
+                    "proof_dossier_needs": ["fire chronology"],
+                    "unlock_status": {
+                        "state": "locked",
+                        "requirements": [
+                            {
+                                "scope": "crew",
+                                "metric": "reputation",
+                                "minimum": 2,
+                                "current": 0,
+                                "label": "Reputation 2+",
+                                "description": "Complete earlier Lodge work with a strong lead.",
+                                "satisfied": False,
+                                "hidden_truth": "server-only",
+                            }
+                        ],
+                        "server_notes": "hidden",
+                    },
+                }
+            ],
+        }
+    )
+
+    assert "## The Ash Window" in packet.player_markdown
+    assert "Unlock: locked" in packet.player_markdown
+    assert "- Reputation 2+: 0/2" in packet.player_markdown
+    assert "hidden" not in packet.player_markdown
+    assert packet.agent_context["contracts"][0]["unlock_status"] == {
+        "state": "locked",
+        "requirements": [
+            {
+                "scope": "crew",
+                "metric": "reputation",
+                "minimum": 2,
+                "current": 0,
+                "label": "Reputation 2+",
+                "description": "Complete earlier Lodge work with a strong lead.",
+                "satisfied": False,
+            }
+        ],
+    }
+
+
 def test_inbox_packet_prioritizes_actionable_items_for_codex():
     packet = build_inbox_packet(
         {

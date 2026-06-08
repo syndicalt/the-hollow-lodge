@@ -12,6 +12,11 @@ from hollow_lodge.server.artifact_service import ArtifactService
 from hollow_lodge.server.auth import current_player
 from hollow_lodge.server.contract_seed import ContractSeed, load_contract_seed_file
 from hollow_lodge.server.pending_decisions import pending_decisions_for_player
+from hollow_lodge.server.projections import (
+    apply_contract_unlock_status,
+    inbox_from_board,
+    unlocked_actionable_contracts,
+)
 from hollow_lodge.server.runtime_services import ensure_deal_service
 from hollow_lodge.server.rumors import visible_rumors_for_crew
 from hollow_lodge.server.services import ActionService, ContractService, ProofService
@@ -38,7 +43,7 @@ def contracts(
     request: Request,
     player: Player = Depends(current_player),
 ):
-    payload = _contract_service(request).board_for_player(player.player_id)
+    payload = _board_for_player_with_unlocks(request, player.player_id)
     payload["visible_artifacts"] = _visible_artifacts_for_player(request, player.player_id)
     return payload
 
@@ -104,7 +109,11 @@ def inbox(
     request: Request,
     player: Player = Depends(current_player),
 ):
-    payload = _contract_service(request).inbox_for_player(player.player_id)
+    board = _board_for_player_with_unlocks(request, player.player_id)
+    payload = inbox_from_board(player_id=player.player_id, board=board)
+    payload["active_contracts"] = unlocked_actionable_contracts(
+        payload["active_contracts"]
+    )
     payload["display_name"] = player.display_name
     payload["visible_artifacts"] = _visible_artifacts_for_player(request, player.player_id)
     payload["deals"] = _deals_for_player(request, player.player_id)
@@ -134,6 +143,21 @@ def inbox(
             for crew_id in crew_ids
         },
         rumors_by_crew=rumors_by_crew,
+    )
+    return payload
+
+
+def _board_for_player_with_unlocks(request: Request, player_id: str) -> dict:
+    payload = _contract_service(request).board_for_player(player_id)
+    crew_ids = request.app.state.crew_service.crew_ids_for_player(player_id)
+    apply_contract_unlock_status(
+        contracts=payload["contracts"],
+        crew_ids=crew_ids,
+        events=request.app.state.event_store.read(),
+        deals_by_crew={
+            crew_id: _deals_for_crew(request, player_id, crew_id)
+            for crew_id in crew_ids
+        },
     )
     return payload
 
@@ -186,6 +210,14 @@ def _visible_artifacts_for_player(request: Request, player_id: str) -> list[dict
 
 def _deals_for_player(request: Request, player_id: str) -> list[dict]:
     return ensure_deal_service(request).list_for_player(player_id)
+
+
+def _deals_for_crew(request: Request, player_id: str, crew_id: str) -> list[dict]:
+    return [
+        deal
+        for deal in _deals_for_player(request, player_id)
+        if crew_id in {deal.get("proposer_crew_id"), deal.get("recipient_crew_id")}
+    ]
 
 
 def _parse_contract_seed(seed: Any) -> ContractSeed:

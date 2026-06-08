@@ -258,8 +258,12 @@ Status:
   sanitized public `crew.legacy.delta.recorded` events for each standing, and
   crew legacy projections prefer those auditable events while preserving
   derived fallback for older logs.
+- Data-defined contract unlocks completed: contract seeds can declare
+  server-only crew legacy requirements, and Codex contract boards show safe
+  locked/unlocked status while inbox and crew-board work queues omit locked
+  contracts until the crew qualifies.
 - Deferred: multi-day campaign arc authoring, scars/death/legacy inheritance,
-  and unlockable contracts based on long-term history.
+  and richer long-term unlock paths.
 
 Likely files:
 
@@ -711,6 +715,27 @@ Expected verification:
 - `pytest tests/client/test_render_packets.py::test_activity_summary_packet_shapes_visible_events_without_server_only_fields -q`
 - `pytest tests/server/test_action_routes.py tests/server/test_crew_routes.py tests/server/test_crew_legacy_projection.py -q`
 - `pytest tests/client/test_render_packets.py tests/client/test_codex_session.py tests/test_mcp_server.py tests/client/test_action_cli.py tests/client/test_api.py -q`
+- `pytest -q`
+
+### Slice 25: Legacy-Gated Contract Unlocks
+
+Status: completed.
+
+Add data-defined contract unlock requirements for long-term crew progression.
+Contract seeds can now define server-only crew legacy requirements using
+positive-progress metrics such as reputation, favors, and deal conduct score.
+The server stores raw requirements with the server-only artifact graph seed,
+projects only safe `unlock_status` summaries onto player contract boards, and
+keeps locked contracts out of inbox and crew-board actionable queues until the
+crew qualifies. Activation replay now rejects idempotency-key reuse with
+different seed-derived unlock payloads.
+
+Expected verification:
+
+- `pytest tests/server/test_contract_seed_pipeline.py::test_contract_seed_accepts_data_defined_unlock_requirements tests/server/test_contract_seed_pipeline.py::test_contract_seed_rejects_unsupported_unlock_metric tests/client/test_render_packets.py::test_contract_board_packet_renders_locked_contract_requirements -q`
+- `pytest tests/server/test_contract_seed.py::test_legacy_locked_contract_is_visible_but_not_actionable_until_crew_qualifies tests/server/test_contract_seed.py::test_contract_activation_replay_rejects_different_unlock_requirements -q`
+- `pytest tests/server/test_contract_seed_pipeline.py tests/server/test_contract_seed.py tests/server/test_crew_routes.py tests/server/test_crew_legacy_projection.py tests/server/test_phase_resolution.py -q`
+- `pytest tests/client/test_render_packets.py tests/client/test_contract_board.py tests/e2e/test_contract_content_pipeline.py tests/e2e/test_codex_render_surfaces.py -q`
 - `pytest -q`
 
 ## Completion Standard
