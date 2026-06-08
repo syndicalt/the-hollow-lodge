@@ -149,6 +149,56 @@ def test_deal_proposal_leaks_partial_rumor_to_bystander_crew_without_deal_terms(
     }
 
 
+def test_deal_rumor_becomes_pending_decision_for_bystander_crew(tmp_path):
+    app = create_app(data_dir=tmp_path, invite_codes=["a", "b", "c"])
+    client = TestClient(app)
+    ada = register(client, "a", "Ada")
+    bela = register(client, "b", "Bela")
+    caro = register(client, "c", "Caro")
+    gilt = create_crew(client, ada["token"], "Gilt Knives", "crew-gilt")
+    moth = create_crew(client, bela["token"], "Moth Lanterns", "crew-moth")
+    ash = create_crew(client, caro["token"], "Ash Keys", "crew-ash")
+    app.state.artifact_service.grant_artifact_access(
+        artifact_id="artifact_chapel_debt_mark",
+        actor_id="server",
+        player_ids=[],
+        crew_ids=[moth["crew_id"]],
+        reason="test setup",
+        idempotency_key="grant-chapel",
+    )
+
+    proposed = client.post(
+        "/deals",
+        headers=command_auth(ada["token"], "deal-propose"),
+        json=proposed_deal_payload(gilt, moth),
+    )
+    board = client.get(f"/crews/{ash['crew_id']}/board", headers=auth(caro["token"]))
+    inbox = client.get("/inbox", headers=auth(caro["token"]))
+
+    expected = {
+        "kind": "rumor_response",
+        "label": "Rumor needs response",
+        "description": (
+            "Rumor rumor_deal_000001 suggests escrow_terms_detected. "
+            "Decide whether to verify, ignore, or answer with a crew action."
+        ),
+        "crew_id": ash["crew_id"],
+        "rumor_id": "rumor_deal_000001",
+        "source_type": "deal.proposed",
+        "source_id": proposed.json()["deal_id"],
+        "pressure": "escrow_terms_detected",
+        "action": "review_rumor",
+    }
+    assert proposed.status_code == 201
+    assert board.status_code == 200
+    assert inbox.status_code == 200
+    assert expected in board.json()["pending_decisions"]
+    assert expected in inbox.json()["pending_decisions"]
+    assert "artifact_ledger_rubric" not in str(board.json()["pending_decisions"])
+    assert "artifact_chapel_debt_mark" not in str(board.json()["pending_decisions"])
+    assert "Do not cite us." not in str(board.json()["pending_decisions"])
+
+
 def test_persisted_deals_render_after_restart_before_deals_route(tmp_path):
     app = create_app(data_dir=tmp_path, invite_codes=["a", "b"])
     client = TestClient(app)

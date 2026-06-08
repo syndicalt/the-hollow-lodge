@@ -283,6 +283,22 @@ def test_crew_board_packet_shows_packet_lead_and_dossier_status():
                     "contract_id": "contract_false_finger",
                     "missing_need": "provenance chain",
                     "server_notes": "hidden",
+                },
+                {
+                    "kind": "rumor_response",
+                    "label": "Rumor needs response",
+                    "description": (
+                        "Rumor rumor_msg_000001 suggests artifact_reference_detected. "
+                        "Decide whether to verify, ignore, or answer with a crew action."
+                    ),
+                    "crew_id": "crew_0001",
+                    "rumor_id": "rumor_msg_000001",
+                    "source_type": "chat.message.created",
+                    "source_id": "msg_000001",
+                    "pressure": "artifact_reference_detected",
+                    "action": "review_rumor",
+                    "artifact_ids": ["artifact_private_escrow"],
+                    "body": "The ledger proves our leverage.",
                 }
             ],
         }
@@ -299,8 +315,10 @@ def test_crew_board_packet_shows_packet_lead_and_dossier_status():
     assert "- rumor_msg_000001: A private artifact discussion is echoing between crews." in packet.player_markdown
     assert "Pending decisions:" in packet.player_markdown
     assert "- Dossier needs provenance chain: The Saint's False Finger still needs dossier coverage for provenance chain." in packet.player_markdown
+    assert "- Rumor needs response: Rumor rumor_msg_000001 suggests artifact_reference_detected. Decide whether to verify, ignore, or answer with a crew action." in packet.player_markdown
     assert "artifact_private_escrow" not in packet.player_markdown
     assert "Do not cite us." not in packet.player_markdown
+    assert "The ledger proves our leverage" not in packet.player_markdown
     assert "hidden" not in packet.player_markdown
     assert "hidden_truth" not in packet.player_markdown
     assert "server_notes" not in packet.player_markdown
@@ -343,6 +361,20 @@ def test_crew_board_packet_shows_packet_lead_and_dossier_status():
             "crew_id": "crew_0001",
             "contract_id": "contract_false_finger",
             "missing_need": "provenance chain",
+        },
+        {
+            "kind": "rumor_response",
+            "label": "Rumor needs response",
+            "description": (
+                "Rumor rumor_msg_000001 suggests artifact_reference_detected. "
+                "Decide whether to verify, ignore, or answer with a crew action."
+            ),
+            "crew_id": "crew_0001",
+            "rumor_id": "rumor_msg_000001",
+            "source_type": "chat.message.created",
+            "source_id": "msg_000001",
+            "pressure": "artifact_reference_detected",
+            "action": "review_rumor",
         }
     ]
     assert packet.agent_context["urgent_items"] == packet.agent_context["pending_decisions"]

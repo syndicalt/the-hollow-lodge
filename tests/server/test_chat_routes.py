@@ -153,6 +153,51 @@ def test_crew_to_crew_artifact_chat_leaks_redacted_rumor_to_bystander_crew(tmp_p
     assert bystander_board.json()["rumors"] == [rumor]
 
 
+def test_visible_chat_rumor_becomes_pending_decision_for_bystander_crew(tmp_path):
+    client = TestClient(create_app(data_dir=tmp_path, invite_codes=["a", "b", "c"]))
+    ada = register(client, "a", "Ada")
+    grace = register(client, "b", "Grace")
+    linus = register(client, "c", "Linus")
+    gilt = make_crew(client, ada["token"], "The Gilt Knives")["crew_id"]
+    moth = make_crew(client, grace["token"], "The Moth Choir")["crew_id"]
+    ash = make_crew(client, linus["token"], "The Ash Keys")["crew_id"]
+
+    sent = client.post(
+        "/chat/crew-to-crew",
+        headers=command_auth(ada["token"], "chat-gilt-moth-ledger"),
+        json={
+            "sender_crew_id": gilt,
+            "recipient_crew_id": moth,
+            "body": "The ledger proves our leverage. Keep quiet.",
+            "artifact_ids": ["artifact_ledger_rubric"],
+        },
+    )
+    board = client.get(f"/crews/{ash}/board", headers=auth(linus["token"]))
+    inbox = client.get("/inbox", headers=auth(linus["token"]))
+
+    expected = {
+        "kind": "rumor_response",
+        "label": "Rumor needs response",
+        "description": (
+            "Rumor rumor_msg_000001 suggests artifact_reference_detected. "
+            "Decide whether to verify, ignore, or answer with a crew action."
+        ),
+        "crew_id": ash,
+        "rumor_id": "rumor_msg_000001",
+        "source_type": "chat.message.created",
+        "source_id": sent.json()["message_id"],
+        "pressure": "artifact_reference_detected",
+        "action": "review_rumor",
+    }
+    assert sent.status_code == 201
+    assert board.status_code == 200
+    assert inbox.status_code == 200
+    assert expected in board.json()["pending_decisions"]
+    assert expected in inbox.json()["pending_decisions"]
+    assert "artifact_ledger_rubric" not in str(board.json()["pending_decisions"])
+    assert "The ledger proves our leverage" not in str(board.json()["pending_decisions"])
+
+
 def test_crew_to_crew_chat_without_artifacts_does_not_leak_rumor(tmp_path):
     client = TestClient(create_app(data_dir=tmp_path, invite_codes=["a", "b", "c"]))
     ada = register(client, "a", "Ada")

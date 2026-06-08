@@ -282,10 +282,13 @@ Status:
   attach explicit artifact references now emit redacted system-pressure rumors
   to nonparticipant crews, without exposing message text, artifact IDs, or
   player IDs.
+- Third social-pressure slice completed: visible rumors from deals or chat now
+  create `rumor_response` pending decisions in inbox and crew board surfaces,
+  so players can respond from Codex without hunting through raw activity.
 - Escrowed deal acceptance remains participant-scoped and server-enforced.
 - Deferred: freeform chat body pressure scanning, reputation consequences for
-  deal conduct, deliberate cleanup/counterintelligence actions, and richer
-  rumor verification.
+  deal conduct, explicit cleanup/counterintelligence mutations, and richer
+  rumor verification outcomes.
 
 Likely files:
 
@@ -458,6 +461,21 @@ instructions from the chat.
 Expected verification:
 
 - `pytest tests/server/test_chat_routes.py tests/client/test_render_packets.py -q`
+- `pytest -q`
+
+### Slice 12: Actionable Rumor Decisions
+
+Status: completed.
+
+Make existing leak pressure actionable in Codex: any visible redacted rumor can
+produce a `rumor_response` pending decision for the bystander crew. The decision
+appears in both the crew board and personal inbox, uses only sanitized rumor
+fields, and points the player toward verification, ignoring, or answering with a
+crew action. This slice does not add a new cleanup mutation yet.
+
+Expected verification:
+
+- `pytest tests/server/test_chat_routes.py tests/server/test_deal_routes.py tests/server/test_crew_routes.py tests/client/test_render_packets.py -q`
 - `pytest -q`
 
 ## Completion Standard

@@ -15,10 +15,12 @@ def pending_decisions_for_player(
     crew_summaries: dict[str, dict[str, Any]],
     dossiers: dict[str, dict[str, Any]],
     actions_by_crew: dict[str, list[dict[str, Any]]] | None = None,
+    rumors_by_crew: dict[str, list[dict[str, Any]]] | None = None,
 ) -> list[Decision]:
     decisions: list[Decision] = []
     visible_crew_ids = set(crew_ids)
     actions_by_crew = actions_by_crew or {}
+    rumors_by_crew = rumors_by_crew or {}
 
     for deal in deals:
         if deal.get("status") != "proposed":
@@ -58,6 +60,24 @@ def pending_decisions_for_player(
         if contract.get("phase", {}).get("status", "active") not in {"locked", "resolved"}
     ]
     for crew_id in crew_ids:
+        for rumor in rumors_by_crew.get(crew_id, []):
+            decisions.append(
+                {
+                    "kind": "rumor_response",
+                    "label": "Rumor needs response",
+                    "description": (
+                        f"Rumor {rumor['rumor_id']} suggests {rumor['pressure']}. "
+                        "Decide whether to verify, ignore, or answer with a crew action."
+                    ),
+                    "crew_id": crew_id,
+                    "rumor_id": rumor["rumor_id"],
+                    "source_type": rumor["source_type"],
+                    "source_id": rumor["source_id"],
+                    "pressure": rumor["pressure"],
+                    "action": "review_rumor",
+                }
+            )
+
         dossier = dossiers.get(crew_id, {})
         for contract in unresolved_contracts:
             for need in _missing_dossier_needs(contract, dossier):

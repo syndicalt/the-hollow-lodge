@@ -13,6 +13,7 @@ from hollow_lodge.server.auth import current_player
 from hollow_lodge.server.contract_seed import ContractSeed, load_contract_seed_file
 from hollow_lodge.server.pending_decisions import pending_decisions_for_player
 from hollow_lodge.server.runtime_services import ensure_deal_service
+from hollow_lodge.server.rumors import visible_rumors_for_crew
 from hollow_lodge.server.services import ActionService, ContractService, ProofService
 
 
@@ -81,6 +82,10 @@ def inbox(
     payload["visible_artifacts"] = _visible_artifacts_for_player(request, player.player_id)
     payload["deals"] = _deals_for_player(request, player.player_id)
     crew_ids = request.app.state.crew_service.crew_ids_for_player(player.player_id)
+    rumors_by_crew = {
+        crew_id: visible_rumors_for_crew(request.app.state.event_store, crew_id)
+        for crew_id in crew_ids
+    }
     payload["pending_decisions"] = pending_decisions_for_player(
         player_id=player.player_id,
         crew_ids=crew_ids,
@@ -101,6 +106,7 @@ def inbox(
             crew_id: _action_service(request).current_actions_for_crew(crew_id)
             for crew_id in crew_ids
         },
+        rumors_by_crew=rumors_by_crew,
     )
     return payload
 
