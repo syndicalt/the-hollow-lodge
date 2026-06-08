@@ -280,6 +280,18 @@ class CrewService:
         with self._lock:
             return crew_id in self._crews
 
+    def summary(self, crew_id: str) -> dict:
+        with self._lock:
+            crew = self._crews[crew_id]
+            return {
+                "crew_id": crew.crew_id,
+                "name": crew.name,
+                "member_ids": list(crew.member_ids),
+                "member_count": len(crew.member_ids),
+                "ready_for_full_contracts": crew.ready_for_full_contracts,
+                "readiness_warning": crew.readiness_warning,
+            }
+
     def crew_ids_for_player(self, player_id: str) -> list[str]:
         with self._lock:
             return [

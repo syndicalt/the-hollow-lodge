@@ -5,6 +5,7 @@ from fastapi import APIRouter, Depends, Header, HTTPException, Request, status
 
 from hollow_lodge.domain.identity import Player
 from hollow_lodge.server.auth import current_player
+from hollow_lodge.server.services import ContractService, ProofService
 
 
 router = APIRouter(prefix="/crews", tags=["crews"])
@@ -69,6 +70,30 @@ def join_crew(
     return _crew_response(crew, include_join_code=False)
 
 
+@router.get("/{crew_id}/board")
+def crew_board(
+    crew_id: str,
+    request: Request,
+    player: Player = Depends(current_player),
+):
+    crew_service = request.app.state.crew_service
+    if not crew_service.has_crew(crew_id):
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="crew not found")
+    if not crew_service.is_member(crew_id=crew_id, player_id=player.player_id):
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="not a crew member")
+    return {
+        "player_id": player.player_id,
+        "crew": crew_service.summary(crew_id),
+        "active_contracts": _contract_service(request).board_for_player(player.player_id)[
+            "contracts"
+        ],
+        "dossier": _proof_service(request).dossier_for_crew(
+            crew_id=crew_id,
+            player_id=player.player_id,
+        ),
+    }
+
+
 def _crew_response(crew, *, include_join_code: bool = True) -> CrewResponse:
     return CrewResponse(
         crew_id=crew.crew_id,
@@ -78,3 +103,21 @@ def _crew_response(crew, *, include_join_code: bool = True) -> CrewResponse:
         readiness_warning=crew.readiness_warning,
         join_code=crew.join_code if include_join_code else None,
     )
+
+
+def _contract_service(request: Request) -> ContractService:
+    if not hasattr(request.app.state, "contract_service"):
+        request.app.state.contract_service = ContractService(
+            event_store=request.app.state.event_store,
+        )
+    return request.app.state.contract_service
+
+
+def _proof_service(request: Request) -> ProofService:
+    if not hasattr(request.app.state, "proof_service"):
+        request.app.state.proof_service = ProofService(
+            event_store=request.app.state.event_store,
+            identity_service=request.app.state.identity_service,
+            crew_service=request.app.state.crew_service,
+        )
+    return request.app.state.proof_service

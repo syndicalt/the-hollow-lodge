@@ -81,6 +81,48 @@ def test_crew_readiness_warns_below_three_but_allows_two_player_slice(tmp_path):
     assert "3-5" in joined.json()["readiness_warning"]
 
 
+def test_crew_board_shows_member_roster_contracts_and_dossier(tmp_path):
+    client = TestClient(create_app(data_dir=tmp_path, invite_codes=["a", "b"]))
+    ada = register(client, "a", "Ada")
+    grace = register(client, "b", "Grace")
+    crew = client.post(
+        "/crews",
+        headers=command_auth(ada["token"], "crew-create-gilt"),
+        json={"name": "The Gilt Knives"},
+    ).json()
+    client.post(
+        f"/crews/{crew['crew_id']}/join",
+        headers=command_auth(grace["token"], "crew-join-grace"),
+        json={"join_code": crew["join_code"]},
+    )
+
+    response = client.get(f"/crews/{crew['crew_id']}/board", headers=auth(ada["token"]))
+
+    assert response.status_code == 200
+    body = response.json()
+    assert body["crew"]["crew_id"] == crew["crew_id"]
+    assert body["crew"]["name"] == "The Gilt Knives"
+    assert body["crew"]["member_ids"] == ["player_0001", "player_0002"]
+    assert body["dossier"]["packet_lead_player_id"] == "player_0001"
+    assert body["active_contracts"][0]["title"] == "The Saint's False Finger"
+    assert "join_code" not in body["crew"]
+
+
+def test_crew_board_is_crew_scoped(tmp_path):
+    client = TestClient(create_app(data_dir=tmp_path, invite_codes=["a", "b"]))
+    ada = register(client, "a", "Ada")
+    grace = register(client, "b", "Grace")
+    crew = client.post(
+        "/crews",
+        headers=command_auth(ada["token"], "crew-create-gilt"),
+        json={"name": "The Gilt Knives"},
+    ).json()
+
+    denied = client.get(f"/crews/{crew['crew_id']}/board", headers=auth(grace["token"]))
+
+    assert denied.status_code == 403
+
+
 def test_join_requires_crew_join_code(tmp_path):
     client = TestClient(create_app(data_dir=tmp_path, invite_codes=["a", "b"]))
     ada = register(client, "a", "Ada")

@@ -74,6 +74,51 @@ def _shape_proof_fragment(fragment: dict[str, Any]) -> dict[str, Any]:
     }
 
 
+def _shape_crew(crew: dict[str, Any]) -> dict[str, Any]:
+    return {
+        key: crew[key]
+        for key in (
+            "crew_id",
+            "name",
+            "member_ids",
+            "member_count",
+            "ready_for_full_contracts",
+            "readiness_warning",
+        )
+        if key in crew
+    }
+
+
+def _shape_dossier_contribution(contribution: dict[str, Any]) -> dict[str, Any]:
+    return {
+        key: contribution[key]
+        for key in ("player_id", "note", "evidence_ids")
+        if key in contribution
+    }
+
+
+def _shape_dossier(dossier: dict[str, Any]) -> dict[str, Any]:
+    shaped = {
+        key: dossier[key]
+        for key in (
+            "dossier_id",
+            "crew_id",
+            "packet_lead_player_id",
+            "claim",
+            "evidence_ids",
+            "reasoning",
+            "weaknesses",
+            "provenance_concerns",
+        )
+        if key in dossier
+    }
+    shaped["member_contributions"] = [
+        _shape_dossier_contribution(contribution)
+        for contribution in dossier.get("member_contributions", [])
+    ]
+    return shaped
+
+
 def build_contract_board_packet(board: dict[str, Any]) -> RenderPacket:
     lines: list[str] = []
     campaign = board.get("campaign") or {}
@@ -113,6 +158,76 @@ def build_contract_board_packet(board: dict[str, Any]) -> RenderPacket:
         actions=[
             RenderAction(label="Review crew board", intent="render_crew_board"),
             RenderAction(label="Draft action", intent="draft_action", requires_confirmation=False),
+        ],
+    )
+
+
+def build_crew_board_packet(board: dict[str, Any]) -> RenderPacket:
+    crew = board["crew"]
+    dossier = board["dossier"]
+    active_contracts = board.get("active_contracts", [])
+    lines = [
+        f"Crew Board: {crew['name']}",
+        f"Crew ID: {crew['crew_id']}",
+        f"Member Count: {crew['member_count']}",
+        f"Packet Lead: {dossier['packet_lead_player_id']}",
+        "",
+        "Active Contracts:",
+    ]
+    if active_contracts:
+        lines.extend(f"- {contract['title']}" for contract in active_contracts)
+    else:
+        lines.append("- none")
+    lines.extend(
+        [
+            "",
+            "Dossier:",
+            f"Claim: {dossier.get('claim') or 'not set'}",
+            "Evidence:",
+        ]
+    )
+    evidence_ids = dossier.get("evidence_ids", [])
+    if evidence_ids:
+        lines.extend(f"- {evidence_id}" for evidence_id in evidence_ids)
+    else:
+        lines.append("- none")
+    lines.append("Contributions:")
+    contributions = dossier.get("member_contributions", [])
+    if contributions:
+        for contribution in contributions:
+            lines.append(f"- {contribution['player_id']}: {contribution['note']}")
+    else:
+        lines.append("- none")
+    return RenderPacket(
+        surface="crew_board",
+        player_markdown="\n".join(lines),
+        agent_context={
+            "player_id": board["player_id"],
+            "crew": _shape_crew(crew),
+            "active_contracts": [
+                _shape_contract(contract)
+                for contract in active_contracts
+            ],
+            "dossier": _shape_dossier(dossier),
+            "urgent_items": [],
+        },
+        suggested_prompts=[
+            "Review the proof dossier",
+            "Draft a crew action",
+            "Vote on packet lead",
+        ],
+        actions=[
+            RenderAction(label="Draft crew action", intent="draft_action"),
+            RenderAction(
+                label="Update dossier claim",
+                intent="update_dossier",
+                requires_confirmation=True,
+            ),
+            RenderAction(
+                label="Vote packet lead",
+                intent="vote_packet_lead",
+                requires_confirmation=True,
+            ),
         ],
     )
 

@@ -1,5 +1,6 @@
 from hollow_lodge.client.render_packets import (
     build_contract_board_packet,
+    build_crew_board_packet,
     build_inbox_packet,
 )
 
@@ -56,6 +57,40 @@ def test_inbox_packet_prioritizes_actionable_items_for_codex():
         "Open the contract board",
         "Review crew board",
     ]
+
+
+def test_crew_board_packet_shows_packet_lead_and_dossier_status():
+    packet = build_crew_board_packet(
+        {
+            "player_id": "player_0001",
+            "crew": {
+                "crew_id": "crew_0001",
+                "name": "The Gilt Knives",
+                "member_ids": ["player_0001", "player_0002"],
+                "member_count": 2,
+                "ready_for_full_contracts": False,
+                "readiness_warning": "Crews should have 3-5 players for full contracts.",
+                "join_code": "hidden",
+            },
+            "active_contracts": BOARD["contracts"],
+            "dossier": {
+                "dossier_id": "dossier_crew_0001",
+                "crew_id": "crew_0001",
+                "packet_lead_player_id": "player_0001",
+                "claim": "",
+                "evidence_ids": [],
+                "member_contributions": [],
+                "server_notes": "hidden",
+            },
+        }
+    )
+
+    assert packet.surface == "crew_board"
+    assert "Crew Board: The Gilt Knives" in packet.player_markdown
+    assert "Packet Lead: player_0001" in packet.player_markdown
+    assert packet.agent_context["crew"]["crew_id"] == "crew_0001"
+    assert "join_code" not in packet.agent_context["crew"]
+    assert "server_notes" not in packet.agent_context["dossier"]
 
 
 def test_contract_board_agent_context_omits_hidden_upstream_fields():
