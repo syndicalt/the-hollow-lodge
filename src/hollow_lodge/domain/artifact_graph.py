@@ -71,7 +71,17 @@ class ArtifactGraph(BaseModel):
 
     @model_validator(mode="after")
     def validate_references(self) -> ArtifactGraph:
-        artifact_ids = {artifact.artifact_id for artifact in self.artifacts}
+        artifact_ids: set[str] = set()
+        for artifact in self.artifacts:
+            if artifact.artifact_id in artifact_ids:
+                raise ValueError(f"duplicate artifact id: {artifact.artifact_id}")
+            if artifact.contract_id != self.contract_id:
+                raise ValueError(f"artifact contract mismatch: {artifact.artifact_id}")
+            artifact_ids.add(artifact.artifact_id)
+
+        for rule in self.unlock_rules:
+            if rule.contract_id != self.contract_id:
+                raise ValueError(f"unlock contract mismatch: {rule.rule_id}")
 
         for edge in self.edges:
             if edge.source_id not in artifact_ids:
