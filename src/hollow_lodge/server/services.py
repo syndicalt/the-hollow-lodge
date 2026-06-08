@@ -798,9 +798,31 @@ class ContractService:
                 return event.payload
         return None
 
+    def _completed_auction_preview_oracle_audit(self, *, contract_id: str):
+        for event in reversed(self._event_store.read()):
+            if (
+                event.type == "oracle.resolution.completed"
+                and event.payload["contract_id"] == contract_id
+                and event.payload["phase"] == "Auction Preview"
+            ):
+                return event
+        return None
+
     def _build_auction_preview_reveal(self, *, contract_id: str) -> dict:
         packet = self._build_auction_preview_packet(contract_id=contract_id)
         input_packet_hash = self._oracle_packet_hash(packet)
+        completed_audit = self._completed_auction_preview_oracle_audit(contract_id=contract_id)
+        if completed_audit is not None and completed_audit.payload.get("accepted_output") is not None:
+            result = validate_auction_preview_result(
+                packet=packet,
+                result=AuctionPreviewOracleResult.model_validate(
+                    completed_audit.payload["accepted_output"],
+                ),
+            )
+            return self._auction_preview_reveal_from_oracle_result(
+                contract_id=contract_id,
+                result=result,
+            )
         self._event_store.append_command(
             event_type="oracle.resolution.requested",
             actor_id="server",

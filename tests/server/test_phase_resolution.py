@@ -2,6 +2,8 @@ from fastapi.testclient import TestClient
 
 from hollow_lodge.server.app import create_app
 from hollow_lodge.domain.events import EventVisibility
+from hollow_lodge.server.services import ContractService
+from hollow_lodge.workflows.deterministic_oracle import DeterministicResolutionOracle
 
 
 def register(client: TestClient, invite: str, name: str) -> dict[str, str]:
@@ -233,6 +235,84 @@ def test_locked_only_phase_state_projects_and_recovers_to_resolution(tmp_path):
     assert recovered.json()["status"] == "resolved"
     assert [event["type"] for event in events].count("contract.phase.locked") == 1
     assert [event["type"] for event in events].count("contract.phase.resolved") == 1
+
+
+def test_completed_oracle_audit_recovers_without_calling_oracle_again(tmp_path):
+    client, ada, linus, gilt, moth = setup_two_crews(tmp_path)
+    submit_action(client, ada, gilt, "action-gilt", "Inspect the ledger for forged provenance.")
+    submit_action(client, linus, moth, "action-moth", "Observe the moth jar door omen.")
+    event_store = client.app.state.event_store
+    contract_service = client.app.state.contract_service
+
+    event_store.append_command(
+        event_type="contract.phase.locked",
+        actor_id="server",
+        visibility=EventVisibility.public(),
+        payload={
+            "contract_id": "contract_false_finger",
+            "phase": "Auction Preview",
+            "hours_elapsed": 6,
+        },
+        idempotency_key="phase-lock.contract_false_finger.auction-preview",
+    )
+    packet = contract_service._build_auction_preview_packet(contract_id="contract_false_finger")
+    input_packet_hash = contract_service._oracle_packet_hash(packet)
+    accepted_output = DeterministicResolutionOracle().resolve_auction_preview(packet)
+    event_store.append_command(
+        event_type="oracle.resolution.requested",
+        actor_id="server",
+        visibility=EventVisibility.server_only(),
+        payload={
+            "contract_id": "contract_false_finger",
+            "phase": "Auction Preview",
+            "input_packet_hash": input_packet_hash,
+        },
+        idempotency_key="oracle.resolution.contract_false_finger.auction-preview.requested",
+    )
+    event_store.append_command(
+        event_type="oracle.resolution.completed",
+        actor_id="server",
+        visibility=EventVisibility.server_only(),
+        payload={
+            "contract_id": "contract_false_finger",
+            "phase": "Auction Preview",
+            "provider": "deterministic",
+            "model": None,
+            "prompt_version": "deterministic-v1",
+            "fallback": False,
+            "fallback_reason": None,
+            "input_packet_hash": input_packet_hash,
+            "accepted_output": accepted_output.model_dump(mode="json"),
+        },
+        idempotency_key="oracle.resolution.contract_false_finger.auction-preview.completed",
+    )
+
+    class RaisingOracle:
+        called = False
+
+        def resolve_auction_preview(self, packet):
+            _ = packet
+            self.called = True
+            raise AssertionError("oracle should not be called during completed-audit recovery")
+
+    raising_oracle = RaisingOracle()
+    client.app.state.contract_service = ContractService(
+        event_store=event_store,
+        resolution_oracle=raising_oracle,
+    )
+
+    recovered = lock_preview(client, ada, "phase-lock-recover", hours_elapsed=7)
+    events = event_store.read()
+
+    assert recovered.status_code == 200
+    assert recovered.json() == contract_service._auction_preview_reveal_from_oracle_result(
+        contract_id="contract_false_finger",
+        result=accepted_output,
+    )
+    assert raising_oracle.called is False
+    assert [event.type for event in events].count("oracle.resolution.requested") == 1
+    assert [event.type for event in events].count("oracle.resolution.completed") == 1
+    assert [event.type for event in events].count("contract.phase.resolved") == 1
 
 
 def test_equivalent_valid_frames_resolve_through_rules_not_crew_name(tmp_path):
