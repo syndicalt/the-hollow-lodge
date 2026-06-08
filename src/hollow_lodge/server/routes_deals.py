@@ -4,6 +4,7 @@ from fastapi import APIRouter, Depends, Header, HTTPException, Request, status
 from pydantic import BaseModel, Field
 
 from hollow_lodge.domain.identity import Player
+from hollow_lodge.server.artifact_service import ArtifactService
 from hollow_lodge.server.auth import current_player
 from hollow_lodge.server.deal_service import DealService
 
@@ -104,6 +105,22 @@ def cancel_deal(
 
 
 def _deal_service(request: Request) -> DealService:
+    if not hasattr(request.app.state, "artifact_service"):
+        request.app.state.artifact_service = ArtifactService(
+            event_store=request.app.state.event_store,
+        )
+    request.app.state.chat_service.set_artifact_service(
+        request.app.state.artifact_service,
+    )
+    request.app.state.action_service.set_artifact_service(
+        request.app.state.artifact_service,
+    )
+    if not hasattr(request.app.state, "deal_service"):
+        request.app.state.deal_service = DealService(
+            event_store=request.app.state.event_store,
+            crew_service=request.app.state.crew_service,
+            artifact_service=request.app.state.artifact_service,
+        )
     return request.app.state.deal_service
 
 

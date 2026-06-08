@@ -51,16 +51,16 @@ def create_app(
         event_store=event_store,
     )
     crew_service = CrewService(event_store=event_store)
-    artifact_service = ArtifactService(event_store=event_store)
-    deal_service = DealService(
-        event_store=event_store,
-        crew_service=crew_service,
-        artifact_service=artifact_service,
-    )
+    artifact_service = ArtifactService(event_store=event_store) if data_dir is not None else None
     app.state.identity_service = identity_service
     app.state.crew_service = crew_service
-    app.state.artifact_service = artifact_service
-    app.state.deal_service = deal_service
+    if artifact_service is not None:
+        app.state.artifact_service = artifact_service
+        app.state.deal_service = DealService(
+            event_store=event_store,
+            crew_service=crew_service,
+            artifact_service=artifact_service,
+        )
     app.state.chat_service = ChatService(
         event_store=event_store,
         identity_service=identity_service,
