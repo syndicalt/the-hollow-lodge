@@ -26,7 +26,7 @@ from hollow_lodge.client.render_packets import (
 )
 
 
-DEFAULT_SERVER_URL = "https://api.thehollowlodge.com"
+DEFAULT_SERVER_URL = "https://server.thehollowlodge.com"
 
 app = typer.Typer(
     name="hollow-lodge",

@@ -437,6 +437,7 @@ def test_onboard_defaults_to_official_server_for_access_request(tmp_path, monkey
     )
 
     assert result.exit_code == 0
+    assert cli.DEFAULT_SERVER_URL == "https://server.thehollowlodge.com"
     assert created_clients[0].server_url == cli.DEFAULT_SERVER_URL
 
 
