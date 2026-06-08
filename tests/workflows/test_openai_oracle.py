@@ -1,6 +1,13 @@
 from __future__ import annotations
 
-from hollow_lodge.workflows.openai_oracle import OpenAIResolutionOracle
+from typing import Any
+
+import pytest
+
+from hollow_lodge.workflows.openai_oracle import (
+    OpenAIAuctionPreviewResolution,
+    OpenAIResolutionOracle,
+)
 from hollow_lodge.workflows.oracle_boundary import (
     AuctionPreviewCrewPacket,
     AuctionPreviewOraclePacket,
@@ -8,7 +15,7 @@ from hollow_lodge.workflows.oracle_boundary import (
 
 
 class FakeResponses:
-    def __init__(self, parsed_output: dict):
+    def __init__(self, parsed_output: Any):
         self._parsed_output = parsed_output
         self.parse_calls: list[dict] = []
 
@@ -18,12 +25,12 @@ class FakeResponses:
 
 
 class FakeParsedResponse:
-    def __init__(self, parsed_output: dict):
+    def __init__(self, parsed_output: Any):
         self.output_parsed = parsed_output
 
 
 class FakeClient:
-    def __init__(self, parsed_output: dict):
+    def __init__(self, parsed_output: Any):
         self.responses = FakeResponses(parsed_output)
 
 
@@ -94,10 +101,9 @@ def test_openai_oracle_uses_structured_outputs_parse_contract():
     parse_call = client.responses.parse_calls[0]
     assert parse_call["model"] == "gpt-test"
     assert parse_call["timeout"] == 7.5
-    assert parse_call["text"]["format"]["type"] == "json_schema"
-    assert parse_call["text"]["format"]["name"] == "auction_preview_resolution"
-    assert parse_call["text"]["format"]["strict"] is True
-    assert "schema" in parse_call["text"]["format"]
+    assert parse_call["store"] is False
+    assert parse_call["text_format"] is OpenAIAuctionPreviewResolution
+    assert "text" not in parse_call
     assert "contract_false_finger" in str(parse_call["input"])
 
 
@@ -113,3 +119,41 @@ def test_openai_oracle_does_not_require_real_api_when_client_injected():
 
     assert result.standings[0].crew_id == "crew_gilt"
     assert len(client.responses.parse_calls) == 1
+
+
+def test_openai_oracle_rejects_missing_parsed_output():
+    client = FakeClient(None)
+    oracle = OpenAIResolutionOracle(
+        client=client,
+        model="gpt-test",
+        timeout_seconds=20,
+    )
+
+    with pytest.raises(ValueError, match="parsed output"):
+        oracle.resolve_auction_preview(auction_preview_packet())
+
+
+def test_openai_oracle_rejects_non_object_parsed_output():
+    client = FakeClient("not an object")
+    oracle = OpenAIResolutionOracle(
+        client=client,
+        model="gpt-test",
+        timeout_seconds=20,
+    )
+
+    with pytest.raises(ValueError, match="parsed output"):
+        oracle.resolve_auction_preview(auction_preview_packet())
+
+
+def test_openai_oracle_rejects_schema_invalid_parsed_dict():
+    invalid_output = parsed_output()
+    invalid_output["standings"][0].pop("crew_id")
+    client = FakeClient(invalid_output)
+    oracle = OpenAIResolutionOracle(
+        client=client,
+        model="gpt-test",
+        timeout_seconds=20,
+    )
+
+    with pytest.raises(Exception):
+        oracle.resolve_auction_preview(auction_preview_packet())

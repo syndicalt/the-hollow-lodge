@@ -2,6 +2,8 @@ from __future__ import annotations
 
 from typing import Any
 
+from pydantic import BaseModel, ConfigDict, Field
+
 from hollow_lodge.workflows.oracle_boundary import (
     AuctionPreviewOraclePacket,
     AuctionPreviewOracleResult,
@@ -10,6 +12,27 @@ from hollow_lodge.workflows.oracle_boundary import (
 
 
 _PROMPT_VERSION = "auction-preview-resolution-v1"
+
+
+class OpenAICrewStanding(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    crew_id: str = Field(min_length=1)
+    score: int = Field(ge=0)
+    standing: str = Field(min_length=1)
+    strengths: list[str] = Field(default_factory=list)
+    weaknesses: list[str] = Field(default_factory=list)
+    penalties: list[str] = Field(default_factory=list)
+    revealed_clues: list[str] = Field(default_factory=list)
+
+
+class OpenAIAuctionPreviewResolution(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    standings: list[OpenAICrewStanding]
+    contract_state: list[str] = Field(default_factory=list)
+    narration: str = ""
+    validation_warnings: list[str] = Field(default_factory=list)
 
 
 class OpenAIResolutionOracle:
@@ -44,26 +67,18 @@ class OpenAIResolutionOracle:
                     "content": packet.model_dump_json(),
                 },
             ],
-            text={
-                "format": {
-                    "type": "json_schema",
-                    "name": "auction_preview_resolution",
-                    "strict": True,
-                    "schema": _schema(),
-                }
-            },
+            text_format=OpenAIAuctionPreviewResolution,
+            store=False,
             timeout=self._timeout_seconds,
         )
-        parsed = response.output_parsed
-        if not isinstance(parsed, dict):
-            raise ValueError("OpenAI oracle returned non-object parsed output")
+        parsed = _parse_openai_output(response.output_parsed)
         return AuctionPreviewOracleResult(
             provider=OracleProviderMetadata(
                 provider="openai",
                 model=self._model,
                 prompt_version=_PROMPT_VERSION,
             ),
-            **parsed,
+            **parsed.model_dump(),
         )
 
 
@@ -77,48 +92,11 @@ def _system_prompt() -> str:
     )
 
 
-def _schema() -> dict[str, Any]:
-    string_array = {
-        "type": "array",
-        "items": {"type": "string"},
-    }
-    return {
-        "type": "object",
-        "additionalProperties": False,
-        "required": [
-            "standings",
-            "contract_state",
-            "narration",
-            "validation_warnings",
-        ],
-        "properties": {
-            "standings": {
-                "type": "array",
-                "items": {
-                    "type": "object",
-                    "additionalProperties": False,
-                    "required": [
-                        "crew_id",
-                        "score",
-                        "standing",
-                        "strengths",
-                        "weaknesses",
-                        "penalties",
-                        "revealed_clues",
-                    ],
-                    "properties": {
-                        "crew_id": {"type": "string"},
-                        "score": {"type": "integer", "minimum": 0},
-                        "standing": {"type": "string"},
-                        "strengths": string_array,
-                        "weaknesses": string_array,
-                        "penalties": string_array,
-                        "revealed_clues": string_array,
-                    },
-                },
-            },
-            "contract_state": string_array,
-            "narration": {"type": "string"},
-            "validation_warnings": string_array,
-        },
-    }
+def _parse_openai_output(parsed: Any) -> OpenAIAuctionPreviewResolution:
+    if parsed is None:
+        raise ValueError("OpenAI oracle returned no parsed output")
+    if isinstance(parsed, OpenAIAuctionPreviewResolution):
+        return parsed
+    if isinstance(parsed, dict):
+        return OpenAIAuctionPreviewResolution.model_validate(parsed)
+    raise ValueError("OpenAI oracle returned invalid parsed output")
