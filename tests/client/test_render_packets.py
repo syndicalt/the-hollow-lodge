@@ -72,7 +72,12 @@ def test_crew_board_packet_shows_packet_lead_and_dossier_status():
                 "readiness_warning": "Crews should have 3-5 players for full contracts.",
                 "join_code": "hidden",
             },
-            "active_contracts": BOARD["contracts"],
+            "active_contracts": [
+                {
+                    **BOARD["contracts"][0],
+                    "hidden_truth": "saint-bone forgery",
+                }
+            ],
             "dossier": {
                 "dossier_id": "dossier_crew_0001",
                 "crew_id": "crew_0001",
@@ -90,6 +95,7 @@ def test_crew_board_packet_shows_packet_lead_and_dossier_status():
     assert "Packet Lead: player_0001" in packet.player_markdown
     assert packet.agent_context["crew"]["crew_id"] == "crew_0001"
     assert "join_code" not in packet.agent_context["crew"]
+    assert "hidden_truth" not in packet.agent_context["active_contracts"][0]
     assert "server_notes" not in packet.agent_context["dossier"]
 
 
