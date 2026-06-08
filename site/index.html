@@ -1,0 +1,402 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta
+    name="description"
+    content="The Hollow Lodge is a multiplayer occult heist played through the command line."
+  >
+  <title>The Hollow Lodge</title>
+  <style>
+    :root {
+      color-scheme: dark;
+      --black: #050403;
+      --ink: #0b0908;
+      --ash: #17120d;
+      --brass: #d6b46c;
+      --brass-dim: #8f7241;
+      --paper: #e4d5b4;
+      --paper-dim: #b9aa8d;
+      --red: #6e211d;
+      --line: rgba(214, 180, 108, 0.24);
+    }
+
+    * {
+      box-sizing: border-box;
+    }
+
+    html {
+      height: 100%;
+      background: var(--black);
+      overflow: hidden;
+    }
+
+    body {
+      margin: 0;
+      height: 100%;
+      overflow: hidden;
+      background:
+        radial-gradient(circle at 14% 8%, rgba(110, 33, 29, 0.22), transparent 28rem),
+        radial-gradient(circle at 82% 14%, rgba(143, 114, 65, 0.18), transparent 24rem),
+        linear-gradient(180deg, #020201 0%, var(--black) 44%, #090705 100%);
+      color: var(--paper);
+      font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", monospace;
+      letter-spacing: 0;
+    }
+
+    a {
+      color: inherit;
+      text-decoration-thickness: 1px;
+      text-underline-offset: 0.18em;
+    }
+
+    .terminal {
+      width: min(1180px, calc(100% - 32px));
+      height: calc(100dvh - 32px);
+      margin: 16px auto;
+      border: 1px solid var(--line);
+      background: rgba(5, 4, 3, 0.94);
+      box-shadow: 0 28px 120px rgba(0, 0, 0, 0.66);
+      display: flex;
+      flex-direction: column;
+      overflow: hidden;
+    }
+
+    .banner {
+      position: relative;
+      flex: 0 0 auto;
+      min-height: 168px;
+      overflow: hidden;
+      border-bottom: 1px solid var(--line);
+      background: #020201;
+    }
+
+    .banner img {
+      display: block;
+      width: 100%;
+      height: auto;
+      max-height: 360px;
+      object-fit: cover;
+      object-position: center;
+      filter: saturate(0.92) contrast(1.04);
+    }
+
+    .banner::after {
+      content: "";
+      position: absolute;
+      inset: 0;
+      background:
+        linear-gradient(180deg, rgba(5, 4, 3, 0) 42%, rgba(5, 4, 3, 0.96) 100%),
+        linear-gradient(90deg, rgba(5, 4, 3, 0.42), transparent 30%, transparent 70%, rgba(5, 4, 3, 0.42));
+      pointer-events: none;
+    }
+
+    .banner-line {
+      position: absolute;
+      left: 22px;
+      right: 22px;
+      bottom: 16px;
+      z-index: 1;
+      display: flex;
+      justify-content: space-between;
+      gap: 18px;
+      color: var(--brass);
+      font-size: 0.78rem;
+      text-shadow: 0 1px 12px #000;
+    }
+
+    .content {
+      flex: 1 1 auto;
+      min-height: 0;
+      overflow-y: auto;
+      scrollbar-color: var(--brass-dim) rgba(5, 4, 3, 0.55);
+      padding: 26px 30px 34px;
+    }
+
+    .prompt {
+      color: var(--brass-dim);
+      margin: 0 0 0.72rem;
+    }
+
+    h1 {
+      margin: 0;
+      color: #ead9a8;
+      font-family: Georgia, "Times New Roman", serif;
+      font-size: 3.2rem;
+      font-weight: 700;
+      line-height: 1;
+      text-shadow: 0 2px 24px rgba(214, 180, 108, 0.16);
+    }
+
+    .lead {
+      max-width: 840px;
+      margin: 0.95rem 0 2rem;
+      color: var(--paper);
+      font-family: Georgia, "Times New Roman", serif;
+      font-size: 1.28rem;
+      line-height: 1.55;
+    }
+
+    .command {
+      margin-top: 2rem;
+      color: var(--brass-dim);
+    }
+
+    .output {
+      margin: 0.65rem 0 0;
+      padding: 0;
+      white-space: pre-wrap;
+      color: var(--paper);
+      font: inherit;
+      line-height: 1.56;
+      background: transparent;
+      border: 0;
+    }
+
+    .muted {
+      color: var(--paper-dim);
+    }
+
+    .brass {
+      color: var(--brass);
+    }
+
+    .cursor::after {
+      content: "";
+      display: inline-block;
+      width: 0.58em;
+      height: 1em;
+      margin-left: 0.2em;
+      background: var(--brass);
+      vertical-align: -0.16em;
+      animation: blink 1.1s steps(1) infinite;
+    }
+
+    .terminal-line-hidden {
+      opacity: 0;
+    }
+
+    .terminal-line-visible {
+      opacity: 1;
+    }
+
+    .terminal-typing::after {
+      content: "";
+      display: inline-block;
+      width: 0.58em;
+      height: 1em;
+      margin-left: 0.18em;
+      background: var(--brass);
+      vertical-align: -0.16em;
+      animation: blink 1.1s steps(1) infinite;
+    }
+
+    .status {
+      margin-top: 2.2rem;
+      padding-top: 1.3rem;
+      border-top: 1px solid rgba(214, 180, 108, 0.18);
+    }
+
+    .status a {
+      color: var(--brass);
+    }
+
+    @keyframes blink {
+      50% {
+        opacity: 0;
+      }
+    }
+
+    @media (max-width: 760px) {
+      .terminal {
+        width: calc(100% - 18px);
+        height: calc(100dvh - 18px);
+        margin: 9px auto;
+      }
+
+      .banner-line {
+        position: static;
+        padding: 10px 14px 12px;
+        background: rgba(5, 4, 3, 0.88);
+        flex-direction: column;
+        gap: 4px;
+      }
+
+      .content {
+        padding: 20px 16px 28px;
+      }
+
+      h1 {
+        font-size: 2.2rem;
+      }
+
+      .lead {
+        font-size: 1.08rem;
+      }
+    }
+
+    @media (prefers-reduced-motion: reduce) {
+      .cursor::after,
+      .terminal-typing::after {
+        animation: none;
+      }
+    }
+  </style>
+</head>
+<body>
+  <main class="terminal" aria-label="The Hollow Lodge terminal manifesto">
+    <header class="banner">
+      <img src="docs/assets/the-hollow-lodge-x-banner.png" alt="The Hollow Lodge title over a candlelit evidence table">
+      <div class="banner-line">
+        <span>/contracts/saints-and-ledgers/auction-preview</span>
+        <span>authoritative log: sealed</span>
+      </div>
+    </header>
+
+    <section class="content">
+      <p class="prompt" data-terminal-step data-type="command">$ tlh open</p>
+      <h1 data-terminal-step>The Hollow Lodge</h1>
+      <p class="lead" data-terminal-step>
+        A multiplayer occult heist played through the command line. Join a crew,
+        read the contract board, trade proof with rivals, and submit your move
+        before the phase locks.
+      </p>
+
+      <p class="command" data-terminal-step data-type="command">$ tlh inbox</p>
+      <pre class="output" data-terminal-step><span class="brass">INBOX - Gilt Knives</span>
+
+Contract: The Saint's False Finger
+Phase: Auction Preview
+Time left: 2h 18m
+Crew heat: Low, rising
+
+You are needed:
+- The proof dossier lacks a verified provenance chain.
+- Moth Choir sent you a copied auction ledger fragment.
+- Handler read: provenance unclear, passed through at least two hands.
+- Packet Lead has marked the current claim as "likely false relic."
+- You have 2 side actions remaining.</pre>
+
+      <p class="command" data-terminal-step data-type="command">$ tlh check ledger-fragment-7 provenance</p>
+      <pre class="output" data-terminal-step>Surface read:
+- Fragment appears copied from an auction house ledger.
+- Origin masked before it reached Moth Choir.
+- The handwriting note may be summary, not transcript.
+- Confidence: useful but unsafe as primary proof.</pre>
+
+      <p class="command" data-terminal-step data-type="command">$ tlh act "pose as a bored clerk correcting bidder credentials..."</p>
+      <pre class="output" data-terminal-step>Handler frames the action:
+Intent: test ledger authenticity against known chapel timestamp
+Approach: deception / provenance analysis
+Risk posture: cautious
+Assets exposed: false clerk identity, chapel timestamp
+Scope: one verification attempt, no theft
+Crew noise: normal
+
+Confirm? y</pre>
+
+      <p class="command" data-terminal-step data-type="command">$ tlh explain --plain</p>
+      <pre class="output" data-terminal-step>The Hollow Lodge is not a chatbot improvising an adventure around you.
+
+The contract has a hidden truth before play begins. The server keeps it. Your
+crew does not win by sounding dramatic. You win by building the cleaner proof
+dossier: credible evidence, corroboration, source independence, provenance,
+reasoning, and restraint under heat.
+
+Rival crews can talk. They can trade useful fragments. They can omit context.
+They can give you something true in a form that will poison your argument if
+you trust it too quickly.
+
+The terminal is not a retro skin. It is where the game happens: inbox, contract
+board, brokered messages, proof checks, freeform actions, phase lock, result
+reveal.</pre>
+
+      <p class="command" data-terminal-step data-type="command">$ tlh status</p>
+      <pre class="output" data-terminal-step>Campaign in development: Saints & Ledgers
+Starter contract: The Saint's False Finger
+Current goal: prove the first playable vertical slice.</pre>
+
+      <p class="command cursor" data-terminal-step data-type="command">$</p>
+
+      <footer class="status">
+        <pre class="output muted" data-terminal-step>www.thehollowlodge.com
+single-page field note for a game still under construction</pre>
+      </footer>
+    </section>
+  </main>
+  <script>
+    const terminalStepSelector = "[data-terminal-step]";
+    const prefersReducedMotion = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+
+    function sleep(ms) {
+      return new Promise((resolve) => window.setTimeout(resolve, ms));
+    }
+
+    function scrollTerminalToLatest(element) {
+      const container = element.closest(".content");
+      if (container) {
+        container.scrollTop = container.scrollHeight;
+      }
+    }
+
+    function textNodesInside(element) {
+      const walker = document.createTreeWalker(element, NodeFilter.SHOW_TEXT);
+      const nodes = [];
+      let node = walker.nextNode();
+
+      while (node) {
+        nodes.push({ node, text: node.nodeValue || "" });
+        node = walker.nextNode();
+      }
+
+      return nodes;
+    }
+
+    async function typeTextNodes(element, nodes, speed) {
+      element.classList.add("terminal-typing");
+
+      for (const item of nodes) {
+        for (const character of item.text) {
+          item.node.nodeValue += character;
+          scrollTerminalToLatest(element);
+          if (character === "\n") {
+            await sleep(speed * 5);
+          } else if (character !== " ") {
+            await sleep(speed);
+          }
+        }
+      }
+
+      element.classList.remove("terminal-typing");
+    }
+
+    async function typeTerminalSequence() {
+      const steps = Array.from(document.querySelectorAll(terminalStepSelector));
+      const savedSteps = steps.map((element) => ({
+        element,
+        nodes: textNodesInside(element),
+      }));
+
+      for (const { element, nodes } of savedSteps) {
+        for (const item of nodes) {
+          item.node.nodeValue = "";
+        }
+        element.classList.add("terminal-line-hidden");
+      }
+
+      for (const { element, nodes } of savedSteps) {
+        element.classList.remove("terminal-line-hidden");
+        element.classList.add("terminal-line-visible");
+        scrollTerminalToLatest(element);
+        await typeTextNodes(element, nodes, element.dataset.type === "command" ? 22 : 5);
+        await sleep(element.dataset.type === "command" ? 190 : 340);
+      }
+    }
+
+    if (!prefersReducedMotion) {
+      window.addEventListener("load", typeTerminalSequence);
+    }
+  </script>
+</body>
+</html>
