@@ -94,6 +94,32 @@ class ArtifactCopy(BaseModel):
             ),
         )
 
+    @classmethod
+    def from_deal_source(
+        cls,
+        *,
+        source_artifact_id: str,
+        copy_artifact_id: str,
+        contract_id: str,
+        source_crew_id: str,
+        recipient_crew_id: str,
+        deal_id: str,
+        title: str,
+        public_summary: str,
+    ) -> ArtifactCopy:
+        return cls(
+            artifact_id=copy_artifact_id,
+            source_artifact_id=source_artifact_id,
+            contract_id=contract_id,
+            title=title,
+            public_summary=public_summary,
+            source_chain=(
+                f"artifact:{source_artifact_id}",
+                f"deal:{deal_id}",
+                f"crew-transfer:{source_crew_id}->{recipient_crew_id}",
+            ),
+        )
+
     def surface_view(self) -> dict:
         return {
             "artifact_id": self.artifact_id,

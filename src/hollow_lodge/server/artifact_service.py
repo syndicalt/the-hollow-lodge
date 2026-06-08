@@ -27,7 +27,7 @@ class ArtifactService:
         visible = STARTER_ARTIFACT_GRAPH.visible_slice(visible_ids)
         visible["artifacts"].extend(
             surface
-            for surface in self._visible_transferred_copy_surfaces(player_id)
+            for surface in self._visible_copy_surfaces(player_id, crew_ids=crew_ids)
             if surface["artifact_id"] in visible_ids
         )
         return visible
@@ -48,7 +48,7 @@ class ArtifactService:
         try:
             artifact = STARTER_ARTIFACT_GRAPH.artifact_by_id(artifact_id)
         except KeyError:
-            copied = self._transferred_copy_surface(artifact_id)
+            copied = self._copy_surface(artifact_id)
             if copied is None:
                 raise
             return copied
@@ -130,6 +130,70 @@ class ArtifactService:
             )
             return surface
 
+    def copy_artifact_for_deal(
+        self,
+        *,
+        source_artifact_id: str,
+        source_crew_id: str,
+        recipient_crew_id: str,
+        actor_id: str,
+        deal_id: str,
+        idempotency_key: str,
+    ) -> dict:
+        with self._lock:
+            replay = self._matching_deal_copy_replay(
+                idempotency_key=idempotency_key,
+                source_artifact_id=source_artifact_id,
+                source_crew_id=source_crew_id,
+                recipient_crew_id=recipient_crew_id,
+                deal_id=deal_id,
+            )
+            if replay is not None:
+                return replay
+
+            artifact = STARTER_ARTIFACT_GRAPH.artifact_by_id(source_artifact_id)
+            if artifact.copy_policy == "sealed":
+                raise ValueError("artifact cannot be transferred")
+
+            artifact_copy = ArtifactCopy.from_deal_source(
+                source_artifact_id=artifact.artifact_id,
+                copy_artifact_id=(
+                    f"{artifact.artifact_id}.dealcopy."
+                    f"{deal_id}.{recipient_crew_id}.{self._next_transfer_number()}"
+                ),
+                contract_id=artifact.contract_id,
+                source_crew_id=source_crew_id,
+                recipient_crew_id=recipient_crew_id,
+                deal_id=deal_id,
+                title=artifact.title,
+                public_summary=artifact.public_summary,
+            )
+            surface = artifact_copy.surface_view()
+            self._event_store.append_command(
+                event_type="artifact.deal_copied",
+                actor_id=actor_id,
+                visibility=EventVisibility.crews([source_crew_id, recipient_crew_id]),
+                payload={
+                    "deal_id": deal_id,
+                    "source_crew_id": source_crew_id,
+                    "recipient_crew_id": recipient_crew_id,
+                    "source_artifact_id": artifact.artifact_id,
+                    "surface": surface,
+                },
+                idempotency_key=idempotency_key,
+            )
+            self._event_store.append_command(
+                event_type="artifact.deal_copied.internal",
+                actor_id="server",
+                visibility=EventVisibility.server_only(),
+                payload={
+                    "deal_copy_idempotency_key": idempotency_key,
+                    "artifact_copy": artifact_copy.model_dump(mode="json"),
+                },
+                idempotency_key=f"{idempotency_key}.internal",
+            )
+            return surface
+
     def grant_artifact_access(
         self,
         *,
@@ -184,20 +248,33 @@ class ArtifactService:
             for event in self._event_store.read_for_principal(principal):
                 if event.type == "artifact.access.granted":
                     visible_ids.add(event.payload["artifact_id"])
-                elif event.type == "artifact.transferred":
+                elif event.type in {"artifact.transferred", "artifact.deal_copied"}:
                     visible_ids.add(event.payload["surface"]["artifact_id"])
         return visible_ids
 
-    def _visible_transferred_copy_surfaces(self, player_id: str) -> list[dict]:
-        return [
-            event.payload["surface"]
-            for event in self._event_store.read_for_principal(Principal.player(player_id))
-            if event.type == "artifact.transferred"
-        ]
+    def _visible_copy_surfaces(
+        self,
+        player_id: str,
+        *,
+        crew_ids: list[str] | tuple[str, ...] = (),
+    ) -> list[dict]:
+        surfaces_by_id: dict[str, dict] = {}
+        principals = [Principal.player(player_id)]
+        principals.extend(Principal.crew(crew_id) for crew_id in crew_ids)
+        for principal in principals:
+            for event in self._event_store.read_for_principal(principal):
+                if event.type not in {"artifact.transferred", "artifact.deal_copied"}:
+                    continue
+                surface = event.payload["surface"]
+                surfaces_by_id[surface["artifact_id"]] = surface
+        return list(surfaces_by_id.values())
 
-    def _transferred_copy_surface(self, artifact_id: str) -> dict | None:
+    def _copy_surface(self, artifact_id: str) -> dict | None:
         for event in self._event_store.read():
-            if event.type != "artifact.transferred.internal":
+            if event.type not in {
+                "artifact.transferred.internal",
+                "artifact.deal_copied.internal",
+            }:
                 continue
             copied = ArtifactCopy.model_validate(event.payload["artifact_copy"])
             if copied.artifact_id == artifact_id:
@@ -221,6 +298,30 @@ class ArtifactService:
                 event.payload.get("source_artifact_id") != source_artifact_id
                 or event.payload.get("sender_player_id") != sender_player_id
                 or event.payload.get("recipient_player_id") != recipient_player_id
+            ):
+                raise ValueError("idempotency key conflict")
+            return event.payload["surface"]
+        return None
+
+    def _matching_deal_copy_replay(
+        self,
+        *,
+        idempotency_key: str,
+        source_artifact_id: str,
+        source_crew_id: str,
+        recipient_crew_id: str,
+        deal_id: str,
+    ) -> dict | None:
+        for event in self._event_store.read():
+            if event.idempotency_key != idempotency_key:
+                continue
+            if event.type != "artifact.deal_copied":
+                raise ValueError("idempotency key conflict")
+            if (
+                event.payload.get("source_artifact_id") != source_artifact_id
+                or event.payload.get("source_crew_id") != source_crew_id
+                or event.payload.get("recipient_crew_id") != recipient_crew_id
+                or event.payload.get("deal_id") != deal_id
             ):
                 raise ValueError("idempotency key conflict")
             return event.payload["surface"]
