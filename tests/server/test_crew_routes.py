@@ -258,6 +258,57 @@ def test_crew_board_is_crew_scoped(tmp_path):
     assert denied.status_code == 403
 
 
+def test_crew_board_deals_are_scoped_to_requested_crew(tmp_path):
+    app = create_app(data_dir=tmp_path, invite_codes=["a", "b"])
+    client = TestClient(app)
+    ada = register(client, "a", "Ada")
+    bela = register(client, "b", "Bela")
+    crew_a = client.post(
+        "/crews",
+        headers=command_auth(ada["token"], "crew-create-a"),
+        json={"name": "Crew A"},
+    ).json()
+    crew_b = client.post(
+        "/crews",
+        headers=command_auth(ada["token"], "crew-create-b"),
+        json={"name": "Crew B"},
+    ).json()
+    crew_c = client.post(
+        "/crews",
+        headers=command_auth(bela["token"], "crew-create-c"),
+        json={"name": "Crew C"},
+    ).json()
+    crew_a_deal = app.state.deal_service.propose(
+        contract_id="contract_false_finger",
+        proposer_crew_id=crew_a["crew_id"],
+        recipient_crew_id=crew_c["crew_id"],
+        offered_artifact_ids=["artifact_ledger_rubric"],
+        requested_artifact_ids=[],
+        soft_terms=["Crew A terms."],
+        expires_phase=None,
+        proposer_player_id=ada["player_id"],
+        idempotency_key="deal-a-c",
+    )
+    crew_b_deal = app.state.deal_service.propose(
+        contract_id="contract_false_finger",
+        proposer_crew_id=crew_b["crew_id"],
+        recipient_crew_id=crew_c["crew_id"],
+        offered_artifact_ids=["artifact_ledger_rubric"],
+        requested_artifact_ids=[],
+        soft_terms=["Crew B terms."],
+        expires_phase=None,
+        proposer_player_id=ada["player_id"],
+        idempotency_key="deal-b-c",
+    )
+
+    response = client.get(f"/crews/{crew_a['crew_id']}/board", headers=auth(ada["token"]))
+
+    assert response.status_code == 200
+    deal_ids = {deal["deal_id"] for deal in response.json()["deals"]}
+    assert crew_a_deal["deal_id"] in deal_ids
+    assert crew_b_deal["deal_id"] not in deal_ids
+
+
 def test_join_requires_crew_join_code(tmp_path):
     client = TestClient(create_app(data_dir=tmp_path, invite_codes=["a", "b"]))
     ada = register(client, "a", "Ada")

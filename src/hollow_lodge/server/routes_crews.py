@@ -98,7 +98,7 @@ def crew_board(
         ],
         "dossier": _crew_board_dossier(dossier),
         "visible_artifacts": _visible_artifacts_for_player(request, player.player_id),
-        "deals": _deals_for_player(request, player.player_id),
+        "deals": _deals_for_crew(request, player.player_id, crew_id),
     }
 
 
@@ -196,6 +196,14 @@ def _deals_for_player(request: Request, player_id: str) -> list[dict]:
     if deal_service is None:
         return []
     return deal_service.list_for_player(player_id)
+
+
+def _deals_for_crew(request: Request, player_id: str, crew_id: str) -> list[dict]:
+    return [
+        deal
+        for deal in _deals_for_player(request, player_id)
+        if deal["proposer_crew_id"] == crew_id or deal["recipient_crew_id"] == crew_id
+    ]
 
 
 def _proof_service(request: Request) -> ProofService:
