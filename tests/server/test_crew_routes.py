@@ -108,6 +108,37 @@ def test_crew_board_shows_member_roster_contracts_and_dossier(tmp_path):
     assert "join_code" not in body["crew"]
 
 
+def test_crew_board_pending_decisions_include_dossier_needs_and_action(tmp_path):
+    client = TestClient(create_app(data_dir=tmp_path, invite_codes=["a"]))
+    ada = register(client, "a", "Ada")
+    crew = client.post(
+        "/crews",
+        headers=command_auth(ada["token"], "crew-create-gilt"),
+        json={"name": "The Gilt Knives"},
+    ).json()
+
+    response = client.get(f"/crews/{crew['crew_id']}/board", headers=auth(ada["token"]))
+
+    assert response.status_code == 200
+    pending = response.json()["pending_decisions"]
+    assert {
+        "kind": "dossier_need",
+        "label": "Dossier needs provenance chain",
+        "description": "The Saint's False Finger still needs dossier coverage for provenance chain.",
+        "crew_id": crew["crew_id"],
+        "contract_id": "contract_false_finger",
+        "missing_need": "provenance chain",
+    } in pending
+    assert {
+        "kind": "contract_action",
+        "label": "Contract action opportunity",
+        "description": "The Saint's False Finger is active and unresolved.",
+        "crew_id": crew["crew_id"],
+        "contract_id": "contract_false_finger",
+        "action": "submit_action",
+    } in pending
+
+
 def test_crew_board_lazy_contract_service_preserves_injected_oracle(tmp_path):
     class InjectedOracle:
         def resolve_auction_preview(self, packet):

@@ -57,14 +57,42 @@ def test_contract_board_packet_has_player_markdown_and_agent_context():
 
 
 def test_inbox_packet_prioritizes_actionable_items_for_codex():
-    packet = build_inbox_packet(INBOX)
+    packet = build_inbox_packet(
+        {
+            **INBOX,
+            "pending_decisions": [
+                {
+                    "kind": "incoming_deal",
+                    "label": "Incoming deal needs response",
+                    "description": "Deal deal_000001 from crew_0002 needs a response.",
+                    "crew_id": "crew_0001",
+                    "contract_id": "contract_false_finger",
+                    "deal_id": "deal_000001",
+                    "hidden_note": "server-only",
+                }
+            ],
+        }
+    )
 
     assert packet.surface == "inbox"
     assert "Inbox: player_0001" in packet.player_markdown
+    assert "Pending decisions:" in packet.player_markdown
+    assert "- Incoming deal needs response: Deal deal_000001 from crew_0002 needs a response." in packet.player_markdown
     assert "incoming proof fragments: none" in packet.player_markdown
     assert "visible artifacts:" in packet.player_markdown
     assert "- artifact_lot_card: Auction Lot Card" in packet.player_markdown
+    assert "server-only" not in packet.player_markdown
     assert packet.agent_context["player_id"] == "player_0001"
+    assert packet.agent_context["pending_decisions"] == [
+        {
+            "kind": "incoming_deal",
+            "label": "Incoming deal needs response",
+            "description": "Deal deal_000001 from crew_0002 needs a response.",
+            "crew_id": "crew_0001",
+            "contract_id": "contract_false_finger",
+            "deal_id": "deal_000001",
+        }
+    ]
     assert packet.agent_context["visible_artifacts"] == [
         {
             "artifact_id": "artifact_lot_card",
@@ -73,7 +101,7 @@ def test_inbox_packet_prioritizes_actionable_items_for_codex():
             "public_summary": "A vellum card attributes the reliquary finger.",
         }
     ]
-    assert packet.agent_context["urgent_items"] == []
+    assert packet.agent_context["urgent_items"] == packet.agent_context["pending_decisions"]
     assert packet.suggested_prompts == [
         "Open the contract board",
         "Review crew board",
@@ -232,6 +260,17 @@ def test_crew_board_packet_shows_packet_lead_and_dossier_status():
                     "hidden_note": "server-only",
                 }
             ],
+            "pending_decisions": [
+                {
+                    "kind": "dossier_need",
+                    "label": "Dossier needs provenance chain",
+                    "description": "The Saint's False Finger still needs dossier coverage for provenance chain.",
+                    "crew_id": "crew_0001",
+                    "contract_id": "contract_false_finger",
+                    "missing_need": "provenance chain",
+                    "server_notes": "hidden",
+                }
+            ],
         }
     )
 
@@ -242,6 +281,8 @@ def test_crew_board_packet_shows_packet_lead_and_dossier_status():
     assert "- artifact_ledger_rubric: The ledger contradicts the public lot card." in packet.player_markdown
     assert "Artifacts:" in packet.player_markdown
     assert "- artifact_lot_card: Auction Lot Card" in packet.player_markdown
+    assert "Pending decisions:" in packet.player_markdown
+    assert "- Dossier needs provenance chain: The Saint's False Finger still needs dossier coverage for provenance chain." in packet.player_markdown
     assert "hidden" not in packet.player_markdown
     assert "hidden_truth" not in packet.player_markdown
     assert "server_notes" not in packet.player_markdown
@@ -265,6 +306,17 @@ def test_crew_board_packet_shows_packet_lead_and_dossier_status():
             "public_summary": "A vellum card attributes the reliquary finger.",
         }
     ]
+    assert packet.agent_context["pending_decisions"] == [
+        {
+            "kind": "dossier_need",
+            "label": "Dossier needs provenance chain",
+            "description": "The Saint's False Finger still needs dossier coverage for provenance chain.",
+            "crew_id": "crew_0001",
+            "contract_id": "contract_false_finger",
+            "missing_need": "provenance chain",
+        }
+    ]
+    assert packet.agent_context["urgent_items"] == packet.agent_context["pending_decisions"]
 
 
 def test_contract_board_agent_context_omits_hidden_upstream_fields():
@@ -366,6 +418,8 @@ def test_inbox_agent_context_omits_hidden_upstream_fields_and_serializes_actions
         "surface": "inbox",
         "player_markdown": (
             "Inbox: player_0001\n\n"
+            "Pending decisions:\n"
+            "- none\n\n"
             "Active contracts:\n"
             "- The Saint's False Finger (Auction Preview)\n\n"
             "incoming proof fragments:\n"
@@ -392,6 +446,7 @@ def test_inbox_agent_context_omits_hidden_upstream_fields_and_serializes_actions
             ],
             "visible_artifacts": [],
             "deals": [],
+            "pending_decisions": [],
             "urgent_items": [{"kind": "proof_fragment", "fragment_id": "fragment_0001"}],
         },
         "suggested_prompts": [

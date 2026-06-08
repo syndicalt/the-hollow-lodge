@@ -6,6 +6,7 @@ from fastapi import APIRouter, Depends, Header, HTTPException, Request, status
 from hollow_lodge.domain.identity import Player
 from hollow_lodge.server.artifact_service import ArtifactService
 from hollow_lodge.server.auth import current_player
+from hollow_lodge.server.pending_decisions import pending_decisions_for_player
 from hollow_lodge.server.runtime_services import ensure_deal_service
 from hollow_lodge.server.services import ContractService, ProofService
 
@@ -90,16 +91,27 @@ def crew_board(
         crew_id=crew_id,
         player_id=player.player_id,
     )
+    shaped_contracts = [
+        _crew_board_contract(contract)
+        for contract in active_contracts
+    ]
+    deals = _deals_for_crew(request, player.player_id, crew_id)
+    crew = crew_service.summary(crew_id)
     return {
         "player_id": player.player_id,
-        "crew": crew_service.summary(crew_id),
-        "active_contracts": [
-            _crew_board_contract(contract)
-            for contract in active_contracts
-        ],
+        "crew": crew,
+        "active_contracts": shaped_contracts,
         "dossier": _crew_board_dossier(dossier),
         "visible_artifacts": _visible_artifacts_for_player(request, player.player_id),
-        "deals": _deals_for_crew(request, player.player_id, crew_id),
+        "deals": deals,
+        "pending_decisions": pending_decisions_for_player(
+            player_id=player.player_id,
+            crew_ids=[crew_id],
+            active_contracts=shaped_contracts,
+            deals=deals,
+            crew_summaries={crew_id: crew},
+            dossiers={crew_id: _crew_board_dossier(dossier)},
+        ),
     }
 
 

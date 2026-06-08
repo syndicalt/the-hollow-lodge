@@ -6,8 +6,9 @@ from fastapi import APIRouter, Depends, Header, HTTPException, Request, status
 from hollow_lodge.domain.identity import Player
 from hollow_lodge.server.artifact_service import ArtifactService
 from hollow_lodge.server.auth import current_player
+from hollow_lodge.server.pending_decisions import pending_decisions_for_player
 from hollow_lodge.server.runtime_services import ensure_deal_service
-from hollow_lodge.server.services import ContractService
+from hollow_lodge.server.services import ContractService, ProofService
 
 
 router = APIRouter(tags=["contracts"])
@@ -36,6 +37,24 @@ def inbox(
     payload["display_name"] = player.display_name
     payload["visible_artifacts"] = _visible_artifacts_for_player(request, player.player_id)
     payload["deals"] = _deals_for_player(request, player.player_id)
+    crew_ids = request.app.state.crew_service.crew_ids_for_player(player.player_id)
+    payload["pending_decisions"] = pending_decisions_for_player(
+        player_id=player.player_id,
+        crew_ids=crew_ids,
+        active_contracts=payload["active_contracts"],
+        deals=payload["deals"],
+        crew_summaries={
+            crew_id: request.app.state.crew_service.summary(crew_id)
+            for crew_id in crew_ids
+        },
+        dossiers={
+            crew_id: _proof_service(request).dossier_for_crew(
+                crew_id=crew_id,
+                player_id=player.player_id,
+            )
+            for crew_id in crew_ids
+        },
+    )
     return payload
 
 
@@ -87,3 +106,13 @@ def _visible_artifacts_for_player(request: Request, player_id: str) -> list[dict
 
 def _deals_for_player(request: Request, player_id: str) -> list[dict]:
     return ensure_deal_service(request).list_for_player(player_id)
+
+
+def _proof_service(request: Request) -> ProofService:
+    if not hasattr(request.app.state, "proof_service"):
+        request.app.state.proof_service = ProofService(
+            event_store=request.app.state.event_store,
+            identity_service=request.app.state.identity_service,
+            crew_service=request.app.state.crew_service,
+        )
+    return request.app.state.proof_service

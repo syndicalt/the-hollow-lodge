@@ -110,6 +110,36 @@ def _shape_deal(deal: dict[str, Any]) -> dict[str, Any]:
     }
 
 
+def _shape_pending_decision(decision: dict[str, Any]) -> dict[str, Any]:
+    return {
+        key: decision[key]
+        for key in (
+            "kind",
+            "label",
+            "description",
+            "crew_id",
+            "contract_id",
+            "deal_id",
+            "candidate_player_id",
+            "missing_need",
+            "action",
+        )
+        if key in decision
+    }
+
+
+def _render_pending_decisions(decisions: list[dict[str, Any]]) -> list[str]:
+    lines = ["Pending decisions:"]
+    if decisions:
+        lines.extend(
+            f"- {decision['label']}: {decision['description']}"
+            for decision in decisions
+        )
+    else:
+        lines.append("- none")
+    return lines
+
+
 def _shape_chat_message(payload: dict[str, Any], sequence: int) -> dict[str, Any]:
     shaped = {
         "sequence": sequence,
@@ -579,11 +609,17 @@ def build_crew_board_packet(board: dict[str, Any]) -> RenderPacket:
     crew = board["crew"]
     dossier = board["dossier"]
     active_contracts = board.get("active_contracts", [])
+    pending_decisions = [
+        _shape_pending_decision(decision)
+        for decision in board.get("pending_decisions", [])
+    ]
     lines = [
         f"Crew Board: {crew['name']}",
         f"Crew ID: {crew['crew_id']}",
         f"Member Count: {crew['member_count']}",
         f"Packet Lead: {dossier['packet_lead_player_id']}",
+        "",
+        *_render_pending_decisions(pending_decisions),
         "",
         "Active Contracts:",
     ]
@@ -650,7 +686,8 @@ def build_crew_board_packet(board: dict[str, Any]) -> RenderPacket:
                 for artifact in board.get("visible_artifacts", [])
             ],
             "deals": [_shape_deal(deal) for deal in board.get("deals", [])],
-            "urgent_items": [],
+            "pending_decisions": pending_decisions,
+            "urgent_items": pending_decisions,
         },
         suggested_prompts=[
             "Review the proof dossier",
@@ -676,6 +713,12 @@ def build_crew_board_packet(board: dict[str, Any]) -> RenderPacket:
 def build_inbox_packet(inbox: dict[str, Any]) -> RenderPacket:
     display_name = inbox.get("display_name") or inbox["player_id"]
     lines = [f"Inbox: {display_name}"]
+    pending_decisions = [
+        _shape_pending_decision(decision)
+        for decision in inbox.get("pending_decisions", [])
+    ]
+    lines.append("")
+    lines.extend(_render_pending_decisions(pending_decisions))
     active_contracts = inbox.get("active_contracts", [])
     if active_contracts:
         lines.append("")
@@ -709,6 +752,7 @@ def build_inbox_packet(inbox: dict[str, Any]) -> RenderPacket:
         {"kind": "proof_fragment", "fragment_id": fragment["fragment_id"]}
         for fragment in fragments
     ]
+    urgent_items = pending_decisions + urgent_items
     agent_context: dict[str, Any] = {
         "player_id": inbox["player_id"],
         "active_contracts": [
@@ -724,6 +768,7 @@ def build_inbox_packet(inbox: dict[str, Any]) -> RenderPacket:
             for artifact in inbox.get("visible_artifacts", [])
         ],
         "deals": [_shape_deal(deal) for deal in inbox.get("deals", [])],
+        "pending_decisions": pending_decisions,
         "urgent_items": urgent_items,
     }
     if inbox.get("display_name"):

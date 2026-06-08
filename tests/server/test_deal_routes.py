@@ -107,6 +107,51 @@ def test_persisted_deals_render_after_restart_before_deals_route(tmp_path):
     assert [deal["deal_id"] for deal in crew_board.json()["deals"]] == [proposed["deal_id"]]
 
 
+def test_pending_decisions_include_incoming_and_outgoing_deals(tmp_path):
+    app = create_app(data_dir=tmp_path, invite_codes=["a", "b"])
+    client = TestClient(app)
+    ada = register(client, "a", "Ada")
+    bela = register(client, "b", "Bela")
+    gilt = create_crew(client, ada["token"], "Gilt Knives", "crew-gilt")
+    moth = create_crew(client, bela["token"], "Moth Lanterns", "crew-moth")
+    app.state.artifact_service.grant_artifact_access(
+        artifact_id="artifact_chapel_debt_mark",
+        actor_id="server",
+        player_ids=[],
+        crew_ids=[moth["crew_id"]],
+        reason="test setup",
+        idempotency_key="grant-chapel",
+    )
+    proposed = client.post(
+        "/deals",
+        headers=command_auth(ada["token"], "deal-propose"),
+        json=proposed_deal_payload(gilt, moth),
+    ).json()
+
+    proposer_inbox = client.get("/inbox", headers=auth(ada["token"])).json()
+    recipient_board = client.get(
+        f"/crews/{moth['crew_id']}/board",
+        headers=auth(bela["token"]),
+    ).json()
+
+    assert {
+        "kind": "outgoing_deal",
+        "label": "Outgoing deal awaiting response",
+        "description": "Deal deal_000001 is proposed to crew_0002.",
+        "crew_id": gilt["crew_id"],
+        "contract_id": "contract_false_finger",
+        "deal_id": proposed["deal_id"],
+    } in proposer_inbox["pending_decisions"]
+    assert {
+        "kind": "incoming_deal",
+        "label": "Incoming deal needs response",
+        "description": "Deal deal_000001 from crew_0001 needs a response.",
+        "crew_id": moth["crew_id"],
+        "contract_id": "contract_false_finger",
+        "deal_id": proposed["deal_id"],
+    } in recipient_board["pending_decisions"]
+
+
 def test_non_member_cannot_accept_deal(tmp_path):
     app = create_app(data_dir=tmp_path, invite_codes=["a", "b", "c"])
     client = TestClient(app)

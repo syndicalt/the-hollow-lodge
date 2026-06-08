@@ -90,6 +90,25 @@ def test_non_lead_cannot_overwrite_framing_but_can_contribute_note(tmp_path):
     assert contribution.json()["member_contributions"][0]["player_id"] == grace["player_id"]
 
 
+def test_non_lead_sees_packet_lead_vote_pending_decision(tmp_path):
+    client, crew, ada, grace, _ = setup_three_player_crew(tmp_path)
+
+    lead_board = client.get(f"/crews/{crew['crew_id']}/board", headers=auth(ada["token"]))
+    non_lead_board = client.get(f"/crews/{crew['crew_id']}/board", headers=auth(grace["token"]))
+
+    assert {
+        "kind": "packet_lead_vote",
+        "label": "Packet Lead vote available",
+        "description": "The crew has multiple members and player_0002 is not Packet Lead.",
+        "crew_id": crew["crew_id"],
+        "candidate_player_id": grace["player_id"],
+    } in non_lead_board.json()["pending_decisions"]
+    assert all(
+        decision["kind"] != "packet_lead_vote"
+        for decision in lead_board.json()["pending_decisions"]
+    )
+
+
 def test_simple_majority_vote_replaces_packet_lead(tmp_path):
     client, crew, _, grace, linus = setup_three_player_crew(tmp_path)
 
