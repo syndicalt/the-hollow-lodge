@@ -10,6 +10,21 @@ from hollow_lodge.workflows.oracle_boundary import (
 )
 
 
+_PUBLIC_REVEAL_STRINGS_BY_SCORER_CLUE = {
+    "auction-house provenance is now suspect": "Auction house provenance is now suspect.",
+    "sealed-door omen remains viable": "Rival alternate clue paths remain open.",
+}
+
+
+def _safe_public_reveals(revealed_clues: tuple[str, ...]) -> tuple[str, ...]:
+    return tuple(
+        public_reveal
+        for clue in revealed_clues
+        if (public_reveal := _PUBLIC_REVEAL_STRINGS_BY_SCORER_CLUE.get(clue))
+        is not None
+    )
+
+
 class DeterministicResolutionOracle:
     def resolve_auction_preview(
         self,
@@ -45,7 +60,7 @@ class DeterministicResolutionOracle:
                     strengths=score.strengths,
                     weaknesses=score.weaknesses,
                     penalties=score.penalties,
-                    revealed_clues=score.revealed_clues,
+                    revealed_clues=_safe_public_reveals(score.revealed_clues),
                 )
                 for score in scores
             ),

@@ -13,8 +13,6 @@ def test_deterministic_oracle_preserves_current_scoring_shape():
         allowed_reveal_strings=(
             "Auction house provenance is now suspect.",
             "Rival alternate clue paths remain open.",
-            "auction-house provenance is now suspect",
-            "sealed-door omen remains viable",
         ),
         rubric_hooks=("provenance quality",),
         crews=(
@@ -55,13 +53,13 @@ def test_deterministic_oracle_preserves_current_scoring_shape():
     assert result.standings[0].standing == "Strong lead"
     assert "clean provenance contradiction" in result.standings[0].strengths
     assert result.standings[0].revealed_clues == (
-        "auction-house provenance is now suspect",
+        "Auction house provenance is now suspect.",
     )
     assert result.standings[1].crew_id == "crew_moth"
     assert result.standings[1].standing == "Viable but unstable"
     assert "occult clue may unlock alternate lane" in result.standings[1].strengths
     assert result.standings[1].revealed_clues == (
-        "sealed-door omen remains viable",
+        "Rival alternate clue paths remain open.",
     )
     assert result.contract_state == (
         "Auction house provenance is now suspect.",
