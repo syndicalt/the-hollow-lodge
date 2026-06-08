@@ -786,11 +786,53 @@ class ChatService:
                 payload=message.__dict__,
                 idempotency_key=idempotency_key,
             )
+            self._append_chat_rumor_if_needed(
+                message=message,
+                idempotency_key=idempotency_key,
+            )
             return message
 
     def _new_message(self, **kwargs) -> ChatMessage:
         self._message_count += 1
         return ChatMessage(message_id=f"msg_{self._message_count:06d}", **kwargs)
+
+    def _append_chat_rumor_if_needed(
+        self,
+        *,
+        message: ChatMessage,
+        idempotency_key: str,
+    ) -> None:
+        if message.kind != "crew_to_crew" or not message.artifact_ids:
+            return
+        participant_crew_ids = {
+            message.sender_crew_id,
+            message.recipient_crew_id,
+        }
+        bystander_crew_ids = [
+            crew_id
+            for crew_id in self._crew_service.crew_ids()
+            if crew_id not in participant_crew_ids
+        ]
+        if not bystander_crew_ids:
+            return
+        self._event_store.append_command(
+            event_type="contract.rumor.leaked",
+            actor_id="server",
+            visibility=EventVisibility.crews(bystander_crew_ids),
+            payload={
+                "rumor_id": f"rumor_{message.message_id}",
+                "source_type": "chat.message.created",
+                "source_id": message.message_id,
+                "conversation_scope": "crew_to_crew",
+                "suspected_crew_ids": [
+                    message.sender_crew_id,
+                    message.recipient_crew_id,
+                ],
+                "summary": "A private artifact discussion is echoing between crews.",
+                "pressure": "artifact_reference_detected",
+            },
+            idempotency_key=f"{idempotency_key}.rumor",
+        )
 
     def _matching_chat_replay(self, *, idempotency_key: str, **expected) -> ChatMessage | None:
         for event in self._event_store.read():

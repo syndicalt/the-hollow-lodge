@@ -247,6 +247,7 @@ def _rumors_for_crew(request: Request, crew_id: str) -> list[dict]:
                     "rumor_id",
                     "source_type",
                     "source_id",
+                    "conversation_scope",
                     "contract_id",
                     "suspected_crew_ids",
                     "summary",

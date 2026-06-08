@@ -262,13 +262,13 @@ def test_crew_board_packet_shows_packet_lead_and_dossier_status():
             ],
             "rumors": [
                 {
-                    "rumor_id": "rumor_deal_000001",
-                    "source_type": "deal.proposed",
-                    "source_id": "deal_000001",
-                    "contract_id": "contract_false_finger",
+                    "rumor_id": "rumor_msg_000001",
+                    "source_type": "chat.message.created",
+                    "source_id": "msg_000001",
+                    "conversation_scope": "crew_to_crew",
                     "suspected_crew_ids": ["crew_0002", "crew_0003"],
-                    "summary": "A side arrangement is circulating around contract_false_finger.",
-                    "pressure": "escrow_terms_detected",
+                    "summary": "A private artifact discussion is echoing between crews.",
+                    "pressure": "artifact_reference_detected",
                     "offered_artifact_ids": ["artifact_private_escrow"],
                     "soft_terms": ["Do not cite us."],
                     "server_notes": "hidden",
@@ -296,7 +296,7 @@ def test_crew_board_packet_shows_packet_lead_and_dossier_status():
     assert "Artifacts:" in packet.player_markdown
     assert "- artifact_lot_card: Auction Lot Card" in packet.player_markdown
     assert "Rumors:" in packet.player_markdown
-    assert "- rumor_deal_000001: A side arrangement is circulating around contract_false_finger." in packet.player_markdown
+    assert "- rumor_msg_000001: A private artifact discussion is echoing between crews." in packet.player_markdown
     assert "Pending decisions:" in packet.player_markdown
     assert "- Dossier needs provenance chain: The Saint's False Finger still needs dossier coverage for provenance chain." in packet.player_markdown
     assert "artifact_private_escrow" not in packet.player_markdown
@@ -326,13 +326,13 @@ def test_crew_board_packet_shows_packet_lead_and_dossier_status():
     ]
     assert packet.agent_context["rumors"] == [
         {
-            "rumor_id": "rumor_deal_000001",
-            "source_type": "deal.proposed",
-            "source_id": "deal_000001",
-            "contract_id": "contract_false_finger",
+            "rumor_id": "rumor_msg_000001",
+            "source_type": "chat.message.created",
+            "source_id": "msg_000001",
+            "conversation_scope": "crew_to_crew",
             "suspected_crew_ids": ["crew_0002", "crew_0003"],
-            "summary": "A side arrangement is circulating around contract_false_finger.",
-            "pressure": "escrow_terms_detected",
+            "summary": "A private artifact discussion is echoing between crews.",
+            "pressure": "artifact_reference_detected",
         }
     ]
     assert packet.agent_context["pending_decisions"] == [
@@ -657,13 +657,13 @@ def test_activity_summary_packet_shapes_visible_events_without_server_only_field
                 "sequence": 3,
                 "type": "contract.rumor.leaked",
                 "payload": {
-                    "rumor_id": "rumor_deal_000001",
-                    "source_type": "deal.proposed",
-                    "source_id": "deal_000001",
-                    "contract_id": "contract_false_finger",
+                    "rumor_id": "rumor_msg_000001",
+                    "source_type": "chat.message.created",
+                    "source_id": "msg_000001",
+                    "conversation_scope": "crew_to_crew",
                     "suspected_crew_ids": ["crew_0001", "crew_0002"],
-                    "summary": "A side arrangement is circulating around contract_false_finger.",
-                    "pressure": "escrow_terms_detected",
+                    "summary": "A private artifact discussion is echoing between crews.",
+                    "pressure": "artifact_reference_detected",
                     "offered_artifact_ids": ["artifact_ledger_rubric"],
                     "soft_terms": ["Do not cite us."],
                 },
@@ -675,7 +675,7 @@ def test_activity_summary_packet_shapes_visible_events_without_server_only_field
     assert "Recent visible activity:" in packet.player_markdown
     assert "1 chat player_0002: No public claims until lock." in packet.player_markdown
     assert "2 proof fragment fragment_1: A chipped reliquary seal." in packet.player_markdown
-    assert "3 rumor: A side arrangement is circulating around contract_false_finger." in packet.player_markdown
+    assert "3 rumor: A private artifact discussion is echoing between crews." in packet.player_markdown
     assert "server-only" not in packet.player_markdown
     assert "hidden" not in packet.player_markdown
     assert "artifact_ledger_rubric" not in packet.player_markdown
@@ -712,13 +712,13 @@ def test_activity_summary_packet_shapes_visible_events_without_server_only_field
                 "sequence": 3,
                 "type": "contract.rumor.leaked",
                 "rumor": {
-                    "rumor_id": "rumor_deal_000001",
-                    "source_type": "deal.proposed",
-                    "source_id": "deal_000001",
-                    "contract_id": "contract_false_finger",
+                    "rumor_id": "rumor_msg_000001",
+                    "source_type": "chat.message.created",
+                    "source_id": "msg_000001",
+                    "conversation_scope": "crew_to_crew",
                     "suspected_crew_ids": ["crew_0001", "crew_0002"],
-                    "summary": "A side arrangement is circulating around contract_false_finger.",
-                    "pressure": "escrow_terms_detected",
+                    "summary": "A private artifact discussion is echoing between crews.",
+                    "pressure": "artifact_reference_detected",
                 },
             },
         ],

@@ -211,6 +211,7 @@ def _shape_rumor(payload: dict[str, Any]) -> dict[str, Any]:
             "rumor_id",
             "source_type",
             "source_id",
+            "conversation_scope",
             "contract_id",
             "suspected_crew_ids",
             "summary",

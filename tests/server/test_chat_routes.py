@@ -103,6 +103,120 @@ def test_crew_to_crew_messages_sync_only_to_both_crews(tmp_path):
     assert "chat.message.created" not in _visible_types(client, linus["token"])
 
 
+def test_crew_to_crew_artifact_chat_leaks_redacted_rumor_to_bystander_crew(tmp_path):
+    client = TestClient(create_app(data_dir=tmp_path, invite_codes=["a", "b", "c"]))
+    ada = register(client, "a", "Ada")
+    grace = register(client, "b", "Grace")
+    linus = register(client, "c", "Linus")
+    gilt = make_crew(client, ada["token"], "The Gilt Knives")["crew_id"]
+    moth = make_crew(client, grace["token"], "The Moth Choir")["crew_id"]
+    ash = make_crew(client, linus["token"], "The Ash Keys")["crew_id"]
+
+    sent = client.post(
+        "/chat/crew-to-crew",
+        headers=command_auth(ada["token"], "chat-gilt-moth-ledger"),
+        json={
+            "sender_crew_id": gilt,
+            "recipient_crew_id": moth,
+            "body": "The ledger proves our leverage. Keep quiet.",
+            "artifact_ids": ["artifact_ledger_rubric"],
+        },
+    )
+    bystander_events = client.get("/events", headers=auth(linus["token"])).json()["events"]
+    participant_events = client.get("/events", headers=auth(ada["token"])).json()["events"]
+    bystander_board = client.get(f"/crews/{ash}/board", headers=auth(linus["token"]))
+
+    assert sent.status_code == 201
+    assert not any(event["type"] == "chat.message.created" for event in bystander_events)
+    rumor_events = [
+        event for event in bystander_events
+        if event["type"] == "contract.rumor.leaked"
+    ]
+    assert len(rumor_events) == 1
+    rumor = rumor_events[0]["payload"]
+    assert rumor == {
+        "rumor_id": "rumor_msg_000001",
+        "source_type": "chat.message.created",
+        "source_id": "msg_000001",
+        "conversation_scope": "crew_to_crew",
+        "suspected_crew_ids": [gilt, moth],
+        "summary": "A private artifact discussion is echoing between crews.",
+        "pressure": "artifact_reference_detected",
+    }
+    assert "artifact_ledger_rubric" not in str(rumor_events)
+    assert "The ledger proves our leverage" not in str(rumor_events)
+    assert not any(
+        event["type"] == "contract.rumor.leaked"
+        for event in participant_events
+    )
+    assert bystander_board.status_code == 200
+    assert bystander_board.json()["rumors"] == [rumor]
+
+
+def test_crew_to_crew_chat_without_artifacts_does_not_leak_rumor(tmp_path):
+    client = TestClient(create_app(data_dir=tmp_path, invite_codes=["a", "b", "c"]))
+    ada = register(client, "a", "Ada")
+    grace = register(client, "b", "Grace")
+    linus = register(client, "c", "Linus")
+    gilt = make_crew(client, ada["token"], "The Gilt Knives")["crew_id"]
+    moth = make_crew(client, grace["token"], "The Moth Choir")["crew_id"]
+    make_crew(client, linus["token"], "The Ash Keys")
+
+    sent = client.post(
+        "/chat/crew-to-crew",
+        headers=command_auth(ada["token"], "chat-gilt-moth-plain"),
+        json={
+            "sender_crew_id": gilt,
+            "recipient_crew_id": moth,
+            "body": "No public claims until lock.",
+        },
+    )
+    bystander_events = client.get("/events", headers=auth(linus["token"])).json()["events"]
+
+    assert sent.status_code == 201
+    assert not any(
+        event["type"] == "contract.rumor.leaked"
+        for event in bystander_events
+    )
+
+
+def test_replayed_crew_to_crew_artifact_chat_does_not_duplicate_rumor(tmp_path):
+    client = TestClient(create_app(data_dir=tmp_path, invite_codes=["a", "b", "c"]))
+    ada = register(client, "a", "Ada")
+    grace = register(client, "b", "Grace")
+    linus = register(client, "c", "Linus")
+    gilt = make_crew(client, ada["token"], "The Gilt Knives")["crew_id"]
+    moth = make_crew(client, grace["token"], "The Moth Choir")["crew_id"]
+    make_crew(client, linus["token"], "The Ash Keys")
+    payload = {
+        "sender_crew_id": gilt,
+        "recipient_crew_id": moth,
+        "body": "The ledger proves our leverage. Keep quiet.",
+        "artifact_ids": ["artifact_ledger_rubric"],
+    }
+
+    first = client.post(
+        "/chat/crew-to-crew",
+        headers=command_auth(ada["token"], "chat-gilt-moth-ledger"),
+        json=payload,
+    )
+    replay = client.post(
+        "/chat/crew-to-crew",
+        headers=command_auth(ada["token"], "chat-gilt-moth-ledger"),
+        json=payload,
+    )
+    bystander_events = client.get("/events", headers=auth(linus["token"])).json()["events"]
+
+    assert first.status_code == 201
+    assert replay.status_code == 201
+    assert replay.json()["message_id"] == first.json()["message_id"]
+    assert [
+        event["payload"]["rumor_id"]
+        for event in bystander_events
+        if event["type"] == "contract.rumor.leaked"
+    ] == ["rumor_msg_000001"]
+
+
 def test_chat_does_not_create_binding_deal_state(tmp_path):
     client = TestClient(create_app(data_dir=tmp_path, invite_codes=["a", "b"]))
     ada = register(client, "a", "Ada")

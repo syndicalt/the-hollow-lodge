@@ -278,9 +278,14 @@ Status:
   emit redacted `contract.rumor.leaked` events to nonparticipant crews, visible
   in recent activity and crew boards without exposing artifact IDs, soft terms,
   player IDs, or deal acceptance state.
+- Second social-pressure slice completed: crew-to-crew chat messages that
+  attach explicit artifact references now emit redacted system-pressure rumors
+  to nonparticipant crews, without exposing message text, artifact IDs, or
+  player IDs.
 - Escrowed deal acceptance remains participant-scoped and server-enforced.
-- Deferred: chat-originated pressure, reputation consequences for deal conduct,
-  deliberate cleanup/counterintelligence actions, and richer rumor verification.
+- Deferred: freeform chat body pressure scanning, reputation consequences for
+  deal conduct, deliberate cleanup/counterintelligence actions, and richer
+  rumor verification.
 
 Likely files:
 
@@ -438,6 +443,22 @@ Expected verification:
 
 - `pytest tests/server/test_crew_legacy_projection.py tests/server/test_crew_routes.py -q`
 - `pytest tests/client/test_render_packets.py tests/e2e/test_contract_content_pipeline.py -q`
+
+### Slice 11: Chat-Originated Rumor Pressure
+
+Status: completed.
+
+Extend Milestone 7 system pressure beyond brokered deals: when a private
+crew-to-crew chat includes explicit artifact references, emit a redacted rumor
+event to nonparticipant crews. The rumor should identify only the pressure
+category, source event, conversation scope, and suspected crews. It must not
+copy private message bodies, artifact IDs, artifact titles, player IDs, or
+instructions from the chat.
+
+Expected verification:
+
+- `pytest tests/server/test_chat_routes.py tests/client/test_render_packets.py -q`
+- `pytest -q`
 
 ## Completion Standard
 
