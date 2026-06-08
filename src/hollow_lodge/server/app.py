@@ -6,7 +6,9 @@ from pathlib import Path
 from fastapi import FastAPI
 
 from hollow_lodge.eventlog.jsonl_store import JsonlEventStore
+from hollow_lodge.server.artifact_service import ArtifactService
 from hollow_lodge.server.routes_actions import router as actions_router
+from hollow_lodge.server.routes_artifacts import router as artifacts_router
 from hollow_lodge.server.routes_chat import router as chat_router
 from hollow_lodge.server.routes_contracts import router as contracts_router
 from hollow_lodge.server.routes_crews import router as crews_router
@@ -62,6 +64,7 @@ def create_app(
         event_store=event_store,
         crew_service=crew_service,
     )
+    app.state.artifact_service = ArtifactService(event_store=event_store)
 
     if data_dir is not None:
         app.state.contract_service = ContractService(
@@ -78,6 +81,7 @@ def create_app(
     app.include_router(crews_router)
     app.include_router(chat_router)
     app.include_router(actions_router)
+    app.include_router(artifacts_router)
     app.include_router(contracts_router)
     app.include_router(proofs_router)
     app.include_router(events_router)
