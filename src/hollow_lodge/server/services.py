@@ -32,7 +32,11 @@ from hollow_lodge.server.artifact_unlocks import (
     action_unlock_candidates,
     auction_preview_phase_reward_artifact_id,
 )
-from hollow_lodge.server.projections import contract_board_from_events, inbox_from_board
+from hollow_lodge.server.projections import (
+    contract_board_from_events,
+    inbox_from_board,
+    legacy_delta_for_standing,
+)
 from hollow_lodge.server.contract_seed import ContractSeed, PhaseReward
 from hollow_lodge.server.seed_data import STARTER_CAMPAIGN, STARTER_CONTRACT, STARTER_HIDDEN_TRUTH
 from hollow_lodge.server.auth import authenticate_token
@@ -1082,6 +1086,11 @@ class ContractService:
                     or existing.payload["hours_elapsed"] != hours_elapsed
                 ):
                     raise ValueError("idempotency key conflict")
+                self._record_auction_preview_legacy_deltas(
+                    contract=contract,
+                    phase=phase_name,
+                    reveal=existing.payload["reveal"],
+                )
                 return existing.payload["reveal"]
             resolved = self._resolved_auction_preview(
                 contract_id=contract_id,
@@ -1090,6 +1099,11 @@ class ContractService:
             if resolved is not None:
                 self._award_auction_preview_phase_rewards(
                     contract_id=contract_id,
+                    phase=phase_name,
+                    reveal=resolved,
+                )
+                self._record_auction_preview_legacy_deltas(
+                    contract=contract,
                     phase=phase_name,
                     reveal=resolved,
                 )
@@ -1136,6 +1150,11 @@ class ContractService:
             )
             self._award_auction_preview_phase_rewards(
                 contract_id=contract_id,
+                phase=phase_name,
+                reveal=reveal,
+            )
+            self._record_auction_preview_legacy_deltas(
+                contract=contract,
                 phase=phase_name,
                 reveal=reveal,
             )
@@ -1229,6 +1248,32 @@ class ContractService:
                 crew_id=leader_crew_id,
                 artifact_id=reward.artifact_id,
                 reason=reward.reason,
+            )
+
+    def _record_auction_preview_legacy_deltas(
+        self,
+        *,
+        contract: Contract,
+        phase: str,
+        reveal: dict,
+    ) -> None:
+        phase_key = re.sub(r"[^a-z0-9]+", "-", phase.casefold()).strip("-")
+        for standing in reveal.get("standings", []):
+            delta = legacy_delta_for_standing(
+                contract_id=contract.contract_id,
+                contract_title=contract.title,
+                phase=phase,
+                standing=standing,
+            )
+            self._event_store.append_command(
+                event_type="crew.legacy.delta.recorded",
+                actor_id="server",
+                visibility=EventVisibility.public(),
+                payload=delta,
+                idempotency_key=(
+                    f"crew-legacy-delta.{contract.contract_id}."
+                    f"{phase_key}.{delta['crew_id']}"
+                ),
             )
 
     def _award_phase_reward_artifact(

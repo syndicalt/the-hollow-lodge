@@ -1,5 +1,6 @@
 from copy import deepcopy
 
+from hollow_lodge.domain.events import GameEvent, EventVisibility
 from hollow_lodge.server.projections import (
     apply_crew_modifiers_to_contracts,
     crew_legacy_from_contracts,
@@ -94,6 +95,75 @@ def test_strong_lead_creates_reputation_heat_and_future_modifiers():
     assert legacy["favors"] == 1
     assert "hidden_truth" not in str(legacy)
     assert shaped_contracts[1]["crew_modifiers"] == legacy["future_opportunities"][0]["modifiers"]
+
+
+def test_explicit_legacy_delta_events_drive_legacy_without_double_counting():
+    contracts = [
+        {
+            "contract_id": "contract_false_finger",
+            "title": "The Saint's False Finger",
+            "phase": {"name": "Auction Preview", "status": "resolved"},
+        },
+        {
+            "contract_id": "contract_ash_window",
+            "title": "The Ash Window",
+            "phase": {"name": "Cinder Preview", "remaining_hours": 4},
+        },
+    ]
+    events = [
+        GameEvent.new(
+            sequence=10,
+            event_type="crew.legacy.delta.recorded",
+            actor_id="server",
+            visibility=EventVisibility.public(),
+            payload={
+                "schema_version": 1,
+                "crew_id": "crew_0001",
+                "contract_id": "contract_false_finger",
+                "contract_title": "The Saint's False Finger",
+                "phase": "Auction Preview",
+                "standing": "Strong lead",
+                "score": 70,
+                "outcome": "strong_lead",
+                "deltas": {
+                    "reputation": 2,
+                    "heat": 1,
+                    "favors": 1,
+                    "debts": 0,
+                    "scars": [],
+                },
+                "summary": (
+                    "Strong lead on The Saint's False Finger: reputation +2, "
+                    "heat +1, favors +1."
+                ),
+                "hidden_truth": "server-only should not project",
+            },
+            previous_hash=None,
+            idempotency_key="legacy-delta",
+        )
+    ]
+
+    legacy = crew_legacy_from_contracts(
+        crew_id="crew_0001",
+        contracts=contracts,
+        events=events,
+    )
+
+    assert legacy["reputation"] == 2
+    assert legacy["heat"] == 1
+    assert legacy["favors"] == 1
+    assert legacy["debts"] == 0
+    assert legacy["completed_contracts"] == [
+        {
+            "contract_id": "contract_false_finger",
+            "title": "The Saint's False Finger",
+            "phase": "Auction Preview",
+            "standing": "Strong lead",
+            "score": 70,
+            "outcome": "strong_lead",
+        }
+    ]
+    assert "server-only" not in str(legacy)
 
 
 def test_fulfilled_deals_create_reliable_broker_context_without_terms_or_artifact_ids():

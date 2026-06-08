@@ -101,4 +101,6 @@ def _render_server_event(event: dict[str, Any]) -> str | None:
             f"{sequence} phase result: {leader.get('crew_id')} "
             f"{leader.get('standing')} {leader.get('score')}"
         )
+    if event["type"] == "crew.legacy.delta.recorded":
+        return f"{sequence} legacy {payload.get('crew_id')}: {payload.get('summary')}"
     return None

@@ -200,6 +200,28 @@ def _shape_counterintelligence(counterintelligence: dict[str, Any]) -> dict[str,
     }
 
 
+def _shape_legacy_delta(payload: dict[str, Any]) -> dict[str, Any]:
+    deltas = payload.get("deltas", {})
+    return {
+        "schema_version": int(payload.get("schema_version", 1)),
+        "crew_id": payload.get("crew_id"),
+        "contract_id": payload.get("contract_id"),
+        "contract_title": payload.get("contract_title"),
+        "phase": payload.get("phase"),
+        "standing": payload.get("standing"),
+        "score": int(payload.get("score", 0)),
+        "outcome": payload.get("outcome"),
+        "deltas": {
+            "reputation": int(deltas.get("reputation", 0)),
+            "heat": int(deltas.get("heat", 0)),
+            "favors": int(deltas.get("favors", 0)),
+            "debts": int(deltas.get("debts", 0)),
+            "scars": [str(scar) for scar in deltas.get("scars", [])],
+        },
+        "summary": payload.get("summary", ""),
+    }
+
+
 def _shape_pending_decision(decision: dict[str, Any]) -> dict[str, Any]:
     return {
         key: decision[key]
@@ -336,6 +358,8 @@ def _shape_activity_event(event: dict[str, Any]) -> dict[str, Any]:
         shaped["rumor"] = _shape_rumor(payload)
     elif event_type == "contract.rumor.responded":
         shaped["rumor_response"] = _shape_rumor_response(payload)
+    elif event_type == "crew.legacy.delta.recorded":
+        shaped["legacy_delta"] = _shape_legacy_delta(payload)
     return shaped
 
 
@@ -456,6 +480,8 @@ def _render_activity_event(event: dict[str, Any]) -> str:
             f"{sequence} rumor response {payload.get('action_id')}: "
             f"{payload.get('summary')}"
         )
+    if event_type == "crew.legacy.delta.recorded":
+        return f"{sequence} legacy {payload.get('crew_id')}: {payload.get('summary')}"
     return f"{sequence} {event_type}"
 
 

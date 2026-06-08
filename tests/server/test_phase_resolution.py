@@ -38,7 +38,7 @@ def create_crew(client: TestClient, token: str, key: str, name: str) -> dict:
 
 
 def setup_two_crews(tmp_path):
-    client = TestClient(create_app(data_dir=tmp_path, invite_codes=["a", "b"]))
+    client = TestClient(create_app(data_dir=tmp_path, invite_codes=["a", "b", "c"]))
     ada = register(client, "a", "Ada")
     linus = register(client, "b", "Linus")
     gilt = create_crew(client, ada["token"], "crew-create-gilt", "The Gilt Knives")
@@ -274,6 +274,74 @@ def test_phase_lock_replay_and_duplicate_lock_do_not_append_duplicate_reveals(tm
     assert [event["type"] for event in events].count("contract.phase.locked") == 1
     assert "truth_false_finger_forgery" not in str(events)
     assert "saint-bone forgery" not in str(events)
+
+
+def test_phase_resolution_records_public_legacy_delta_events_for_each_standing(tmp_path):
+    client, ada, linus, gilt, moth = setup_two_crews(tmp_path)
+    observer = register(client, "c", "Grace")
+    set_claim(client, ada, gilt, "claim-gilt", "The finger is likely a false relic.")
+    submit_action(
+        client,
+        ada,
+        gilt,
+        "action-gilt",
+        "Inspect the ledger for forged provenance.",
+    )
+    set_claim(client, linus, moth, "claim-moth", "The reliquary has occult resonance.")
+    submit_action(
+        client,
+        linus,
+        moth,
+        "action-moth",
+        "Observe the moth jar door omen near the auction room for occult resonance.",
+    )
+
+    first = lock_preview(client, ada, "phase-lock-legacy")
+    duplicate = lock_preview(client, ada, "phase-lock-legacy-duplicate")
+    ada_events = client.get("/events", headers=auth(ada["token"])).json()["events"]
+    linus_events = client.get("/events", headers=auth(linus["token"])).json()["events"]
+    observer_events = client.get("/events", headers=auth(observer["token"])).json()["events"]
+
+    assert first.status_code == 200
+    assert duplicate.status_code == 200
+    ada_legacy_events = [
+        event for event in ada_events if event["type"] == "crew.legacy.delta.recorded"
+    ]
+    linus_legacy_events = [
+        event for event in linus_events if event["type"] == "crew.legacy.delta.recorded"
+    ]
+    observer_legacy_events = [
+        event for event in observer_events if event["type"] == "crew.legacy.delta.recorded"
+    ]
+    assert len(ada_legacy_events) == 2
+    assert len(linus_legacy_events) == 2
+    assert len(observer_legacy_events) == 2
+    by_crew = {event["payload"]["crew_id"]: event["payload"] for event in ada_legacy_events}
+    assert by_crew[gilt["crew_id"]] == {
+        "schema_version": 1,
+        "crew_id": gilt["crew_id"],
+        "contract_id": "contract_false_finger",
+        "contract_title": "The Saint's False Finger",
+        "phase": "Auction Preview",
+        "standing": "Strong lead",
+        "score": 70,
+        "outcome": "strong_lead",
+        "deltas": {
+            "reputation": 2,
+            "heat": 1,
+            "favors": 1,
+            "debts": 0,
+            "scars": [],
+        },
+        "summary": "Strong lead on The Saint's False Finger: reputation +2, heat +1, favors +1.",
+    }
+    assert by_crew[moth["crew_id"]]["deltas"]["reputation"] == 1
+    assert by_crew[moth["crew_id"]]["deltas"]["heat"] == 0
+    assert by_crew[moth["crew_id"]]["summary"] == (
+        "Viable but unstable on The Saint's False Finger: reputation +1."
+    )
+    assert "hidden_truth" not in str(ada_legacy_events)
+    assert "saint-bone forgery" not in str(ada_legacy_events)
 
 
 def test_phase_resolution_records_server_only_oracle_audit_events(tmp_path):

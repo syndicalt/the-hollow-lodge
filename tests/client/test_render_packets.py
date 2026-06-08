@@ -851,6 +851,36 @@ def test_activity_summary_packet_shapes_visible_events_without_server_only_field
                     "suspected_crew_ids": ["crew_0001", "crew_0002"],
                 },
             },
+            {
+                "origin": "server",
+                "event_id": "evt_5",
+                "sequence": 5,
+                "type": "crew.legacy.delta.recorded",
+                "payload": {
+                    "schema_version": 1,
+                    "crew_id": "crew_0001",
+                    "contract_id": "contract_false_finger",
+                    "contract_title": "The Saint's False Finger",
+                    "phase": "Auction Preview",
+                    "standing": "Strong lead",
+                    "score": 82,
+                    "outcome": "strong_lead",
+                    "deltas": {
+                        "reputation": 2,
+                        "heat": 1,
+                        "favors": 1,
+                        "debts": 0,
+                        "scars": [],
+                        "hidden_note": "server-only",
+                    },
+                    "summary": (
+                        "Strong lead on The Saint's False Finger: reputation +2, "
+                        "heat +1, favors +1."
+                    ),
+                    "hidden_truth": "saint-bone forgery",
+                    "artifact_ids": ["artifact_ledger_rubric"],
+                },
+            },
         ]
     )
 
@@ -863,18 +893,23 @@ def test_activity_summary_packet_shapes_visible_events_without_server_only_field
         "4 rumor response action_000001: The crew started counterintelligence "
         "to contain a leaked rumor."
     ) in packet.player_markdown
+    assert (
+        "5 legacy crew_0001: Strong lead on The Saint's False Finger: "
+        "reputation +2, heat +1, favors +1."
+    ) in packet.player_markdown
     assert "server-only" not in packet.player_markdown
     assert "hidden" not in packet.player_markdown
     assert "artifact_ledger_rubric" not in packet.player_markdown
     assert "Do not cite us." not in packet.player_markdown
     assert "The ledger proves our leverage" not in packet.player_markdown
     assert packet.agent_context == {
-        "visible_event_count": 4,
+        "visible_event_count": 5,
         "event_type_counts": {
             "chat.message.created": 1,
             "proof.fragment.transferred": 1,
             "contract.rumor.leaked": 1,
             "contract.rumor.responded": 1,
+            "crew.legacy.delta.recorded": 1,
         },
         "recent_events": [
             {
@@ -925,6 +960,31 @@ def test_activity_summary_packet_shapes_visible_events_without_server_only_field
                     "outcome": "containment_started",
                     "heat_delta": 1,
                     "summary": "The crew started counterintelligence to contain a leaked rumor.",
+                },
+            },
+            {
+                "sequence": 5,
+                "type": "crew.legacy.delta.recorded",
+                "legacy_delta": {
+                    "schema_version": 1,
+                    "crew_id": "crew_0001",
+                    "contract_id": "contract_false_finger",
+                    "contract_title": "The Saint's False Finger",
+                    "phase": "Auction Preview",
+                    "standing": "Strong lead",
+                    "score": 82,
+                    "outcome": "strong_lead",
+                    "deltas": {
+                        "reputation": 2,
+                        "heat": 1,
+                        "favors": 1,
+                        "debts": 0,
+                        "scars": [],
+                    },
+                    "summary": (
+                        "Strong lead on The Saint's False Finger: reputation +2, "
+                        "heat +1, favors +1."
+                    ),
                 },
             },
         ],

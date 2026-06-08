@@ -70,6 +70,33 @@ def crew_legacy_from_contracts(
         crew_id=crew_id,
         events=events or [],
     )
+    explicit_completed_keys: set[tuple[str, str, str]] = set()
+
+    for event in events or []:
+        if event.type != "crew.legacy.delta.recorded":
+            continue
+        payload = event.payload
+        if payload.get("crew_id") != crew_id:
+            continue
+        deltas = _shape_legacy_deltas(payload.get("deltas", {}))
+        contract_id = str(payload.get("contract_id", ""))
+        phase = str(payload.get("phase", ""))
+        explicit_completed_keys.add((contract_id, phase, crew_id))
+        completed_contracts.append(
+            {
+                "contract_id": contract_id,
+                "title": str(payload.get("contract_title", "")),
+                "phase": phase,
+                "standing": str(payload.get("standing", "")),
+                "score": int(payload.get("score", 0)),
+                "outcome": str(payload.get("outcome", "")),
+            }
+        )
+        reputation += deltas["reputation"]
+        heat += deltas["heat"]
+        favors += deltas["favors"]
+        debts += deltas["debts"]
+        scars.extend(deltas["scars"])
 
     for contract in contracts:
         phase_result = contract.get("phase_result")
@@ -78,26 +105,31 @@ def crew_legacy_from_contracts(
         standing = _standing_for_crew(phase_result, crew_id)
         if standing is None:
             continue
-        outcome = _outcome_key(standing)
+        phase = contract.get("phase", {}).get("name", phase_result.get("phase", ""))
+        if (contract["contract_id"], phase, crew_id) in explicit_completed_keys:
+            continue
+        delta = legacy_delta_for_standing(
+            contract_id=contract["contract_id"],
+            contract_title=contract["title"],
+            phase=phase,
+            standing=standing,
+        )
         completed_contracts.append(
             {
-                "contract_id": contract["contract_id"],
-                "title": contract["title"],
-                "phase": contract.get("phase", {}).get("name", phase_result.get("phase", "")),
-                "standing": standing["standing"],
-                "score": standing["score"],
-                "outcome": outcome,
+                "contract_id": delta["contract_id"],
+                "title": delta["contract_title"],
+                "phase": delta["phase"],
+                "standing": delta["standing"],
+                "score": delta["score"],
+                "outcome": delta["outcome"],
             }
         )
-        if outcome == "strong_lead":
-            reputation += 2
-            heat += 1
-            favors += 1
-        elif outcome == "viable":
-            reputation += 1
-        else:
-            debts += 1
-            scars.append(f"Bruised by {contract['title']}")
+        deltas = delta["deltas"]
+        reputation += deltas["reputation"]
+        heat += deltas["heat"]
+        favors += deltas["favors"]
+        debts += deltas["debts"]
+        scars.extend(deltas["scars"])
     heat += counterintelligence["heat_from_containment"]
 
     future_opportunities = []
@@ -131,6 +163,77 @@ def crew_legacy_from_contracts(
         "completed_contracts": completed_contracts,
         "future_opportunities": future_opportunities,
     }
+
+
+def legacy_delta_for_standing(
+    *,
+    contract_id: str,
+    contract_title: str,
+    phase: str,
+    standing: dict[str, Any],
+) -> dict[str, Any]:
+    outcome = _outcome_key(standing)
+    deltas = {
+        "reputation": 0,
+        "heat": 0,
+        "favors": 0,
+        "debts": 0,
+        "scars": [],
+    }
+    if outcome == "strong_lead":
+        deltas["reputation"] = 2
+        deltas["heat"] = 1
+        deltas["favors"] = 1
+    elif outcome == "viable":
+        deltas["reputation"] = 1
+    else:
+        deltas["debts"] = 1
+        deltas["scars"] = [f"Bruised by {contract_title}"]
+    return {
+        "schema_version": 1,
+        "crew_id": standing["crew_id"],
+        "contract_id": contract_id,
+        "contract_title": contract_title,
+        "phase": phase,
+        "standing": standing["standing"],
+        "score": int(standing["score"]),
+        "outcome": outcome,
+        "deltas": deltas,
+        "summary": _legacy_delta_summary(
+            contract_title=contract_title,
+            standing=standing["standing"],
+            deltas=deltas,
+        ),
+    }
+
+
+def _shape_legacy_deltas(raw: dict[str, Any]) -> dict[str, Any]:
+    return {
+        "reputation": int(raw.get("reputation", 0)),
+        "heat": int(raw.get("heat", 0)),
+        "favors": int(raw.get("favors", 0)),
+        "debts": int(raw.get("debts", 0)),
+        "scars": [str(scar) for scar in raw.get("scars", [])],
+    }
+
+
+def _legacy_delta_summary(
+    *,
+    contract_title: str,
+    standing: str,
+    deltas: dict[str, Any],
+) -> str:
+    parts = []
+    for key in ("reputation", "heat", "favors", "debts"):
+        value = int(deltas.get(key, 0))
+        if value:
+            parts.append(f"{key} +{value}")
+    scars = [str(scar) for scar in deltas.get("scars", [])]
+    if scars:
+        parts.append(f"scars +{len(scars)}")
+    if not parts:
+        parts.append("no legacy change")
+    return f"{standing} on {contract_title}: {', '.join(parts)}."
 
 
 def counterintelligence_from_events(

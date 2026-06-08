@@ -89,18 +89,32 @@ def test_local_log_tracks_max_server_sequence_and_replays_visible_events(tmp_pat
                     }
                 },
             },
+            {
+                "event_id": "evt_legacy",
+                "sequence": 8,
+                "type": "crew.legacy.delta.recorded",
+                "payload": {
+                    "crew_id": "crew_0001",
+                    "summary": (
+                        "Strong lead on The Saint's False Finger: reputation +2, "
+                        "heat +1, favors +1."
+                    ),
+                    "hidden_truth": "saint-bone forgery",
+                },
+            },
         ]
     )
 
     rendered = log.render_replay(since_sequence=2)
 
-    assert log.max_server_sequence() == 7
+    assert log.max_server_sequence() == 8
     assert rendered == [
         "3 player_0001: Trade?",
         "4 action action_000001: Inspect.",
         "5 proof fragment fragment_copy: Copied ledger fragment.",
         "6 provenance fragment_copy: copied-hand",
         "7 phase result: crew_0001 Strong lead 82",
+        "8 legacy crew_0001: Strong lead on The Saint's False Finger: reputation +2, heat +1, favors +1.",
     ]
 
 

@@ -245,9 +245,12 @@ Status:
 - First retention slice completed: resolved contract standings now project into
   crew legacy, visible crew-board reputation/heat/favor/debt state, and
   deterministic future opportunity modifiers on unresolved contracts.
-- Deferred: explicit legacy-delta events, multi-day campaign arc authoring,
-  scars/death/legacy inheritance, and unlockable contracts based on long-term
-  history.
+- Explicit legacy-delta events completed: phase resolution now records
+  sanitized public `crew.legacy.delta.recorded` events for each standing, and
+  crew legacy projections prefer those auditable events while preserving
+  derived fallback for older logs.
+- Deferred: multi-day campaign arc authoring, scars/death/legacy inheritance,
+  and unlockable contracts based on long-term history.
 
 Likely files:
 
@@ -640,6 +643,23 @@ Expected verification:
 
 - `pytest tests/server/test_contract_seed_pipeline.py tests/server/test_phase_artifact_rewards.py -q`
 - `pytest tests/server/test_phase_resolution.py tests/server/test_action_routes.py tests/server/test_artifact_routes.py tests/e2e/test_contract_content_pipeline.py -q`
+- `pytest -q`
+
+### Slice 22: Explicit Legacy Delta Events
+
+Status: completed.
+
+Record auditable crew legacy changes when a phase resolves. Each public
+`crew.legacy.delta.recorded` event contains only sanitized contract, phase,
+standing, score, outcome, and legacy delta fields. Crew legacy projection now
+prefers explicit delta events when present and falls back to derived standings
+for older logs, avoiding double counting. Codex activity packets and local
+replay render the new event as a human-readable legacy update.
+
+Expected verification:
+
+- `pytest tests/server/test_phase_resolution.py::test_phase_resolution_records_public_legacy_delta_events_for_each_standing tests/server/test_phase_resolution.py::test_phase_lock_replay_and_duplicate_lock_do_not_append_duplicate_reveals tests/server/test_crew_legacy_projection.py tests/server/test_crew_routes.py::test_crew_board_legacy_changes_future_contract_risk_and_opportunity tests/client/test_render_packets.py::test_activity_summary_packet_shapes_visible_events_without_server_only_fields tests/client/test_local_log.py::test_local_log_tracks_max_server_sequence_and_replays_visible_events -q`
+- `pytest tests/server/test_phase_resolution.py tests/server/test_crew_legacy_projection.py tests/server/test_crew_routes.py tests/client/test_render_packets.py tests/client/test_local_log.py tests/e2e/test_contract_content_pipeline.py -q`
 - `pytest -q`
 
 ## Completion Standard
