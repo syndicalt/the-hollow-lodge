@@ -262,6 +262,10 @@ Status:
   server-only crew legacy requirements, and Codex contract boards show safe
   locked/unlocked status while inbox and crew-board work queues omit locked
   contracts until the crew qualifies.
+- Public campaign arc metadata completed: contract seeds can now declare
+  player-safe arc id, title, chapter, sequence, summary, previous-contract
+  links, and next hints that render through Codex contract and crew boards
+  without mixing arc presentation with hidden truth or unlock mechanics.
 - Deferred: multi-day campaign arc authoring, scars/death/legacy inheritance,
   and richer long-term unlock paths.
 
@@ -735,6 +739,26 @@ Expected verification:
 - `pytest tests/server/test_contract_seed_pipeline.py::test_contract_seed_accepts_data_defined_unlock_requirements tests/server/test_contract_seed_pipeline.py::test_contract_seed_rejects_unsupported_unlock_metric tests/client/test_render_packets.py::test_contract_board_packet_renders_locked_contract_requirements -q`
 - `pytest tests/server/test_contract_seed.py::test_legacy_locked_contract_is_visible_but_not_actionable_until_crew_qualifies tests/server/test_contract_seed.py::test_contract_activation_replay_rejects_different_unlock_requirements -q`
 - `pytest tests/server/test_contract_seed_pipeline.py tests/server/test_contract_seed.py tests/server/test_crew_routes.py tests/server/test_crew_legacy_projection.py tests/server/test_phase_resolution.py -q`
+- `pytest tests/client/test_render_packets.py tests/client/test_contract_board.py tests/e2e/test_contract_content_pipeline.py tests/e2e/test_codex_render_surfaces.py -q`
+- `pytest -q`
+
+### Slice 26: Public Campaign Arc Metadata
+
+Status: completed.
+
+Add the first multi-contract campaign authoring primitive. Contracts can now
+carry a typed public `arc` object with arc id, title, chapter, sequence,
+public summary, optional previous contract id, and optional next contract hint.
+Arc metadata is stored on the public `contract.board.published` payload,
+validated as presentation-only data, rendered through Codex contract boards,
+and preserved through crew-board contract shaping. Hidden truth, unlock
+requirements, and server-only notes remain outside arc metadata; unknown arc
+fields are rejected at seed validation.
+
+Expected verification:
+
+- `pytest tests/server/test_contract_seed_pipeline.py::test_contract_seed_accepts_public_campaign_arc_metadata tests/server/test_contract_seed_pipeline.py::test_contract_seed_rejects_arc_previous_link_to_self tests/server/test_contract_seed_pipeline.py::test_contract_seed_rejects_unknown_arc_fields tests/server/test_contract_seed.py::test_contract_board_renders_public_campaign_arc_metadata tests/server/test_contract_seed.py::test_contract_activation_replay_rejects_different_arc_metadata tests/server/test_crew_routes.py::test_crew_board_shapes_contracts_and_dossier_at_server_boundary tests/client/test_render_packets.py::test_contract_board_packet_renders_campaign_arc_metadata_without_hidden_fields -q`
+- `pytest tests/server/test_contract_seed_pipeline.py tests/server/test_contract_seed.py tests/server/test_crew_routes.py -q`
 - `pytest tests/client/test_render_packets.py tests/client/test_contract_board.py tests/e2e/test_contract_content_pipeline.py tests/e2e/test_codex_render_surfaces.py -q`
 - `pytest -q`
 

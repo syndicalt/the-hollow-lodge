@@ -105,6 +105,22 @@ def _shape_unlock_status(status: dict[str, Any]) -> dict[str, Any]:
     }
 
 
+def _shape_arc(arc: dict[str, Any]) -> dict[str, Any]:
+    return {
+        key: arc[key]
+        for key in (
+            "arc_id",
+            "title",
+            "chapter",
+            "sequence",
+            "public_summary",
+            "previous_contract_id",
+            "next_contract_hint",
+        )
+        if key in arc
+    }
+
+
 def _shape_contract(contract: dict[str, Any]) -> dict[str, Any]:
     shaped = {
         key: contract[key]
@@ -127,6 +143,8 @@ def _shape_contract(contract: dict[str, Any]) -> dict[str, Any]:
         ]
     if "unlock_status" in contract:
         shaped["unlock_status"] = _shape_unlock_status(contract["unlock_status"])
+    if contract.get("arc"):
+        shaped["arc"] = _shape_arc(contract["arc"])
     return shaped
 
 
@@ -803,6 +821,14 @@ def build_contract_board_packet(board: dict[str, Any]) -> RenderPacket:
     for contract in contracts:
         phase = contract["phase"]
         lines.append(f"## {contract['title']}")
+        if contract.get("arc"):
+            arc = _shape_arc(contract["arc"])
+            lines.append(f"Arc: {arc['title']}, chapter {arc['chapter']}")
+            lines.append(str(arc["public_summary"]))
+            if "previous_contract_id" in arc:
+                lines.append(f"Previous: {arc['previous_contract_id']}")
+            if "next_contract_hint" in arc:
+                lines.append(f"Next hint: {arc['next_contract_hint']}")
         if "lifecycle_status" in contract:
             lines.append(f"Status: {contract['lifecycle_status']}")
         if "unlock_status" in contract:

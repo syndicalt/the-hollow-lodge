@@ -125,6 +125,54 @@ def test_contract_board_packet_renders_locked_contract_requirements():
     }
 
 
+def test_contract_board_packet_renders_campaign_arc_metadata_without_hidden_fields():
+    packet = build_contract_board_packet(
+        {
+            "campaign": BOARD["campaign"],
+            "contracts": [
+                {
+                    **BOARD["contracts"][0],
+                    "contract_id": "contract_ash_window",
+                    "title": "The Ash Window",
+                    "phase": {"name": "Cinder Preview", "remaining_hours": 4},
+                    "arc": {
+                        "arc_id": "arc_cinders_below",
+                        "title": "Cinders Below",
+                        "chapter": 2,
+                        "sequence": 20,
+                        "public_summary": (
+                            "The Lodge follows fire omens from auction catalogues "
+                            "into old glass."
+                        ),
+                        "previous_contract_id": "contract_false_finger",
+                        "next_contract_hint": (
+                            "A burned ledger points toward the chapel undercroft."
+                        ),
+                        "hidden_truth": "server-only",
+                    },
+                }
+            ],
+        }
+    )
+
+    assert "Arc: Cinders Below, chapter 2" in packet.player_markdown
+    assert "The Lodge follows fire omens" in packet.player_markdown
+    assert "Previous: contract_false_finger" in packet.player_markdown
+    assert "Next hint: A burned ledger points toward the chapel undercroft." in packet.player_markdown
+    assert "hidden" not in packet.player_markdown
+    assert packet.agent_context["contracts"][0]["arc"] == {
+        "arc_id": "arc_cinders_below",
+        "title": "Cinders Below",
+        "chapter": 2,
+        "sequence": 20,
+        "public_summary": (
+            "The Lodge follows fire omens from auction catalogues into old glass."
+        ),
+        "previous_contract_id": "contract_false_finger",
+        "next_contract_hint": "A burned ledger points toward the chapel undercroft.",
+    }
+
+
 def test_inbox_packet_prioritizes_actionable_items_for_codex():
     packet = build_inbox_packet(
         {

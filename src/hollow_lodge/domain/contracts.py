@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from pydantic import BaseModel, ConfigDict, Field
+from pydantic import BaseModel, ConfigDict, Field, model_validator
 
 
 class Campaign(BaseModel):
@@ -32,6 +32,18 @@ class HiddenTruth(BaseModel):
     summary: str = Field(min_length=1)
 
 
+class ContractArc(BaseModel):
+    model_config = ConfigDict(frozen=True, extra="forbid")
+
+    arc_id: str = Field(min_length=1)
+    title: str = Field(min_length=1)
+    chapter: int = Field(ge=1)
+    sequence: int = Field(ge=0)
+    public_summary: str = Field(min_length=1)
+    previous_contract_id: str | None = Field(default=None, min_length=1)
+    next_contract_hint: str | None = Field(default=None, min_length=1)
+
+
 class Contract(BaseModel):
     model_config = ConfigDict(frozen=True)
 
@@ -43,3 +55,13 @@ class Contract(BaseModel):
     evidence_assets: tuple[EvidenceAsset, ...]
     proof_dossier_needs: tuple[str, ...]
     crew_heat: int = Field(ge=0)
+    arc: ContractArc | None = None
+
+    @model_validator(mode="after")
+    def validate_arc_links(self) -> Contract:
+        if (
+            self.arc is not None
+            and self.arc.previous_contract_id == self.contract_id
+        ):
+            raise ValueError("arc previous contract cannot reference itself")
+        return self

@@ -46,6 +46,56 @@ def test_contract_seed_accepts_data_defined_unlock_requirements():
     assert seed.unlock_requirements[0].minimum == 2
 
 
+def test_contract_seed_accepts_public_campaign_arc_metadata():
+    raw = json.loads(FIXTURE.read_text(encoding="utf-8"))
+    raw["contract"]["arc"] = {
+        "arc_id": "arc_cinders_below",
+        "title": "Cinders Below",
+        "chapter": 2,
+        "sequence": 20,
+        "public_summary": "The Lodge follows fire omens from auction catalogues into old glass.",
+        "previous_contract_id": "contract_false_finger",
+        "next_contract_hint": "A burned ledger points toward the chapel undercroft.",
+    }
+
+    seed = ContractSeed.model_validate(raw)
+
+    assert seed.contract.arc is not None
+    assert seed.contract.arc.arc_id == "arc_cinders_below"
+    assert seed.contract.arc.chapter == 2
+    assert seed.contract.arc.previous_contract_id == "contract_false_finger"
+
+
+def test_contract_seed_rejects_arc_previous_link_to_self():
+    raw = json.loads(FIXTURE.read_text(encoding="utf-8"))
+    raw["contract"]["arc"] = {
+        "arc_id": "arc_cinders_below",
+        "title": "Cinders Below",
+        "chapter": 2,
+        "sequence": 20,
+        "public_summary": "The Lodge follows fire omens from auction catalogues into old glass.",
+        "previous_contract_id": "contract_ash_window",
+    }
+
+    with pytest.raises(ValueError, match="arc previous contract cannot reference itself"):
+        ContractSeed.model_validate(raw)
+
+
+def test_contract_seed_rejects_unknown_arc_fields():
+    raw = json.loads(FIXTURE.read_text(encoding="utf-8"))
+    raw["contract"]["arc"] = {
+        "arc_id": "arc_cinders_below",
+        "title": "Cinders Below",
+        "chapter": 2,
+        "sequence": 20,
+        "public_summary": "The Lodge follows fire omens from auction catalogues into old glass.",
+        "hidden_truth": "server-only",
+    }
+
+    with pytest.raises(ValueError):
+        ContractSeed.model_validate(raw)
+
+
 def test_contract_seed_rejects_unsupported_unlock_metric():
     raw = json.loads(FIXTURE.read_text(encoding="utf-8"))
     raw["unlock_requirements"] = [

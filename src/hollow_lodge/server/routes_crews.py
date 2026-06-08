@@ -173,6 +173,20 @@ def _crew_board_contract(contract: dict) -> dict:
             for key in ("name", "remaining_hours", "status")
             if key in contract["phase"]
         }
+    if contract.get("arc"):
+        shaped["arc"] = {
+            key: contract["arc"][key]
+            for key in (
+                "arc_id",
+                "title",
+                "chapter",
+                "sequence",
+                "public_summary",
+                "previous_contract_id",
+                "next_contract_hint",
+            )
+            if key in contract["arc"]
+        }
     if "phase_result" in contract:
         shaped["phase_result"] = {
             "standings": [

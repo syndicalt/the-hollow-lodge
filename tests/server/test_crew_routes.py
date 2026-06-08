@@ -353,6 +353,15 @@ def test_crew_board_shapes_contracts_and_dossier_at_server_boundary(tmp_path):
                         },
                         "crew_heat": 0,
                         "proof_dossier_needs": ["provenance chain"],
+                        "arc": {
+                            "arc_id": "arc_saints_ledgers",
+                            "title": "Saints & Ledgers",
+                            "chapter": 1,
+                            "sequence": 10,
+                            "public_summary": "The Lodge starts with a false finger.",
+                            "next_contract_hint": "Ash follows the ledger.",
+                            "hidden_truth": "server-only",
+                        },
                         "phase_result": {
                             "standings": [
                                 {
@@ -411,6 +420,14 @@ def test_crew_board_shapes_contracts_and_dossier_at_server_boundary(tmp_path):
         },
         "crew_heat": 0,
         "proof_dossier_needs": ["provenance chain"],
+        "arc": {
+            "arc_id": "arc_saints_ledgers",
+            "title": "Saints & Ledgers",
+            "chapter": 1,
+            "sequence": 10,
+            "public_summary": "The Lodge starts with a false finger.",
+            "next_contract_hint": "Ash follows the ledger.",
+        },
         "phase_result": {
             "standings": [
                 {

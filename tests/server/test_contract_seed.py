@@ -111,6 +111,52 @@ def test_admin_can_activate_second_contract_seed_and_render_it(tmp_path, monkeyp
     assert "cinder oracle" not in events.text
 
 
+def test_contract_board_renders_public_campaign_arc_metadata(tmp_path, monkeypatch):
+    monkeypatch.setenv("HOLLOW_LODGE_ADMIN_TOKEN", "admin-secret")
+    seed = json.loads(Path("tests/fixtures/ash_window_contract.json").read_text(encoding="utf-8"))
+    seed["contract"]["arc"] = {
+        "arc_id": "arc_cinders_below",
+        "title": "Cinders Below",
+        "chapter": 2,
+        "sequence": 20,
+        "public_summary": "The Lodge follows fire omens from auction catalogues into old glass.",
+        "previous_contract_id": "contract_false_finger",
+        "next_contract_hint": "A burned ledger points toward the chapel undercroft.",
+    }
+    client = TestClient(create_app(data_dir=tmp_path, invite_codes=["a"]))
+    ada = register(client, "a", "Ada")
+
+    activated = client.post(
+        "/contracts/admin/activate",
+        headers={
+            "Idempotency-Key": "activate-arc-ash-window",
+            "X-Hollow-Lodge-Admin-Token": "admin-secret",
+        },
+        json={"seed": seed},
+    )
+    contracts = client.get("/contracts", headers=auth(ada["token"]))
+    visible_events = client.get("/events", headers=auth(ada["token"]))
+
+    assert activated.status_code == 201
+    ash = {
+        contract["contract_id"]: contract
+        for contract in contracts.json()["contracts"]
+    }["contract_ash_window"]
+    assert ash["arc"] == {
+        "arc_id": "arc_cinders_below",
+        "title": "Cinders Below",
+        "chapter": 2,
+        "sequence": 20,
+        "public_summary": "The Lodge follows fire omens from auction catalogues into old glass.",
+        "previous_contract_id": "contract_false_finger",
+        "next_contract_hint": "A burned ledger points toward the chapel undercroft.",
+    }
+    assert "server-only" not in contracts.text
+    assert "cinder oracle" not in contracts.text
+    assert "server-only" not in visible_events.text
+    assert "cinder oracle" not in visible_events.text
+
+
 def test_legacy_locked_contract_is_visible_but_not_actionable_until_crew_qualifies(
     tmp_path,
     monkeypatch,
@@ -270,6 +316,49 @@ def test_contract_activation_replay_rejects_different_unlock_requirements(
             "X-Hollow-Lodge-Admin-Token": "admin-secret",
         },
         json={"seed": locked_seed},
+    )
+
+    assert first.status_code == 201
+    assert conflict.status_code == 409
+    assert conflict.json()["detail"] == "idempotency key conflict"
+
+
+def test_contract_activation_replay_rejects_different_arc_metadata(
+    tmp_path,
+    monkeypatch,
+):
+    monkeypatch.setenv("HOLLOW_LODGE_ADMIN_TOKEN", "admin-secret")
+    seed = json.loads(Path("tests/fixtures/ash_window_contract.json").read_text(encoding="utf-8"))
+    seed["contract"]["arc"] = {
+        "arc_id": "arc_cinders_below",
+        "title": "Cinders Below",
+        "chapter": 2,
+        "sequence": 20,
+        "public_summary": "The Lodge follows fire omens from auction catalogues into old glass.",
+        "previous_contract_id": "contract_false_finger",
+        "next_contract_hint": "A burned ledger points toward the chapel undercroft.",
+    }
+    changed_seed = json.loads(json.dumps(seed))
+    changed_seed["contract"]["arc"]["next_contract_hint"] = (
+        "A different hint should not replay under the same key."
+    )
+    client = TestClient(create_app(data_dir=tmp_path, invite_codes=["a"]))
+
+    first = client.post(
+        "/contracts/admin/activate",
+        headers={
+            "Idempotency-Key": "activate-arc-ash-window",
+            "X-Hollow-Lodge-Admin-Token": "admin-secret",
+        },
+        json={"seed": seed},
+    )
+    conflict = client.post(
+        "/contracts/admin/activate",
+        headers={
+            "Idempotency-Key": "activate-arc-ash-window",
+            "X-Hollow-Lodge-Admin-Token": "admin-secret",
+        },
+        json={"seed": changed_seed},
     )
 
     assert first.status_code == 201
