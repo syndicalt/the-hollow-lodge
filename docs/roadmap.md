@@ -162,9 +162,12 @@ Status:
   activated as data, unlock its own hidden artifact through a crew action,
   resolve its phase through the existing lock route, and render the resolved
   state through Codex surfaces.
-- Deferred: richer lifecycle transitions beyond activation/resolution, generic
-  phase reward configuration, and full smoke playthroughs for every future
-  shipped contract.
+- First lifecycle transition slice completed: admins can archive contracts
+  through an idempotent lifecycle event; archived contracts remain visible on
+  the contract board as archived history but leave active inbox and crew-board
+  work queues.
+- Deferred: generic phase reward configuration and full smoke playthroughs for
+  every future shipped contract.
 
 Proof gate:
 
@@ -602,6 +605,22 @@ Expected verification:
 
 - `pytest tests/server/test_action_routes.py tests/server/test_crew_routes.py tests/server/test_crew_legacy_projection.py -q`
 - `pytest tests/client/test_api.py tests/client/test_codex_session.py tests/client/test_action_cli.py tests/client/test_render_packets.py tests/test_mcp_server.py -q`
+- `pytest -q`
+
+### Slice 20: Contract Archive Lifecycle
+
+Status: completed.
+
+Add the first post-activation contract lifecycle transition. Admins can archive
+a contract through an idempotent `contract.lifecycle.changed` event. Archived
+contracts stay visible on the contract board with `lifecycle_status=archived`,
+while inbox and crew-board active work queues exclude them so players are not
+prompted to keep acting on completed or retired work.
+
+Expected verification:
+
+- `pytest tests/server/test_contract_seed.py tests/server/test_contract_seed_pipeline.py tests/server/test_crew_routes.py tests/server/test_phase_resolution.py -q`
+- `pytest tests/client/test_api.py tests/client/test_cli_commands.py tests/client/test_render_packets.py tests/client/test_contract_board.py tests/e2e/test_contract_content_pipeline.py tests/e2e/test_codex_render_surfaces.py -q`
 - `pytest -q`
 
 ## Completion Standard

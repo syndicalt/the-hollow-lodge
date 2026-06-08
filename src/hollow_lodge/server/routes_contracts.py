@@ -72,6 +72,33 @@ def activate_contract_seed(
     return ActivateContractSeedResponse(**result)
 
 
+@router.post(
+    "/contracts/admin/{contract_id}/archive",
+    response_model=ActivateContractSeedResponse,
+)
+def archive_contract(
+    contract_id: str,
+    request: Request,
+    idempotency_key: str = Header(..., alias="Idempotency-Key"),
+    admin_token: str | None = Header(None, alias="X-Hollow-Lodge-Admin-Token"),
+) -> ActivateContractSeedResponse:
+    _require_admin_token(admin_token)
+    try:
+        result = _contract_service(request).archive_contract(
+            contract_id=contract_id,
+            actor_id="admin",
+            idempotency_key=idempotency_key,
+        )
+    except KeyError as exc:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="contract not found") from exc
+    except ValueError as exc:
+        message = str(exc)
+        if message == "idempotency key conflict":
+            raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail=message) from exc
+        raise HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_ENTITY, detail=message) from exc
+    return ActivateContractSeedResponse(**result)
+
+
 @router.get("/inbox")
 def inbox(
     request: Request,

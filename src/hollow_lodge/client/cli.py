@@ -352,6 +352,30 @@ def admin_contract_activate(
     typer.echo(f"{response['contract_id']} {response['lifecycle_status']}")
 
 
+@admin_app.command("contract-archive")
+def admin_contract_archive(
+    contract_id: str = typer.Argument(..., help="Contract id to archive."),
+    server: str = typer.Option(
+        DEFAULT_SERVER_URL,
+        "--server",
+        help="Authoritative server URL. Defaults to the official Lodge.",
+    ),
+    admin_token: str = typer.Option(
+        ...,
+        "--admin-token",
+        envvar="HOLLOW_LODGE_ADMIN_TOKEN",
+        help="Server admin token.",
+    ),
+) -> None:
+    """Archive a contract so it leaves active inbox and crew-board work queues."""
+    response = HollowLodgeApi(server_url=server).archive_contract(
+        contract_id=contract_id,
+        admin_token=admin_token,
+        idempotency_key=new_command_key("admin-contract-archive"),
+    )
+    typer.echo(f"{response['contract_id']} {response['lifecycle_status']}")
+
+
 @codex_app.command("install-mcp")
 def codex_install_mcp(
     config: Path = typer.Option(

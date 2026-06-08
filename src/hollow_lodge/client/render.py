@@ -12,6 +12,8 @@ def render_contract_board(board: dict[str, Any]) -> str:
         lines.append(campaign["title"])
     for contract in board.get("contracts", []):
         lines.append(contract["title"])
+        if "lifecycle_status" in contract:
+            lines.append(f"Status: {contract['lifecycle_status']}")
         phase = contract["phase"]
         lines.append(f"Phase: {phase['name']} ({phase['remaining_hours']}h remaining)")
         lines.append(f"Crew Heat: {contract['crew_heat']}")

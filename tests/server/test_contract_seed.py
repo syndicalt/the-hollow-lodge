@@ -108,6 +108,143 @@ def test_admin_can_activate_second_contract_seed_and_render_it(tmp_path, monkeyp
     assert "cinder oracle" not in events.text
 
 
+def test_admin_can_archive_contract_and_remove_it_from_active_inbox(tmp_path, monkeypatch):
+    monkeypatch.setenv("HOLLOW_LODGE_ADMIN_TOKEN", "admin-secret")
+    client = TestClient(create_app(data_dir=tmp_path, invite_codes=["a"]))
+    ada = register(client, "a", "Ada")
+
+    activated = client.post(
+        "/contracts/admin/activate",
+        headers={
+            "Idempotency-Key": "activate-ash-window",
+            "X-Hollow-Lodge-Admin-Token": "admin-secret",
+        },
+        json={"seed": "tests/fixtures/ash_window_contract.json"},
+    )
+    archived = client.post(
+        "/contracts/admin/contract_ash_window/archive",
+        headers={
+            "Idempotency-Key": "archive-ash-window",
+            "X-Hollow-Lodge-Admin-Token": "admin-secret",
+        },
+        json={},
+    )
+    contracts = client.get("/contracts", headers=auth(ada["token"]))
+    inbox = client.get("/inbox", headers=auth(ada["token"]))
+
+    assert activated.status_code == 201
+    assert archived.status_code == 200
+    assert archived.json() == {
+        "contract_id": "contract_ash_window",
+        "lifecycle_status": "archived",
+    }
+    rendered = {
+        contract["contract_id"]: contract
+        for contract in contracts.json()["contracts"]
+    }
+    assert rendered["contract_ash_window"]["lifecycle_status"] == "archived"
+    assert "contract_ash_window" not in {
+        contract["contract_id"]
+        for contract in inbox.json()["active_contracts"]
+    }
+
+
+def test_archived_contract_does_not_create_pending_contract_decisions(tmp_path, monkeypatch):
+    monkeypatch.setenv("HOLLOW_LODGE_ADMIN_TOKEN", "admin-secret")
+    client = TestClient(create_app(data_dir=tmp_path, invite_codes=["a"]))
+    ada = register(client, "a", "Ada")
+    crew = client.post(
+        "/crews",
+        headers={
+            **auth(ada["token"]),
+            "Idempotency-Key": "crew-create",
+        },
+        json={"name": "The Gilt Knives"},
+    ).json()
+    client.post(
+        "/contracts/admin/activate",
+        headers={
+            "Idempotency-Key": "activate-ash-window",
+            "X-Hollow-Lodge-Admin-Token": "admin-secret",
+        },
+        json={"seed": "tests/fixtures/ash_window_contract.json"},
+    )
+    client.post(
+        "/contracts/admin/contract_ash_window/archive",
+        headers={
+            "Idempotency-Key": "archive-ash-window",
+            "X-Hollow-Lodge-Admin-Token": "admin-secret",
+        },
+        json={},
+    )
+
+    inbox = client.get("/inbox", headers=auth(ada["token"]))
+    crew_board = client.get(f"/crews/{crew['crew_id']}/board", headers=auth(ada["token"]))
+
+    assert inbox.status_code == 200
+    assert crew_board.status_code == 200
+    assert "contract_ash_window" not in {
+        contract["contract_id"]
+        for contract in crew_board.json()["active_contracts"]
+    }
+    assert not any(
+        decision.get("contract_id") == "contract_ash_window"
+        and decision.get("kind") in {"dossier_need", "contract_action"}
+        for decision in inbox.json()["pending_decisions"]
+    )
+    assert not any(
+        decision.get("contract_id") == "contract_ash_window"
+        and decision.get("kind") in {"dossier_need", "contract_action"}
+        for decision in crew_board.json()["pending_decisions"]
+    )
+
+
+def test_admin_contract_archive_is_idempotent_and_rejects_unknown_contract(tmp_path, monkeypatch):
+    monkeypatch.setenv("HOLLOW_LODGE_ADMIN_TOKEN", "admin-secret")
+    client = TestClient(create_app(data_dir=tmp_path, invite_codes=["a"]))
+    client.post(
+        "/contracts/admin/activate",
+        headers={
+            "Idempotency-Key": "activate-ash-window",
+            "X-Hollow-Lodge-Admin-Token": "admin-secret",
+        },
+        json={"seed": "tests/fixtures/ash_window_contract.json"},
+    )
+
+    first = client.post(
+        "/contracts/admin/contract_ash_window/archive",
+        headers={
+            "Idempotency-Key": "archive-ash-window",
+            "X-Hollow-Lodge-Admin-Token": "admin-secret",
+        },
+        json={},
+    )
+    replay = client.post(
+        "/contracts/admin/contract_ash_window/archive",
+        headers={
+            "Idempotency-Key": "archive-ash-window",
+            "X-Hollow-Lodge-Admin-Token": "admin-secret",
+        },
+        json={},
+    )
+    missing = client.post(
+        "/contracts/admin/no_such_contract/archive",
+        headers={
+            "Idempotency-Key": "archive-missing",
+            "X-Hollow-Lodge-Admin-Token": "admin-secret",
+        },
+        json={},
+    )
+    event_text = (tmp_path / "server-events.jsonl").read_text(encoding="utf-8")
+
+    assert first.status_code == 200
+    assert replay.status_code == 200
+    assert replay.json() == first.json()
+    assert missing.status_code == 404
+    assert missing.json()["detail"] == "contract not found"
+    assert event_text.count('"status":"archived"') == 1
+
+
 def test_admin_contract_activation_is_idempotent(tmp_path, monkeypatch):
     monkeypatch.setenv("HOLLOW_LODGE_ADMIN_TOKEN", "admin-secret")
     client = TestClient(create_app(data_dir=tmp_path, invite_codes=["a"]))

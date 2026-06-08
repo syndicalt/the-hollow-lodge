@@ -43,7 +43,11 @@ def contract_board_from_events(events: list[GameEvent]) -> dict[str, Any]:
 def inbox_from_board(*, player_id: str, board: dict[str, Any]) -> dict[str, Any]:
     return {
         "player_id": player_id,
-        "active_contracts": board["contracts"],
+        "active_contracts": [
+            contract
+            for contract in board["contracts"]
+            if contract.get("lifecycle_status", "active") != "archived"
+        ],
         "incoming_proof_fragments": [],
     }
 

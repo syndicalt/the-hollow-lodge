@@ -56,6 +56,23 @@ def test_contract_board_packet_has_player_markdown_and_agent_context():
     ]
 
 
+def test_contract_board_packet_renders_archived_lifecycle_status():
+    packet = build_contract_board_packet(
+        {
+            "campaign": BOARD["campaign"],
+            "contracts": [
+                {
+                    **BOARD["contracts"][0],
+                    "lifecycle_status": "archived",
+                }
+            ],
+        }
+    )
+
+    assert "Status: archived" in packet.player_markdown
+    assert packet.agent_context["contracts"][0]["lifecycle_status"] == "archived"
+
+
 def test_inbox_packet_prioritizes_actionable_items_for_codex():
     packet = build_inbox_packet(
         {

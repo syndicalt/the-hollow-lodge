@@ -89,8 +89,12 @@ def crew_board(
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="crew not found")
     if not crew_service.is_member(crew_id=crew_id, player_id=player.player_id):
         raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="not a crew member")
-    active_contracts = _contract_service(request).board_for_player(player.player_id)[
-        "contracts"
+    active_contracts = [
+        contract
+        for contract in _contract_service(request).board_for_player(player.player_id)[
+            "contracts"
+        ]
+        if contract.get("lifecycle_status", "active") != "archived"
     ]
     dossier = _proof_service(request).dossier_for_crew(
         crew_id=crew_id,

@@ -1018,6 +1018,46 @@ class ContractService:
                 "lifecycle_status": "active",
             }
 
+    def archive_contract(
+        self,
+        *,
+        contract_id: str,
+        actor_id: str,
+        idempotency_key: str,
+    ) -> dict:
+        with COMMAND_SERIALIZATION_LOCK, self._lock:
+            self._contract_by_id(contract_id)
+            current_status = self._contract_lifecycle_status(contract_id)
+            existing = self._event_by_idempotency_key(idempotency_key)
+            if existing is not None:
+                if (
+                    existing.type != "contract.lifecycle.changed"
+                    or existing.actor_id != actor_id
+                    or existing.payload["contract_id"] != contract_id
+                    or existing.payload["status"] != "archived"
+                ):
+                    raise ValueError("idempotency key conflict")
+                return {
+                    "contract_id": contract_id,
+                    "lifecycle_status": "archived",
+                }
+            if current_status != "archived":
+                self._event_store.append_command(
+                    event_type="contract.lifecycle.changed",
+                    actor_id=actor_id,
+                    visibility=EventVisibility.public(),
+                    payload={
+                        "contract_id": contract_id,
+                        "status": "archived",
+                        "previous_status": current_status,
+                    },
+                    idempotency_key=idempotency_key,
+                )
+            return {
+                "contract_id": contract_id,
+                "lifecycle_status": "archived",
+            }
+
     def lock_auction_preview(
         self,
         *,
@@ -1127,6 +1167,16 @@ class ContractService:
             if event.idempotency_key == idempotency_key:
                 return event
         return None
+
+    def _contract_lifecycle_status(self, contract_id: str) -> str:
+        status = "active"
+        for event in self._event_store.read():
+            if (
+                event.type == "contract.lifecycle.changed"
+                and event.payload["contract_id"] == contract_id
+            ):
+                status = event.payload["status"]
+        return status
 
     def _resolved_auction_preview(self, *, contract_id: str, phase: str) -> dict | None:
         for event in self._event_store.read():

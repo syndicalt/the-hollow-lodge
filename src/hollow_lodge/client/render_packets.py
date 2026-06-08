@@ -86,7 +86,13 @@ def _shape_modifier(modifier: dict[str, Any]) -> dict[str, Any]:
 def _shape_contract(contract: dict[str, Any]) -> dict[str, Any]:
     shaped = {
         key: contract[key]
-        for key in ("contract_id", "title", "crew_heat", "proof_dossier_needs")
+        for key in (
+            "contract_id",
+            "title",
+            "crew_heat",
+            "proof_dossier_needs",
+            "lifecycle_status",
+        )
         if key in contract
     }
     shaped["phase"] = _shape_phase(contract["phase"])
@@ -720,6 +726,8 @@ def build_contract_board_packet(board: dict[str, Any]) -> RenderPacket:
     for contract in contracts:
         phase = contract["phase"]
         lines.append(f"## {contract['title']}")
+        if "lifecycle_status" in contract:
+            lines.append(f"Status: {contract['lifecycle_status']}")
         lines.append(f"Phase: {phase['name']} ({phase.get('remaining_hours', 0)}h remaining)")
         lines.append(f"Crew Heat: {contract.get('crew_heat', 0)}")
         lines.append("Proof dossier needs:")

@@ -147,6 +147,25 @@ class FakeApi:
         )
         return {"contract_id": seed["contract"]["contract_id"], "lifecycle_status": "active"}
 
+    def archive_contract(
+        self,
+        *,
+        contract_id: str,
+        admin_token: str,
+        idempotency_key: str,
+    ):
+        self.calls.append(
+            (
+                "archive_contract",
+                {
+                    "contract_id": contract_id,
+                    "admin_token": admin_token,
+                    "idempotency_key": idempotency_key,
+                },
+            )
+        )
+        return {"contract_id": contract_id, "lifecycle_status": "archived"}
+
     def create_crew(self, *, name: str, idempotency_key: str):
         self.calls.append(("create_crew", {"name": name, "idempotency_key": idempotency_key}))
         return {"crew_id": "crew_0001", "join_code": "join-secret"}
@@ -943,6 +962,46 @@ def test_admin_contract_activate_command_reads_seed_file(tmp_path, monkeypatch):
     assert created_clients[0].calls[0][1]["seed"]["contract"]["contract_id"] == "contract_ash_window"
     assert created_clients[0].calls[0][1]["admin_token"] == "admin-secret"
     assert created_clients[0].calls[0][1]["idempotency_key"] == "admin-contract-activate-key"
+
+
+def test_admin_contract_archive_command_calls_server(tmp_path, monkeypatch):
+    runner = CliRunner()
+    created_clients: list[FakeApi] = []
+
+    def fake_client(**kwargs):
+        client = FakeApi(**kwargs)
+        created_clients.append(client)
+        return client
+
+    monkeypatch.setattr(cli, "HollowLodgeApi", fake_client)
+    monkeypatch.setattr(cli, "new_command_key", lambda prefix: f"{prefix}-key")
+
+    result = runner.invoke(
+        cli.app,
+        [
+            "admin",
+            "contract-archive",
+            "contract_ash_window",
+            "--server",
+            "http://testserver",
+            "--admin-token",
+            "admin-secret",
+        ],
+    )
+
+    assert result.exit_code == 0
+    assert result.output == "contract_ash_window archived\n"
+    assert created_clients[0].token is None
+    assert created_clients[0].calls == [
+        (
+            "archive_contract",
+            {
+                "contract_id": "contract_ash_window",
+                "admin_token": "admin-secret",
+                "idempotency_key": "admin-contract-archive-key",
+            },
+        )
+    ]
 
 
 def test_crew_commands_use_saved_config(tmp_path, monkeypatch):

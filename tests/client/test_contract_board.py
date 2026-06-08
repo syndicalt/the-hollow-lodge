@@ -58,6 +58,22 @@ def test_contract_board_render_preserves_legacy_text():
     )
 
 
+def test_contract_board_render_marks_archived_contract():
+    rendered = render_contract_board(
+        {
+            **BOARD,
+            "contracts": [
+                {
+                    **BOARD["contracts"][0],
+                    "lifecycle_status": "archived",
+                }
+            ],
+        }
+    )
+
+    assert "Status: archived" in rendered
+
+
 def test_inbox_render_preserves_legacy_text():
     rendered = render_inbox(INBOX)
 
