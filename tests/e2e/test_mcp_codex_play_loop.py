@@ -324,6 +324,207 @@ def test_player_can_transfer_and_check_proof_fragment_through_actual_mcp_tools(
         assert forbidden not in serialized_packets
 
 
+def test_player_can_decline_and_cancel_deals_through_actual_mcp_tools(
+    tmp_path,
+    monkeypatch,
+):
+    app = create_app(data_dir=tmp_path / "server", invite_codes=["ada", "bela"])
+    client = TestClient(app)
+    ada = _register(client, "ada", "Ada Corelumen")
+    bela = _register(client, "bela", "Bela Moth")
+    crew = _create_crew(
+        client,
+        token=ada["token"],
+        name="The Gilt Knives",
+        key="crew-create-gilt",
+    )
+    moth = _create_crew(
+        client,
+        token=bela["token"],
+        name="The Moth Lanterns",
+        key="crew-create-moth",
+    )
+
+    config_path = tmp_path / "config.json"
+    local_log_path = tmp_path / "local.jsonl"
+    _write_config(
+        config_path,
+        player=ada,
+        active_crew_id=crew["crew_id"],
+        display_name="Ada Corelumen",
+    )
+    monkeypatch.setattr(mcp_server, "DEFAULT_CONFIG_PATH", config_path)
+    monkeypatch.setattr(mcp_server, "DEFAULT_LOCAL_LOG_PATH", local_log_path)
+    _install_httpx_test_bridge(monkeypatch, client)
+
+    decline_deal_confirm = _assert_packet(
+        _call_tool(
+            "propose_deal",
+            {
+                "recipient_crew_id": moth["crew_id"],
+                "proposer_crew_id": crew["crew_id"],
+                "offered_artifact_ids": ["artifact_ledger_rubric"],
+                "requested_artifact_ids": ["artifact_lot_card"],
+                "soft_terms": ["Let the Moth Lanterns inspect before auction lock."],
+                "expires_phase": "Auction Preview",
+                "confirm": True,
+            },
+        ),
+        surface="mutation",
+    )
+    declined_deal_id = decline_deal_confirm["agent_context"]["result"]["deal_id"]
+    assert declined_deal_id == "deal_000001"
+    assert decline_deal_confirm["agent_context"]["result"]["status"] == "proposed"
+
+    _write_config(
+        config_path,
+        player=bela,
+        active_crew_id=moth["crew_id"],
+        display_name="Bela Moth",
+    )
+    decline_preview = _assert_packet(
+        _call_tool(
+            "decline_deal",
+            {"deal_id": declined_deal_id, "confirm": False},
+        ),
+        surface="mutation",
+    )
+    assert decline_preview["agent_context"] == {
+        "operation": "decline_deal",
+        "mutation": False,
+        "confirmed": False,
+        "preview": {"deal_id": declined_deal_id},
+    }
+    assert "No server mutation was submitted." in decline_preview["player_markdown"]
+
+    decline_confirm = _assert_packet(
+        _call_tool(
+            "decline_deal",
+            {"deal_id": declined_deal_id, "confirm": True},
+        ),
+        surface="mutation",
+    )
+    assert decline_confirm["agent_context"]["operation"] == "decline_deal"
+    assert decline_confirm["agent_context"]["mutation"] is True
+    assert decline_confirm["agent_context"]["confirmed"] is True
+    assert decline_confirm["agent_context"]["result"]["deal_id"] == declined_deal_id
+    assert decline_confirm["agent_context"]["result"]["status"] == "declined"
+    assert "deal_000001 declined" in decline_confirm["player_markdown"]
+
+    bela_deals = _assert_packet(_call_tool("render_deals"), surface="deals")
+    assert [deal["status"] for deal in bela_deals["agent_context"]["deals"]] == [
+        "declined"
+    ]
+    assert "deal_000001 declined" in bela_deals["player_markdown"]
+
+    _write_config(
+        config_path,
+        player=ada,
+        active_crew_id=crew["crew_id"],
+        display_name="Ada Corelumen",
+    )
+    cancel_deal_confirm = _assert_packet(
+        _call_tool(
+            "propose_deal",
+            {
+                "recipient_crew_id": moth["crew_id"],
+                "proposer_crew_id": crew["crew_id"],
+                "offered_artifact_ids": ["artifact_ledger_rubric"],
+                "requested_artifact_ids": ["artifact_lot_card"],
+                "soft_terms": ["Withdrawable if the auction heat rises."],
+                "expires_phase": "Auction Preview",
+                "confirm": True,
+            },
+        ),
+        surface="mutation",
+    )
+    canceled_deal_id = cancel_deal_confirm["agent_context"]["result"]["deal_id"]
+    assert canceled_deal_id == "deal_000002"
+    assert cancel_deal_confirm["agent_context"]["result"]["status"] == "proposed"
+
+    cancel_preview = _assert_packet(
+        _call_tool(
+            "cancel_deal",
+            {"deal_id": canceled_deal_id, "confirm": False},
+        ),
+        surface="mutation",
+    )
+    assert cancel_preview["agent_context"] == {
+        "operation": "cancel_deal",
+        "mutation": False,
+        "confirmed": False,
+        "preview": {"deal_id": canceled_deal_id},
+    }
+    assert "No server mutation was submitted." in cancel_preview["player_markdown"]
+
+    cancel_confirm = _assert_packet(
+        _call_tool(
+            "cancel_deal",
+            {"deal_id": canceled_deal_id, "confirm": True},
+        ),
+        surface="mutation",
+    )
+    assert cancel_confirm["agent_context"]["operation"] == "cancel_deal"
+    assert cancel_confirm["agent_context"]["mutation"] is True
+    assert cancel_confirm["agent_context"]["confirmed"] is True
+    assert cancel_confirm["agent_context"]["result"]["deal_id"] == canceled_deal_id
+    assert cancel_confirm["agent_context"]["result"]["status"] == "canceled"
+    assert "deal_000002 canceled" in cancel_confirm["player_markdown"]
+
+    ada_deals = _assert_packet(_call_tool("render_deals"), surface="deals")
+    assert [deal["status"] for deal in ada_deals["agent_context"]["deals"]] == [
+        "declined",
+        "canceled",
+    ]
+    assert "deal_000001 declined" in ada_deals["player_markdown"]
+    assert "deal_000002 canceled" in ada_deals["player_markdown"]
+
+    activity = _assert_packet(_call_tool("render_activity"), surface="activity")
+    assert activity["agent_context"]["event_type_counts"]["deal.proposed"] == 2
+    assert activity["agent_context"]["event_type_counts"]["deal.declined"] == 1
+    assert activity["agent_context"]["event_type_counts"]["deal.canceled"] == 1
+
+    serialized_packets = "\n".join(
+        str(packet)
+        for packet in (
+            decline_deal_confirm,
+            decline_preview,
+            decline_confirm,
+            bela_deals,
+            cancel_deal_confirm,
+            cancel_preview,
+            cancel_confirm,
+            ada_deals,
+            activity,
+        )
+    )
+    for forbidden in (
+        "hidden_truth",
+        "hidden_truth_summary",
+        "contract.hidden_truth.seeded",
+        "server_only",
+        "server_notes",
+        "visibility",
+        "oracle.resolution",
+        "accepted_output",
+        "accepted_output_hash",
+        "input_packet_hash",
+        "provider",
+        "model",
+        "prompt_version",
+        "validation_status",
+        "fallback_reason",
+        "token",
+        "join_code",
+        "idempotency_key",
+        "event_id",
+        "event_hash",
+        "origin",
+        "payload",
+    ):
+        assert forbidden not in serialized_packets
+
+
 def test_player_can_progress_contract_through_actual_mcp_tools(tmp_path, monkeypatch):
     app = create_app(data_dir=tmp_path / "server", invite_codes=["ada", "bela", "grace"])
     client = TestClient(app)

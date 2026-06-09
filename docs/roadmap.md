@@ -4655,6 +4655,30 @@ Expected verification:
 - `pytest tests/e2e/test_proof_fragment_codex_loop.py tests/server/test_proof_routes.py tests/client/test_codex_session.py tests/client/test_render_packets.py tests/test_mcp_server.py -q`
 - `pytest -q`
 
+### Slice 192: Actual MCP Deal Decline And Cancel Proof Gate
+
+Status: completed.
+
+Close the remaining actual-MCP brokered-deal lifecycle gap. The accepted-deal
+path was already covered in the full multiplayer loop; the MCP e2e now also
+proves declined and canceled deals through real `mcp.call_tool` calls. Ada
+proposes a deal, Bela previews and confirms `decline_deal`, then Ada proposes a
+second deal and previews and confirms `cancel_deal`.
+
+The proof verifies preview-before-mutation behavior, recipient-only decline
+authority, proposer-only cancellation, safe deal-board status rendering after
+each lifecycle transition, activity counts for proposed/declined/canceled deal
+events, and serialized packet leak guards covering hidden truth, server-only
+fields, oracle/provider metadata, auth material, idempotency keys, hashes, and
+raw event envelopes.
+
+Expected verification:
+
+- `pytest tests/e2e/test_mcp_codex_play_loop.py::test_player_can_decline_and_cancel_deals_through_actual_mcp_tools -q`
+- `pytest tests/e2e/test_mcp_codex_play_loop.py -q`
+- `pytest tests/server/test_deal_routes.py tests/client/test_deal_cli.py tests/client/test_codex_session.py tests/client/test_render_packets.py tests/test_mcp_server.py -q`
+- `pytest -q`
+
 ## Completion Standard
 
 Each slice must:
