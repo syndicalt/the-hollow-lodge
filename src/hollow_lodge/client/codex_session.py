@@ -23,6 +23,7 @@ from hollow_lodge.client.render_packets import (
     build_activity_summary_packet,
     build_backend_readiness_packet,
     build_backend_status_packet,
+    build_backend_status_unavailable_packet,
     build_conversations_packet,
     build_deal_acceptance_preview_packet,
     build_deals_packet,
@@ -157,7 +158,16 @@ class CodexGameSession:
         return build_conversations_packet(self.api.visible_chat_events())
 
     def render_backend_status(self) -> RenderPacket:
-        return build_backend_status_packet(self.api.diagnostics())
+        try:
+            return build_backend_status_packet(self.api.diagnostics())
+        except httpx.HTTPError as exc:
+            return build_backend_status_unavailable_packet(
+                f"server request failed: {exc.__class__.__name__}"
+            )
+        except ValueError:
+            return build_backend_status_unavailable_packet(
+                "server returned malformed diagnostics response"
+            )
 
     def check_backend_readiness(
         self,

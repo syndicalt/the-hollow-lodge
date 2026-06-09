@@ -3182,6 +3182,27 @@ Expected verification:
 - `pytest tests/client/test_codex_session.py tests/client/test_render_packets.py tests/test_mcp_server.py -q`
 - `pytest -q`
 
+### Slice 127: Codex Backend Status Failure Hardening
+
+Status: completed.
+
+Make `render_backend_status` as resilient as the Codex readiness check. When
+`/diagnostics` is unreachable or returns a malformed body,
+`CodexGameSession.render_backend_status` now returns a read-only
+`backend_status` unavailable packet instead of letting HTTP or parsing
+exceptions escape through MCP.
+
+The unavailable packet reports only fixed failure categories such as
+`ConnectError` or malformed diagnostics. It does not echo request URLs,
+database URLs, filesystem paths, or raw response body text into player markdown
+or agent context.
+
+Expected verification:
+
+- `pytest tests/client/test_render_packets.py::test_backend_status_unavailable_packet_renders_safe_failure tests/client/test_codex_session.py::test_codex_session_backend_status_returns_transport_failure_packet tests/client/test_codex_session.py::test_codex_session_backend_status_returns_malformed_response_packet -q`
+- `pytest tests/client/test_codex_session.py tests/client/test_render_packets.py tests/test_mcp_server.py -q`
+- `pytest -q`
+
 ## Completion Standard
 
 Each slice must:

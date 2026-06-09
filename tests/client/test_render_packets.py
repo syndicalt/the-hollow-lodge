@@ -2,6 +2,7 @@ from hollow_lodge.client import render_packets
 from hollow_lodge.client.render_packets import (
     build_backend_readiness_packet,
     build_backend_status_packet,
+    build_backend_status_unavailable_packet,
     build_mutation_result_packet,
     build_contract_board_packet,
     build_crew_board_packet,
@@ -359,6 +360,25 @@ def test_backend_status_packet_renders_safe_database_and_oracle_posture():
         "backend": "postgres",
         "database_url_env": "HOLLOW_LODGE_OPERATIONAL_DATABASE_URL",
     }
+
+
+def test_backend_status_unavailable_packet_renders_safe_failure():
+    packet = build_backend_status_unavailable_packet("server request failed: ConnectError")
+
+    assert packet.surface == "backend_status"
+    assert "Backend Status" in packet.player_markdown
+    assert "- unavailable: server request failed: ConnectError" in packet.player_markdown
+    assert packet.agent_context == {
+        "backend_status": {
+            "status": "unavailable",
+            "reason": "server request failed: ConnectError",
+        },
+        "mutation": False,
+    }
+    assert packet.suggested_prompts == [
+        "Check backend readiness",
+        "Review operational docs",
+    ]
 
 
 def test_backend_readiness_packet_renders_safe_pass_summary():

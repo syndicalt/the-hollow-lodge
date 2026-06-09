@@ -1424,6 +1424,31 @@ def build_backend_status_packet(diagnostics: dict[str, Any]) -> RenderPacket:
     )
 
 
+def build_backend_status_unavailable_packet(reason: str) -> RenderPacket:
+    safe_reason = str(reason)[:160]
+    lines = [
+        "Backend Status",
+        "",
+        "Status:",
+        f"- unavailable: {safe_reason}",
+    ]
+    return RenderPacket(
+        surface="backend_status",
+        player_markdown="\n".join(lines),
+        agent_context={
+            "backend_status": {
+                "status": "unavailable",
+                "reason": safe_reason,
+            },
+            "mutation": False,
+        },
+        suggested_prompts=[
+            "Check backend readiness",
+            "Review operational docs",
+        ],
+    )
+
+
 def build_backend_readiness_packet(payload: dict[str, Any]) -> RenderPacket:
     ok = payload.get("ok") is True
     mode = str(payload.get("mode", "custom"))
