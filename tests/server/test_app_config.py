@@ -467,6 +467,10 @@ def test_platform_database_url_selects_postgres_projection_backend(
 
     monkeypatch.delenv("HOLLOW_LODGE_PROJECTION_DATABASE_URL", raising=False)
     monkeypatch.setenv(
+        "HOLLOW_LODGE_OPERATIONAL_DATABASE_URL",
+        f"sqlite:///{tmp_path / 'operational.sqlite3'}",
+    )
+    monkeypatch.setenv(
         "DATABASE_URL",
         "postgresql://platform:secret@example.com:5432/hollow_lodge",
     )
@@ -506,6 +510,10 @@ def test_explicit_projection_database_url_overrides_platform_database_url(
     monkeypatch.setenv(
         "HOLLOW_LODGE_PROJECTION_DATABASE_URL",
         "postgresql://explicit:secret@example.com:5432/hollow_lodge",
+    )
+    monkeypatch.setenv(
+        "HOLLOW_LODGE_OPERATIONAL_DATABASE_URL",
+        f"sqlite:///{tmp_path / 'operational.sqlite3'}",
     )
     monkeypatch.setenv(
         "DATABASE_URL",
@@ -561,6 +569,10 @@ def test_require_postgres_projection_accepts_platform_database_url(
 
     monkeypatch.setenv("HOLLOW_LODGE_REQUIRE_POSTGRES_PROJECTION", "1")
     monkeypatch.delenv("HOLLOW_LODGE_PROJECTION_DATABASE_URL", raising=False)
+    monkeypatch.setenv(
+        "HOLLOW_LODGE_OPERATIONAL_DATABASE_URL",
+        f"sqlite:///{tmp_path / 'operational.sqlite3'}",
+    )
     monkeypatch.setenv(
         "DATABASE_URL",
         "postgresql://platform:secret@example.com:5432/hollow_lodge",
@@ -733,6 +745,98 @@ def test_require_postgres_operational_allows_postgres_backend(
     assert diagnostics["storage_guards"]["require_postgres_operational"] is True
 
 
+def test_platform_database_url_selects_postgres_operational_backend(
+    tmp_path,
+    monkeypatch,
+):
+    from hollow_lodge.server.identity_replay_store import PostgresIdentityReplayStore
+
+    class FakeOperationalConnection:
+        def __enter__(self):
+            return self
+
+        def __exit__(self, exc_type, exc, traceback):
+            return False
+
+        def execute(self, statement, params=None):
+            return self
+
+        def fetchall(self):
+            return []
+
+    monkeypatch.delenv("HOLLOW_LODGE_OPERATIONAL_DATABASE_URL", raising=False)
+    monkeypatch.setenv(
+        "HOLLOW_LODGE_PROJECTION_DATABASE_URL",
+        f"sqlite:///{tmp_path / 'projection.sqlite3'}",
+    )
+    monkeypatch.setenv(
+        "DATABASE_URL",
+        "postgresql://platform:secret@example.com:5432/hollow_lodge",
+    )
+    monkeypatch.setattr(
+        PostgresIdentityReplayStore,
+        "_connect",
+        lambda self: FakeOperationalConnection(),
+    )
+
+    client = TestClient(create_app(data_dir=tmp_path))
+
+    diagnostics = client.get("/diagnostics").json()["data"]
+    assert client.app.state.identity_service.replay_store.backend == "postgres"
+    assert diagnostics["identity_replay_store"] == {
+        "backend": "postgres",
+        "database_url": "postgresql://platform:***@example.com:5432/hollow_lodge",
+        "database_url_env": "DATABASE_URL",
+    }
+
+
+def test_explicit_operational_database_url_overrides_platform_database_url(
+    tmp_path,
+    monkeypatch,
+):
+    from hollow_lodge.server.identity_replay_store import PostgresIdentityReplayStore
+
+    class FakeOperationalConnection:
+        def __enter__(self):
+            return self
+
+        def __exit__(self, exc_type, exc, traceback):
+            return False
+
+        def execute(self, statement, params=None):
+            return self
+
+        def fetchall(self):
+            return []
+
+    monkeypatch.setenv(
+        "HOLLOW_LODGE_OPERATIONAL_DATABASE_URL",
+        "postgresql://explicit:secret@example.com:5432/hollow_lodge",
+    )
+    monkeypatch.setenv(
+        "HOLLOW_LODGE_PROJECTION_DATABASE_URL",
+        f"sqlite:///{tmp_path / 'projection.sqlite3'}",
+    )
+    monkeypatch.setenv(
+        "DATABASE_URL",
+        "postgresql://platform:secret@example.com:5432/other",
+    )
+    monkeypatch.setattr(
+        PostgresIdentityReplayStore,
+        "_connect",
+        lambda self: FakeOperationalConnection(),
+    )
+
+    client = TestClient(create_app(data_dir=tmp_path))
+
+    diagnostics = client.get("/diagnostics").json()["data"]
+    assert diagnostics["identity_replay_store"] == {
+        "backend": "postgres",
+        "database_url": "postgresql://explicit:***@example.com:5432/hollow_lodge",
+        "database_url_env": "HOLLOW_LODGE_OPERATIONAL_DATABASE_URL",
+    }
+
+
 def test_require_postgres_operational_rejects_invalid_flag_value(
     tmp_path,
     monkeypatch,
@@ -772,6 +876,7 @@ def test_production_postgres_preset_requires_all_database_urls(tmp_path, monkeyp
     assert "HOLLOW_LODGE_OPERATIONAL_DATABASE_URL=postgresql://..." in str(
         operational_exc.value
     )
+    assert "DATABASE_URL=postgresql://..." in str(operational_exc.value)
 
 
 def test_production_postgres_preset_enables_storage_guards_and_projection_reads(

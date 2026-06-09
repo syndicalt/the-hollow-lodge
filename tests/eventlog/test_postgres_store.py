@@ -446,6 +446,10 @@ def test_app_does_not_use_platform_database_url_for_authoritative_events(
         "HOLLOW_LODGE_PROJECTION_DATABASE_URL",
         f"sqlite:///{tmp_path / 'projection.sqlite3'}",
     )
+    monkeypatch.setenv(
+        "HOLLOW_LODGE_OPERATIONAL_DATABASE_URL",
+        f"sqlite:///{tmp_path / 'operational.sqlite3'}",
+    )
 
     response = TestClient(create_app(data_dir=tmp_path)).get("/diagnostics")
 
@@ -486,6 +490,10 @@ def test_require_postgres_event_log_does_not_accept_platform_database_url(
     monkeypatch.setenv(
         "HOLLOW_LODGE_PROJECTION_DATABASE_URL",
         f"sqlite:///{tmp_path / 'projection.sqlite3'}",
+    )
+    monkeypatch.setenv(
+        "HOLLOW_LODGE_OPERATIONAL_DATABASE_URL",
+        f"sqlite:///{tmp_path / 'operational.sqlite3'}",
     )
 
     with pytest.raises(RuntimeError) as exc_info:

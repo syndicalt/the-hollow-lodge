@@ -3299,6 +3299,30 @@ Expected verification:
 - `pytest tests/server/test_app_config.py tests/client/test_render_packets.py tests/e2e/test_projection_backend_smoke.py -q`
 - `pytest -q`
 
+### Slice 132: Platform Operational Database URL
+
+Status: completed.
+
+Make the production Postgres preset easier to use on Railway by letting the
+operational identity replay store select the platform `DATABASE_URL` when
+`HOLLOW_LODGE_OPERATIONAL_DATABASE_URL` is unset. The Hollow-specific
+operational URL remains the explicit override, and `/diagnostics` reports
+`database_url_env` as either `HOLLOW_LODGE_OPERATIONAL_DATABASE_URL` or
+`DATABASE_URL` without exposing the password.
+
+This keeps the authoritative Eventloom backend stricter than operational
+replay: `DATABASE_URL` is still not accepted for the event log, while
+projection and operational storage can both use Railway's default database
+binding. Under `HOLLOW_LODGE_PRODUCTION_POSTGRES=1`, operators now need only
+set the explicit event-log URL plus a Railway Postgres binding for projection
+and operational storage.
+
+Expected verification:
+
+- `pytest tests/server/test_app_config.py::test_platform_database_url_selects_postgres_operational_backend tests/server/test_app_config.py::test_explicit_operational_database_url_overrides_platform_database_url tests/server/test_app_config.py::test_production_postgres_preset_requires_all_database_urls tests/server/test_app_config.py::test_require_postgres_operational_allows_postgres_backend -q`
+- `pytest tests/server/test_app_config.py tests/server/test_identity_routes.py tests/client/test_render_packets.py -q`
+- `pytest -q`
+
 ## Completion Standard
 
 Each slice must:

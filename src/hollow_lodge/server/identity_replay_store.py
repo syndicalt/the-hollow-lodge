@@ -13,6 +13,7 @@ from hollow_lodge.server.production_postgres import production_postgres_enabled
 REGISTRATION_REPLAY_SCOPE = "registration"
 INVITE_REPLAY_SCOPE = "invite"
 IDENTITY_REPLAY_DATABASE_URL_ENV = "HOLLOW_LODGE_OPERATIONAL_DATABASE_URL"
+PLATFORM_DATABASE_URL_ENV = "DATABASE_URL"
 REQUIRE_POSTGRES_OPERATIONAL_ENV = "HOLLOW_LODGE_REQUIRE_POSTGRES_OPERATIONAL"
 
 
@@ -486,7 +487,7 @@ class PostgresIdentityReplayStore:
 
 
 def identity_replay_store_from_env(root: Path) -> IdentityReplayStore:
-    database_url = os.environ.get(IDENTITY_REPLAY_DATABASE_URL_ENV, "").strip()
+    database_url, database_url_env = _identity_replay_database_url_from_env()
     require_postgres = (
         _env_flag(REQUIRE_POSTGRES_OPERATIONAL_ENV) or production_postgres_enabled()
     )
@@ -494,7 +495,8 @@ def identity_replay_store_from_env(root: Path) -> IdentityReplayStore:
         if require_postgres:
             raise RuntimeError(
                 f"{REQUIRE_POSTGRES_OPERATIONAL_ENV}=1 requires "
-                f"{IDENTITY_REPLAY_DATABASE_URL_ENV}=postgresql://..."
+                f"{IDENTITY_REPLAY_DATABASE_URL_ENV}=postgresql://... or "
+                f"{PLATFORM_DATABASE_URL_ENV}=postgresql://..."
             )
         return JsonFileIdentityReplayStore(root)
 
@@ -508,7 +510,10 @@ def identity_replay_store_from_env(root: Path) -> IdentityReplayStore:
             )
         return SqliteIdentityReplayStore(_sqlite_path_from_url(database_url))
     if scheme in {"postgres", "postgresql"}:
-        return PostgresIdentityReplayStore(database_url)
+        return PostgresIdentityReplayStore(
+            database_url,
+            database_url_env=database_url_env or IDENTITY_REPLAY_DATABASE_URL_ENV,
+        )
     if require_postgres:
         raise RuntimeError(
             f"{REQUIRE_POSTGRES_OPERATIONAL_ENV}=1 rejects non-Postgres "
@@ -520,6 +525,16 @@ def identity_replay_store_from_env(root: Path) -> IdentityReplayStore:
         f"{scheme!r}; expected sqlite:/// or postgresql://. "
         f"Configured URL: {_redact_database_url(database_url)}"
     )
+
+
+def _identity_replay_database_url_from_env() -> tuple[str, str | None]:
+    explicit_url = os.environ.get(IDENTITY_REPLAY_DATABASE_URL_ENV, "").strip()
+    if explicit_url:
+        return explicit_url, IDENTITY_REPLAY_DATABASE_URL_ENV
+    platform_url = os.environ.get(PLATFORM_DATABASE_URL_ENV, "").strip()
+    if platform_url:
+        return platform_url, PLATFORM_DATABASE_URL_ENV
+    return "", None
 
 
 def identity_replay_store_guard_diagnostics() -> dict[str, object]:

@@ -201,6 +201,12 @@ or:
 HOLLOW_LODGE_OPERATIONAL_DATABASE_URL=postgresql://user:password@host:5432/database
 ```
 
+If `HOLLOW_LODGE_OPERATIONAL_DATABASE_URL` is unset, hosted deployments also
+accept the platform `DATABASE_URL` value used by Railway. The Hollow-specific
+variable remains the explicit override when both are set, and diagnostics
+report `database_url_env` so operators can verify which variable selected the
+operational backend without exposing the password.
+
 Production deployments should also require that operational replay storage is
 actually Postgres:
 
@@ -410,10 +416,13 @@ railway variable set --service hollow-lodge-server HOLLOW_LODGE_PRODUCTION_POSTG
 
 This preset composes the hosted storage posture into one startup invariant. It
 requires explicit Postgres authoritative event storage, Postgres projection
-storage, and Postgres operational replay storage; it also enables projection
-reads for all implemented surfaces unless a surface-specific rollback flag is
-set. `/diagnostics.data.storage_guards.production_postgres=true` confirms the
-preset is active, while the individual guard diagnostics remain visible for
+storage, and Postgres operational replay storage. Projection and operational
+storage can use Railway `DATABASE_URL` when the Hollow-specific env vars are
+unset; the authoritative event log still requires
+`HOLLOW_LODGE_EVENT_DATABASE_URL`. The preset also enables projection reads for
+all implemented surfaces unless a surface-specific rollback flag is set.
+`/diagnostics.data.storage_guards.production_postgres=true` confirms the preset
+is active, while the individual guard diagnostics remain visible for
 compatibility with existing smoke checks.
 
 The equivalent explicit individual variables are:
