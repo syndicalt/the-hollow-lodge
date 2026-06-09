@@ -3825,19 +3825,47 @@ def test_dossier_commands_use_active_or_explicit_crew(tmp_path, monkeypatch):
     )
 
     show_result = runner.invoke(cli.app, ["dossier", "--config", str(config_path)])
-    evidence_result = runner.invoke(
+    evidence_preview = runner.invoke(
         cli.app,
         ["dossier", "add-evidence", "fragment_copy", "--config", str(config_path)],
     )
-    claim_result = runner.invoke(
+    claim_preview = runner.invoke(
         cli.app,
         ["dossier", "claim", "likely false relic", "--crew-id", "crew_0002", "--config", str(config_path)],
     )
 
     assert show_result.exit_code == 0
+    assert evidence_preview.exit_code == 0
+    assert "Preview: dossier_add_evidence" in evidence_preview.output
+    assert "- crew_id: crew_0001" in evidence_preview.output
+    assert "- fragment_id: fragment_copy" in evidence_preview.output
+    assert claim_preview.exit_code == 0
+    assert "Preview: dossier_update_claim" in claim_preview.output
+    assert "- crew_id: crew_0002" in claim_preview.output
+    assert "- claim: likely false relic" in claim_preview.output
+    assert created_clients[0].calls == [("dossier", {"crew_id": "crew_0001"})]
+    assert len(created_clients) == 1
+
+    evidence_result = runner.invoke(
+        cli.app,
+        ["dossier", "add-evidence", "fragment_copy", "--confirm", "--config", str(config_path)],
+    )
+    claim_result = runner.invoke(
+        cli.app,
+        [
+            "dossier",
+            "claim",
+            "likely false relic",
+            "--crew-id",
+            "crew_0002",
+            "--confirm",
+            "--config",
+            str(config_path),
+        ],
+    )
+
     assert evidence_result.exit_code == 0
     assert claim_result.exit_code == 0
-    assert created_clients[0].calls == [("dossier", {"crew_id": "crew_0001"})]
     assert created_clients[1].calls == [
         (
             "add_dossier_evidence",

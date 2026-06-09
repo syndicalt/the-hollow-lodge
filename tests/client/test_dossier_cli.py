@@ -119,13 +119,33 @@ def test_dossier_commands_use_saved_config(tmp_path, monkeypatch):
     write_config(config_path)
 
     view = runner.invoke(cli.app, ["dossier", "--config", str(config_path)])
-    evidence = runner.invoke(
+    evidence_preview = runner.invoke(
         cli.app,
         ["dossier", "add-evidence", "fragment_1", "--config", str(config_path)],
     )
-    claim = runner.invoke(
+    claim_preview = runner.invoke(
         cli.app,
         ["dossier", "claim", "The finger is false.", "--config", str(config_path)],
+    )
+    assert view.exit_code == 0
+    assert evidence_preview.exit_code == 0
+    assert "Preview: dossier_add_evidence" in evidence_preview.output
+    assert "- crew_id: crew_0001" in evidence_preview.output
+    assert "- fragment_id: fragment_1" in evidence_preview.output
+    assert claim_preview.exit_code == 0
+    assert "Preview: dossier_update_claim" in claim_preview.output
+    assert "- crew_id: crew_0001" in claim_preview.output
+    assert "- claim: The finger is false." in claim_preview.output
+    assert len(clients) == 1
+    assert clients[0].calls == [("dossier", {"crew_id": "crew_0001"})]
+
+    evidence = runner.invoke(
+        cli.app,
+        ["dossier", "add-evidence", "fragment_1", "--confirm", "--config", str(config_path)],
+    )
+    claim = runner.invoke(
+        cli.app,
+        ["dossier", "claim", "The finger is false.", "--confirm", "--config", str(config_path)],
     )
     vote_preview = runner.invoke(
         cli.app,
@@ -136,7 +156,6 @@ def test_dossier_commands_use_saved_config(tmp_path, monkeypatch):
         ["packet-lead", "vote", "player_0002", "--confirm", "--config", str(config_path)],
     )
 
-    assert view.exit_code == 0
     assert evidence.exit_code == 0
     assert claim.exit_code == 0
     assert vote_preview.exit_code == 0

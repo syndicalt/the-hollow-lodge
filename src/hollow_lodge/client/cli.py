@@ -1549,11 +1549,20 @@ def dossier(
 def dossier_add_evidence(
     fragment_id: str,
     crew_id: str | None = typer.Option(None, "--crew-id", help="Crew id; defaults to active crew."),
+    confirm: bool = typer.Option(False, "--confirm", help="Add evidence to the dossier on the server."),
     config: Path = typer.Option(DEFAULT_CONFIG_PATH, "--config", help="Local config path."),
 ) -> None:
     """Add evidence to the crew proof dossier."""
     current = load_config(config)
     target_crew_id = _target_crew_id(current, crew_id)
+    if not confirm:
+        packet = build_mutation_result_packet(
+            operation="dossier_add_evidence",
+            confirmed=False,
+            preview_fields={"crew_id": target_crew_id, "fragment_id": fragment_id},
+        )
+        _echo_packet(packet, as_json=False)
+        return
     response = _api_from_config(current).add_dossier_evidence(
         crew_id=target_crew_id,
         fragment_id=fragment_id,
@@ -1566,11 +1575,20 @@ def dossier_add_evidence(
 def dossier_claim(
     text: str,
     crew_id: str | None = typer.Option(None, "--crew-id", help="Crew id; defaults to active crew."),
+    confirm: bool = typer.Option(False, "--confirm", help="Update the dossier claim on the server."),
     config: Path = typer.Option(DEFAULT_CONFIG_PATH, "--config", help="Local config path."),
 ) -> None:
     """Set the dossier claim."""
     current = load_config(config)
     target_crew_id = _target_crew_id(current, crew_id)
+    if not confirm:
+        packet = build_mutation_result_packet(
+            operation="dossier_update_claim",
+            confirmed=False,
+            preview_fields={"crew_id": target_crew_id, "claim": text},
+        )
+        _echo_packet(packet, as_json=False)
+        return
     response = _api_from_config(current).update_dossier_claim(
         crew_id=target_crew_id,
         claim=text,

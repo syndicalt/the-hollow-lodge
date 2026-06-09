@@ -3981,6 +3981,28 @@ Expected verification:
 - `pytest tests/client/test_dossier_cli.py tests/client/test_cli_commands.py tests/client/test_codex_session.py tests/client/test_render_packets.py tests/test_mcp_server.py tests/server/test_proof_routes.py tests/server/test_packet_lead.py -q`
 - `pytest -q`
 
+### Slice 164: CLI Dossier Shortcut Confirmation Guard
+
+Status: completed.
+
+Bring the legacy dossier shortcut commands under the same preview/confirm
+boundary as the newer Codex dossier tools. `hollow-lodge dossier add-evidence`
+now renders a no-mutation `dossier_add_evidence` preview by default, showing
+the target crew and fragment id. `hollow-lodge dossier claim` now renders a
+no-mutation `dossier_update_claim` preview by default, showing the target crew
+and replacement claim. Both commands submit to the server only when rerun with
+`--confirm`.
+
+This closes the remaining immediate-mutation gap in the proof-dossier CLI
+surface while preserving existing confirmed API calls, active or explicit crew
+routing, and idempotency behavior.
+
+Expected verification:
+
+- `pytest tests/client/test_dossier_cli.py::test_dossier_commands_use_saved_config tests/client/test_cli_commands.py::test_dossier_commands_use_active_or_explicit_crew -q`
+- `pytest tests/client/test_dossier_cli.py tests/client/test_cli_commands.py tests/client/test_codex_session.py tests/client/test_render_packets.py tests/test_mcp_server.py tests/server/test_proof_routes.py tests/server/test_packet_lead.py -q`
+- `pytest -q`
+
 ## Completion Standard
 
 Each slice must:
