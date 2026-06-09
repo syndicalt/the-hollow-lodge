@@ -45,6 +45,23 @@ class FakeApi:
             ],
         }
 
+    def profile(self):
+        self.calls.append("profile")
+        return {
+            "player_id": "player_0001",
+            "display_name": "Ada",
+            "crew_count": 1,
+            "crews": [
+                {
+                    "crew_id": "crew_0001",
+                    "name": "The Gilt Knives",
+                    "member_count": 1,
+                    "ready_for_full_contracts": False,
+                    "join_code": "hidden",
+                }
+            ],
+        }
+
     def contracts(self):
         self.calls.append("contracts")
         return {"campaign": {"title": "Saints & Ledgers"}, "contracts": []}
@@ -451,6 +468,25 @@ def test_codex_session_refreshes_missing_display_name(tmp_path):
     assert load_config(config_path).display_name == "corelumen"
     assert "Inbox: corelumen" in packet.player_markdown
     assert packet.agent_context["player_id"] == "player_0001"
+
+
+def test_codex_session_renders_profile(tmp_path):
+    config_path = tmp_path / "config.json"
+    log_path = tmp_path / "local.jsonl"
+    fake_api = FakeApi()
+    save_config(
+        config_path,
+        ClientConfig(server_url="http://testserver", player_id="player_0001", token="token"),
+    )
+    session = CodexGameSession(config_path=config_path, local_log_path=log_path, api=fake_api)
+
+    packet = session.render_profile()
+
+    assert fake_api.calls == ["visible_events", "profile"]
+    assert packet.surface == "profile"
+    assert "Profile: Ada" in packet.player_markdown
+    assert packet.agent_context["crews"][0]["crew_id"] == "crew_0001"
+    assert "join_code" not in str(packet.agent_context)
 
 
 def test_codex_session_uses_active_crew_for_crew_board(tmp_path):

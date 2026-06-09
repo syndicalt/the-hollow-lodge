@@ -5,6 +5,7 @@ from hollow_lodge.client.render_packets import (
     build_crew_board_packet,
     build_dossier_packet,
     build_inbox_packet,
+    build_profile_packet,
 )
 
 
@@ -54,6 +55,53 @@ def test_contract_board_packet_has_player_markdown_and_agent_context():
         "Open the contested contract",
         "Review crew packet status",
         "Draft a contract action",
+    ]
+
+
+def test_profile_packet_renders_persistent_identity_and_crew_memberships_without_hidden_fields():
+    packet = build_profile_packet(
+        {
+            "player_id": "player_0001",
+            "display_name": "Ada",
+            "crew_count": 1,
+            "crews": [
+                {
+                    "crew_id": "crew_0001",
+                    "name": "The Gilt Knives",
+                    "member_count": 1,
+                    "ready_for_full_contracts": False,
+                    "join_code": "hidden-join",
+                    "server_notes": "hidden",
+                }
+            ],
+            "token_hash": "hidden-token-hash",
+        }
+    )
+
+    assert packet.surface == "profile"
+    assert "Profile: Ada" in packet.player_markdown
+    assert "Player ID: player_0001" in packet.player_markdown
+    assert "Crews:" in packet.player_markdown
+    assert "- The Gilt Knives (crew_0001): 1 member; starter-ready" in packet.player_markdown
+    assert "hidden" not in packet.player_markdown
+    assert packet.agent_context == {
+        "player_id": "player_0001",
+        "display_name": "Ada",
+        "crew_count": 1,
+        "crews": [
+            {
+                "crew_id": "crew_0001",
+                "name": "The Gilt Knives",
+                "member_count": 1,
+                "ready_for_full_contracts": False,
+            }
+        ],
+    }
+    assert "token_hash" not in str(packet.agent_context)
+    assert packet.suggested_prompts == [
+        "Open inbox",
+        "Review crew board",
+        "Review recent activity",
     ]
 
 

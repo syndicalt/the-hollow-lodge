@@ -15,6 +15,7 @@ class RenderAction(BaseModel):
 class RenderPacket(BaseModel):
     surface: Literal[
         "inbox",
+        "profile",
         "contract_board",
         "crew_board",
         "dossier",
@@ -929,6 +930,19 @@ def _shape_crew(crew: dict[str, Any]) -> dict[str, Any]:
     }
 
 
+def _shape_profile_crew(crew: dict[str, Any]) -> dict[str, Any]:
+    return {
+        key: crew[key]
+        for key in (
+            "crew_id",
+            "name",
+            "member_count",
+            "ready_for_full_contracts",
+        )
+        if key in crew
+    }
+
+
 def _shape_dossier_contribution(contribution: dict[str, Any]) -> dict[str, Any]:
     return {
         key: contribution[key]
@@ -1141,6 +1155,52 @@ def build_contract_board_packet(board: dict[str, Any]) -> RenderPacket:
         actions=[
             RenderAction(label="Review crew board", intent="render_crew_board"),
             RenderAction(label="Draft action", intent="draft_action", requires_confirmation=False),
+        ],
+    )
+
+
+def build_profile_packet(profile: dict[str, Any]) -> RenderPacket:
+    crews = [_shape_profile_crew(crew) for crew in profile.get("crews", [])]
+    lines = [
+        f"Profile: {profile['display_name']}",
+        f"Player ID: {profile['player_id']}",
+        f"Crew Count: {profile.get('crew_count', len(crews))}",
+        "",
+        "Crews:",
+    ]
+    if crews:
+        for crew in crews:
+            readiness = (
+                "full-contract-ready"
+                if crew.get("ready_for_full_contracts")
+                else "starter-ready"
+            )
+            member_label = "member" if crew.get("member_count") == 1 else "members"
+            lines.append(
+                f"- {crew['name']} ({crew['crew_id']}): "
+                f"{crew['member_count']} {member_label}; {readiness}"
+            )
+    else:
+        lines.append("- none")
+
+    return RenderPacket(
+        surface="profile",
+        player_markdown="\n".join(lines),
+        agent_context={
+            "player_id": profile["player_id"],
+            "display_name": profile["display_name"],
+            "crew_count": profile.get("crew_count", len(crews)),
+            "crews": crews,
+        },
+        suggested_prompts=[
+            "Open inbox",
+            "Review crew board",
+            "Review recent activity",
+        ],
+        actions=[
+            RenderAction(label="Open inbox", intent="render_inbox"),
+            RenderAction(label="Review crew board", intent="render_crew_board"),
+            RenderAction(label="Review recent activity", intent="render_activity"),
         ],
     )
 

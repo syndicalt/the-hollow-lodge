@@ -49,6 +49,29 @@ def test_render_inbox_mcp_call_returns_text_and_structured_packet(monkeypatch):
     assert result.structuredContent["suggested_prompts"] == ["Open the contract board"]
 
 
+def test_render_profile_mcp_call_returns_text_and_structured_packet(monkeypatch):
+    packet = RenderPacket(
+        surface="profile",
+        player_markdown="Profile: Ada\nPlayer ID: player_0001",
+        agent_context={"player_id": "player_0001", "crew_count": 1},
+        suggested_prompts=["Open inbox"],
+    )
+
+    class StubSession:
+        def render_profile(self) -> RenderPacket:
+            return packet
+
+    monkeypatch.setattr(mcp_server, "_session", lambda: StubSession())
+
+    result = asyncio.run(mcp_server.mcp.call_tool("render_profile", {}))
+
+    assert isinstance(result, CallToolResult)
+    assert result.content[0].text == packet.player_markdown
+    assert result.structuredContent["surface"] == "profile"
+    assert result.structuredContent["agent_context"]["player_id"] == "player_0001"
+    assert result.structuredContent["suggested_prompts"] == ["Open inbox"]
+
+
 def test_render_deals_mcp_call_returns_text_and_structured_packet(monkeypatch):
     packet = RenderPacket(
         surface="deals",
@@ -264,6 +287,7 @@ def test_public_mcp_tools_do_not_expose_local_path_overrides():
 
     for tool_name in (
         "render_inbox",
+        "render_profile",
         "render_contract_board",
         "render_crew_board",
         "render_dossier",

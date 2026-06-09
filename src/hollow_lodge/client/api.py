@@ -265,6 +265,9 @@ class HollowLodgeApi:
     def me(self) -> dict[str, Any]:
         return self._get("/identity/me")
 
+    def profile(self) -> dict[str, Any]:
+        return self._get("/identity/profile")
+
     def crew_board(self, *, crew_id: str) -> dict[str, Any]:
         return self._get(f"/crews/{crew_id}/board")
 

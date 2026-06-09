@@ -95,6 +95,20 @@ class MeResponse(BaseModel):
     display_name: str
 
 
+class PlayerProfileCrewResponse(BaseModel):
+    crew_id: str
+    name: str
+    member_count: int
+    ready_for_full_contracts: bool
+
+
+class PlayerProfileResponse(BaseModel):
+    player_id: str
+    display_name: str
+    crew_count: int
+    crews: list[PlayerProfileCrewResponse]
+
+
 @router.post("/register", response_model=RegisterResponse, status_code=status.HTTP_201_CREATED)
 def register(
     request: Request,
@@ -344,6 +358,30 @@ def approve_key_request(
 @router.get("/me", response_model=MeResponse)
 def me(player: Player = Depends(current_player)) -> MeResponse:
     return MeResponse(player_id=player.player_id, display_name=player.display_name)
+
+
+@router.get("/profile", response_model=PlayerProfileResponse)
+def profile(
+    request: Request,
+    player: Player = Depends(current_player),
+) -> PlayerProfileResponse:
+    crews = []
+    for crew_id in request.app.state.crew_service.crew_ids_for_player(player.player_id):
+        crew = request.app.state.crew_service.summary(crew_id)
+        crews.append(
+            PlayerProfileCrewResponse(
+                crew_id=crew["crew_id"],
+                name=crew["name"],
+                member_count=crew["member_count"],
+                ready_for_full_contracts=crew["ready_for_full_contracts"],
+            )
+        )
+    return PlayerProfileResponse(
+        player_id=player.player_id,
+        display_name=player.display_name,
+        crew_count=len(crews),
+        crews=crews,
+    )
 
 
 def _require_admin_token(admin_token: str | None) -> None:

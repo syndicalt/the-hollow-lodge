@@ -262,6 +262,10 @@ Status:
 - First retention slice completed: resolved contract standings now project into
   crew legacy, visible crew-board reputation/heat/favor/debt state, and
   deterministic future opportunity modifiers on unresolved contracts.
+- Persistent player profile surface completed: authenticated players can now
+  render their identity and safe crew memberships through a player profile API
+  and Codex/MCP surface without exposing tokens, invite material, token hashes,
+  or join codes.
 - Explicit legacy-delta events completed: phase resolution now records
   sanitized public `crew.legacy.delta.recorded` events for each standing, and
   crew legacy projections prefer those auditable events while preserving
@@ -1387,6 +1391,23 @@ Expected verification:
 
 - `pytest tests/server/test_projection_store.py::test_projection_store_allows_same_scoped_artifact_for_multiple_crews tests/e2e/test_shipped_contract_smokes.py::test_all_shipped_contracts_have_playthrough_smokes -q`
 - `pytest tests/server/test_projection_store.py tests/server/test_artifact_routes.py tests/server/test_contract_seed.py tests/e2e/test_contract_content_pipeline.py tests/e2e/test_codex_render_surfaces.py tests/e2e/test_shipped_contract_smokes.py -q`
+- `pytest -q`
+
+### Slice 53: Codex Player Profile Surface
+
+Status: completed.
+
+Add a read-only persistent-character surface for players. The server now
+exposes authenticated `/identity/profile` data with player id, display name,
+crew count, and safe crew membership summaries. The client API, Codex session,
+and MCP server now expose `render_profile`, and the profile render packet gives
+players and local agents a stable identity/crew context without leaking tokens,
+token hashes, invite codes, invite hashes, or crew join codes.
+
+Expected verification:
+
+- `pytest tests/server/test_identity_routes.py::test_player_profile_returns_safe_crew_memberships_without_auth_material tests/client/test_api.py::test_api_gets_player_profile tests/client/test_render_packets.py::test_profile_packet_renders_persistent_identity_and_crew_memberships_without_hidden_fields tests/client/test_codex_session.py::test_codex_session_renders_profile tests/test_mcp_server.py::test_render_profile_mcp_call_returns_text_and_structured_packet -q`
+- `pytest tests/server/test_identity_routes.py tests/server/test_crew_routes.py tests/client/test_api.py tests/client/test_codex_session.py tests/client/test_render_packets.py tests/test_mcp_server.py tests/e2e/test_codex_render_surfaces.py -q`
 - `pytest -q`
 
 ## Completion Standard

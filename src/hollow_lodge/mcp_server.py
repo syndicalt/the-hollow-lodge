@@ -44,6 +44,11 @@ def render_inbox() -> CallToolResult:
 
 
 @mcp.tool()
+def render_profile() -> CallToolResult:
+    return packet_response(_session().render_profile())
+
+
+@mcp.tool()
 def render_contract_board() -> CallToolResult:
     return packet_response(_session().render_contract_board())
 

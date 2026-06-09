@@ -21,6 +21,7 @@ from hollow_lodge.client.render_packets import (
     build_dossier_packet,
     build_inbox_packet,
     build_mutation_result_packet,
+    build_profile_packet,
     build_thread_packet,
 )
 
@@ -52,6 +53,10 @@ class CodexGameSession:
         if self.config.display_name:
             inbox.setdefault("display_name", self.config.display_name)
         return build_inbox_packet(inbox)
+
+    def render_profile(self) -> RenderPacket:
+        self.sync()
+        return build_profile_packet(self.api.profile())
 
     def render_contract_board(self) -> RenderPacket:
         self.sync()

@@ -403,6 +403,47 @@ def test_admin_player_detail_lookup_returns_crews_without_auth_material(
     assert "alpha-code" not in response.text
 
 
+def test_player_profile_returns_safe_crew_memberships_without_auth_material(tmp_path):
+    client = TestClient(create_app(data_dir=tmp_path, invite_codes=["alpha-code"]))
+    registered = client.post(
+        "/identity/register",
+        json={"invite_code": "alpha-code", "display_name": "Ada"},
+        headers={"Idempotency-Key": "register-ada"},
+    ).json()
+    crew = client.post(
+        "/crews",
+        json={"name": "The Gilt Knives"},
+        headers={
+            "Authorization": f"Bearer {registered['token']}",
+            "Idempotency-Key": "crew-create-gilt",
+        },
+    ).json()
+
+    response = client.get(
+        "/identity/profile",
+        headers={"Authorization": f"Bearer {registered['token']}"},
+    )
+
+    assert response.status_code == 200
+    assert response.json() == {
+        "player_id": registered["player_id"],
+        "display_name": "Ada",
+        "crew_count": 1,
+        "crews": [
+            {
+                "crew_id": crew["crew_id"],
+                "name": "The Gilt Knives",
+                "member_count": 1,
+                "ready_for_full_contracts": False,
+            }
+        ],
+    }
+    assert registered["token"] not in response.text
+    assert "token_hash" not in response.text
+    assert "join_code" not in response.text
+    assert "alpha-code" not in response.text
+
+
 def test_admin_can_verify_and_export_event_log(tmp_path, monkeypatch):
     monkeypatch.setenv("HOLLOW_LODGE_ADMIN_TOKEN", "admin-secret")
     client = TestClient(create_app(data_dir=tmp_path, invite_codes=["alpha-code"]))
