@@ -309,8 +309,7 @@ Status:
   after successful authoritative mutations.
 - Feature-flagged crew-summary projection reads completed: crew-board roster
   metadata can read from SQLite when the projection is fresh, while crew
-  membership checks, dossiers, artifacts, deals, rumors, pending decisions, and
-  legacy calculations remain authoritative and visibility-scoped.
+  membership checks remain authoritative and visibility-scoped.
 - Feature-flagged artifact visibility projection reads completed: `/artifacts`
   can read safe public and scoped artifact surfaces from SQLite when fresh,
   while artifact inspection, transfer authorization, full text, hidden flags,
@@ -336,6 +335,10 @@ Status:
   read safe retention, rumor, counterintelligence, deal-conduct, completed
   contract, and future-opportunity context from SQLite when fresh, while stale
   state falls back to the existing event-log projection path.
+- Feature-flagged pending-decision projection reads completed: inbox and crew
+  board `pending_decisions` can read per-player, per-crew action prompts from
+  SQLite when fresh, while stale state falls back to the existing event-log
+  projection path.
 - Deferred: deeper death/legacy inheritance, additional long-term unlock paths,
   and migrating heavier campaign reads onto the projection database.
 
@@ -1671,6 +1674,31 @@ Expected verification:
 
 - `pytest tests/server/test_projection_store.py::test_projection_store_materializes_visible_chat_messages_without_bystander_access tests/server/test_projection_store.py::test_chat_messages_route_reads_fresh_projection_when_enabled tests/server/test_projection_store.py::test_chat_messages_route_falls_back_when_projection_is_stale tests/client/test_api.py::test_api_fetches_visible_chat_events tests/client/test_codex_session.py::test_codex_session_renders_thread_with_cli_compatible_matching tests/client/test_codex_session.py::test_codex_session_renders_conversations_from_synced_visible_events -q`
 - `pytest tests/server/test_projection_store.py tests/server/test_chat_routes.py tests/server/test_event_sync.py tests/client/test_api.py tests/client/test_codex_session.py tests/client/test_render_packets.py tests/test_mcp_server.py tests/e2e/test_full_game_loop_with_escrow.py -q`
+- `pytest -q`
+
+### Slice 67: Pending Decision Projection Reads
+
+Status: completed.
+
+Move the shared inbox and crew-board pending-decision surface onto the
+projection database without moving decision authority out of the Eventloom
+event log. SQLite and Postgres projection stores now materialize safe
+`pending_decision_surface` rows per player, crew, and decision index from
+already-shaped contract, deal, proof dossier, action, rumor, and crew legacy
+inputs. The stored decisions include actionable labels, ids, missing dossier
+needs, deal ids, rumor response prompts, and Packet Lead vote prompts while
+excluding private deal terms, raw artifact ids, chat bodies, command
+idempotency keys, and hidden artifact graph internals. When
+`HOLLOW_LODGE_PENDING_DECISION_PROJECTION_READS=1`, `/inbox` and
+`/crews/{crew_id}/board` use the projection only if it is available and has
+zero lag, with stale or unavailable projections falling back to the existing
+event-log replay path. This slice advances the projection schema to version
+`4`.
+
+Expected verification:
+
+- `pytest tests/server/test_projection_store.py::test_projection_store_materializes_pending_decisions_without_private_deal_terms tests/server/test_projection_store.py::test_inbox_and_crew_board_read_fresh_pending_decision_projection_when_enabled tests/server/test_projection_store.py::test_pending_decision_projection_reads_fall_back_when_stale -q`
+- `pytest tests/server/test_projection_store.py tests/server/test_app_config.py tests/server/test_pending_decisions.py tests/server/test_crew_routes.py tests/server/test_contract_seed.py tests/server/test_deal_routes.py tests/server/test_chat_routes.py tests/server/test_action_routes.py tests/client/test_render_packets.py tests/client/test_codex_session.py tests/test_mcp_server.py -q`
 - `pytest -q`
 
 ## Completion Standard

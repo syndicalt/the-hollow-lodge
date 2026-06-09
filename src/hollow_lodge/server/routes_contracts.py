@@ -16,6 +16,7 @@ from hollow_lodge.server.pending_decisions import pending_decisions_for_player
 from hollow_lodge.server.projected_artifacts import projected_visible_artifacts
 from hollow_lodge.server.projected_deals import projected_visible_deals
 from hollow_lodge.server.projected_dossiers import projected_proof_dossier
+from hollow_lodge.server.projected_pending_decisions import projected_pending_decisions
 from hollow_lodge.server.projections import (
     apply_contract_unlock_status,
     crew_legacy_from_contracts,
@@ -135,38 +136,46 @@ def inbox(
         crew_id: visible_rumors_for_crew(request.app.state.event_store, crew_id)
         for crew_id in crew_ids
     }
-    payload["pending_decisions"] = pending_decisions_for_player(
-        player_id=player.player_id,
+    projected_decisions = projected_pending_decisions(
+        request,
+        player.player_id,
         crew_ids=crew_ids,
-        active_contracts=payload["active_contracts"],
-        deals=payload["deals"],
-        crew_summaries={
-            crew_id: request.app.state.crew_service.summary(crew_id)
-            for crew_id in crew_ids
-        },
-        dossiers={
-            crew_id: _dossier_for_crew(
-                request,
-                player_id=player.player_id,
-                crew_id=crew_id,
-            )
-            for crew_id in crew_ids
-        },
-        actions_by_crew={
-            crew_id: _action_service(request).current_actions_for_crew(crew_id)
-            for crew_id in crew_ids
-        },
-        rumors_by_crew=rumors_by_crew,
-        crew_legacies={
-            crew_id: crew_legacy_from_contracts(
-                crew_id=crew_id,
-                contracts=payload["active_contracts"],
-                deals=deals_by_crew.get(crew_id, []),
-                events=events,
-            )
-            for crew_id in crew_ids
-        },
     )
+    if projected_decisions is not None:
+        payload["pending_decisions"] = projected_decisions
+    else:
+        payload["pending_decisions"] = pending_decisions_for_player(
+            player_id=player.player_id,
+            crew_ids=crew_ids,
+            active_contracts=payload["active_contracts"],
+            deals=payload["deals"],
+            crew_summaries={
+                crew_id: request.app.state.crew_service.summary(crew_id)
+                for crew_id in crew_ids
+            },
+            dossiers={
+                crew_id: _dossier_for_crew(
+                    request,
+                    player_id=player.player_id,
+                    crew_id=crew_id,
+                )
+                for crew_id in crew_ids
+            },
+            actions_by_crew={
+                crew_id: _action_service(request).current_actions_for_crew(crew_id)
+                for crew_id in crew_ids
+            },
+            rumors_by_crew=rumors_by_crew,
+            crew_legacies={
+                crew_id: crew_legacy_from_contracts(
+                    crew_id=crew_id,
+                    contracts=payload["active_contracts"],
+                    deals=deals_by_crew.get(crew_id, []),
+                    events=events,
+                )
+                for crew_id in crew_ids
+            },
+        )
     return payload
 
 

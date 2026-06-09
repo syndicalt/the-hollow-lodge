@@ -17,13 +17,16 @@ from hollow_lodge.server.projections import (
     crew_summaries_from_events,
     unlocked_actionable_contracts,
 )
+from hollow_lodge.server.pending_decisions import pending_decisions_for_player
+from hollow_lodge.server.rumors import SAFE_RUMOR_FIELDS
 
 
-SCHEMA_VERSION = "3"
+SCHEMA_VERSION = "4"
 PROJECTION_SCHEMA_MIGRATIONS: tuple[tuple[str, str], ...] = (
     ("1", "initial projection read models"),
     ("2", "proof dossier projection read model"),
     ("3", "chat message projection read model"),
+    ("4", "pending decision projection read model"),
 )
 
 
@@ -43,6 +46,7 @@ class SqliteProjectionStore:
         crew_legacies = snapshot["crew_legacies"]
         proof_dossiers = snapshot["proof_dossiers"]
         chat_messages = snapshot["chat_messages"]
+        pending_decisions = snapshot["pending_decisions"]
         visible_events = snapshot["visible_events"]
         last_sequence = snapshot["last_sequence"]
         with sqlite3.connect(self.path) as connection:
@@ -57,6 +61,7 @@ class SqliteProjectionStore:
             connection.execute("delete from crew_legacy")
             connection.execute("delete from proof_dossier")
             connection.execute("delete from chat_message_surface")
+            connection.execute("delete from pending_decision_surface")
             for contract in board["contracts"]:
                 connection.execute(
                     """
@@ -273,6 +278,31 @@ class SqliteProjectionStore:
                         last_sequence,
                     ),
                 )
+            for row in pending_decisions:
+                connection.execute(
+                    """
+                    insert into pending_decision_surface (
+                        player_id,
+                        crew_id,
+                        decision_index,
+                        kind,
+                        payload_json,
+                        updated_sequence
+                    ) values (?, ?, ?, ?, ?, ?)
+                    """,
+                    (
+                        row["player_id"],
+                        row["crew_id"],
+                        row["decision_index"],
+                        row["kind"],
+                        json.dumps(
+                            row["decision"],
+                            sort_keys=True,
+                            separators=(",", ":"),
+                        ),
+                        last_sequence,
+                    ),
+                )
             self._set_meta(connection, "schema_version", SCHEMA_VERSION)
             self._set_meta(connection, "last_sequence", str(last_sequence))
             self._set_meta(connection, "contract_count", str(len(board["contracts"])))
@@ -281,6 +311,11 @@ class SqliteProjectionStore:
             self._set_meta(connection, "crew_legacy_count", str(len(crew_legacies)))
             self._set_meta(connection, "proof_dossier_count", str(len(proof_dossiers)))
             self._set_meta(connection, "chat_message_count", str(len(chat_messages)))
+            self._set_meta(
+                connection,
+                "pending_decision_count",
+                str(len(pending_decisions)),
+            )
             self._set_meta(connection, "visible_event_count", str(len(visible_events)))
             self._set_meta(
                 connection,
@@ -323,6 +358,7 @@ class SqliteProjectionStore:
                 "crew_legacy_count": 0,
                 "proof_dossier_count": 0,
                 "chat_message_count": 0,
+                "pending_decision_count": 0,
                 "schema_migration_count": 0,
                 "latest_schema_migration": None,
                 "visible_event_count": 0,
@@ -352,6 +388,9 @@ class SqliteProjectionStore:
                 ).fetchone()[0]
                 chat_message_count = connection.execute(
                     "select count(*) from chat_message_surface"
+                ).fetchone()[0]
+                pending_decision_count = connection.execute(
+                    "select count(*) from pending_decision_surface"
                 ).fetchone()[0]
                 visible_event_count = connection.execute(
                     "select count(*) from visible_event_surface"
@@ -390,6 +429,7 @@ class SqliteProjectionStore:
                 "crew_legacy_count": 0,
                 "proof_dossier_count": 0,
                 "chat_message_count": 0,
+                "pending_decision_count": 0,
                 "schema_migration_count": 0,
                 "latest_schema_migration": None,
                 "visible_event_count": 0,
@@ -423,6 +463,9 @@ class SqliteProjectionStore:
             ),
             "chat_message_count": int(
                 meta.get("chat_message_count", str(chat_message_count))
+            ),
+            "pending_decision_count": int(
+                meta.get("pending_decision_count", str(pending_decision_count))
             ),
             "schema_migration_count": int(schema_migration_count),
             "latest_schema_migration": (
@@ -619,6 +662,34 @@ class SqliteProjectionStore:
                 visible.append(json.loads(payload_json))
         return visible
 
+    def read_pending_decisions(
+        self,
+        player_id: str,
+        *,
+        crew_ids: list[str] | tuple[str, ...] = (),
+    ) -> list[dict[str, Any]]:
+        crew_set = set(crew_ids)
+        if not crew_set:
+            return []
+        with sqlite3.connect(self.path) as connection:
+            self._ensure_schema(connection)
+            rows = connection.execute(
+                """
+                select payload_json
+                from pending_decision_surface
+                where player_id = ?
+                  and crew_id in (
+                    select value from json_each(?)
+                  )
+                order by crew_id, decision_index
+                """,
+                (
+                    player_id,
+                    json.dumps(sorted(crew_set), separators=(",", ":")),
+                ),
+            ).fetchall()
+        return [json.loads(row[0]) for row in rows]
+
     def _ensure_schema(self, connection: sqlite3.Connection) -> None:
         connection.execute(
             """
@@ -790,6 +861,25 @@ class SqliteProjectionStore:
             on chat_message_surface (sequence)
             """
         )
+        connection.execute(
+            """
+            create table if not exists pending_decision_surface (
+                player_id text not null,
+                crew_id text not null,
+                decision_index integer not null,
+                kind text not null,
+                payload_json text not null,
+                updated_sequence integer not null,
+                primary key (player_id, crew_id, decision_index)
+            )
+            """
+        )
+        connection.execute(
+            """
+            create index if not exists idx_pending_decision_surface_player
+            on pending_decision_surface (player_id, crew_id, kind)
+            """
+        )
 
     def _ensure_artifact_scoped_surface_schema(self, connection: sqlite3.Connection) -> None:
         existing_columns = {
@@ -850,6 +940,14 @@ def build_projection_snapshot(events: list[GameEvent]) -> dict[str, Any]:
         events=events,
     )
     proof_dossiers = proof_dossiers_from_events(events)
+    pending_decisions = _pending_decisions_from_projection_inputs(
+        board=board,
+        deals=deals,
+        crew_summaries=crew_summaries,
+        proof_dossiers=proof_dossiers,
+        crew_legacies=crew_legacies,
+        events=events,
+    )
     chat_messages = [
         event
         for event in events
@@ -867,6 +965,7 @@ def build_projection_snapshot(events: list[GameEvent]) -> dict[str, Any]:
         "deals": deals,
         "crew_legacies": crew_legacies,
         "proof_dossiers": proof_dossiers,
+        "pending_decisions": pending_decisions,
         "chat_messages": chat_messages,
         "visible_events": visible_events,
         "last_sequence": events[-1].sequence if events else 0,
@@ -913,6 +1012,103 @@ def _chat_event_surface(event: GameEvent) -> dict[str, Any]:
         "payload": payload["payload"],
         "visibility": payload["visibility"],
     }
+
+
+def _pending_decisions_from_projection_inputs(
+    *,
+    board: dict[str, Any],
+    deals: list[dict[str, Any]],
+    crew_summaries: dict[str, dict[str, Any]],
+    proof_dossiers: dict[str, dict[str, Any]],
+    crew_legacies: dict[str, dict[str, Any]],
+    events: list[GameEvent],
+) -> list[dict[str, Any]]:
+    crew_ids_by_player: dict[str, list[str]] = {}
+    for crew_id, summary in crew_summaries.items():
+        for player_id in summary.get("member_ids", []):
+            crew_ids_by_player.setdefault(str(player_id), []).append(crew_id)
+
+    actions_by_crew = _current_actions_by_crew_from_events(events)
+    rumors_by_crew = _visible_rumors_by_crew_from_events(events)
+    rows: list[dict[str, Any]] = []
+    for player_id, player_crew_ids in sorted(crew_ids_by_player.items()):
+        for crew_id in sorted(player_crew_ids):
+            crew_deals = [
+                deal
+                for deal in deals
+                if crew_id in {deal.get("proposer_crew_id"), deal.get("recipient_crew_id")}
+            ]
+            crew_contracts = [
+                deepcopy(contract)
+                for contract in board["contracts"]
+                if contract.get("lifecycle_status", "active") != "archived"
+            ]
+            apply_contract_unlock_status(
+                contracts=crew_contracts,
+                crew_ids=[crew_id],
+                events=events,
+                deals_by_crew={crew_id: crew_deals},
+            )
+            decisions = pending_decisions_for_player(
+                player_id=player_id,
+                crew_ids=[crew_id],
+                active_contracts=unlocked_actionable_contracts(crew_contracts),
+                deals=crew_deals,
+                crew_summaries={crew_id: crew_summaries.get(crew_id, {})},
+                dossiers={crew_id: proof_dossiers.get(crew_id, {})},
+                actions_by_crew={crew_id: actions_by_crew.get(crew_id, [])},
+                rumors_by_crew={crew_id: rumors_by_crew.get(crew_id, [])},
+                crew_legacies={crew_id: crew_legacies.get(crew_id, {})},
+            )
+            for decision_index, decision in enumerate(decisions):
+                rows.append(
+                    {
+                        "player_id": player_id,
+                        "crew_id": crew_id,
+                        "decision_index": decision_index,
+                        "kind": str(decision.get("kind", "")),
+                        "decision": decision,
+                    }
+                )
+    return rows
+
+
+def _current_actions_by_crew_from_events(
+    events: list[GameEvent],
+) -> dict[str, list[dict[str, Any]]]:
+    current: dict[str, dict[str, Any]] = {}
+    for event in events:
+        if event.type not in {"action.submitted", "action.edited", "action.canceled"}:
+            continue
+        action = event.payload["action"]
+        current[action["action_id"]] = action
+    actions_by_crew: dict[str, list[dict[str, Any]]] = {}
+    for action in sorted(current.values(), key=lambda item: item["action_id"]):
+        if action.get("status") == "canceled":
+            continue
+        crew_id = action.get("crew_id")
+        if crew_id:
+            actions_by_crew.setdefault(str(crew_id), []).append(action)
+    return actions_by_crew
+
+
+def _visible_rumors_by_crew_from_events(
+    events: list[GameEvent],
+) -> dict[str, list[dict[str, Any]]]:
+    rumors_by_crew: dict[str, list[dict[str, Any]]] = {}
+    for event in events:
+        if event.type != "contract.rumor.leaked":
+            continue
+        rumor = {
+            key: event.payload[key]
+            for key in SAFE_RUMOR_FIELDS
+            if key in event.payload
+        }
+        for entry in event.visibility.entries:
+            if entry.kind != "crew":
+                continue
+            rumors_by_crew.setdefault(entry.id, []).append(dict(rumor))
+    return rumors_by_crew
 
 
 def proof_dossiers_from_events(events: list[GameEvent]) -> dict[str, dict[str, Any]]:

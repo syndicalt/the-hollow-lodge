@@ -33,6 +33,7 @@ class PostgresProjectionStore:
         crew_legacies = snapshot["crew_legacies"]
         proof_dossiers = snapshot["proof_dossiers"]
         chat_messages = snapshot["chat_messages"]
+        pending_decisions = snapshot["pending_decisions"]
         visible_events = snapshot["visible_events"]
         last_sequence = snapshot["last_sequence"]
 
@@ -49,6 +50,7 @@ class PostgresProjectionStore:
                 "crew_legacy",
                 "proof_dossier",
                 "chat_message_surface",
+                "pending_decision_surface",
             ):
                 connection.execute(f"delete from {table}")
 
@@ -254,6 +256,27 @@ class PostgresProjectionStore:
                         last_sequence,
                     ),
                 )
+            for row in pending_decisions:
+                connection.execute(
+                    """
+                    insert into pending_decision_surface (
+                        player_id,
+                        crew_id,
+                        decision_index,
+                        kind,
+                        payload_json,
+                        updated_sequence
+                    ) values (%s, %s, %s, %s, %s::jsonb, %s)
+                    """,
+                    (
+                        row["player_id"],
+                        row["crew_id"],
+                        row["decision_index"],
+                        row["kind"],
+                        _json_dumps(row["decision"]),
+                        last_sequence,
+                    ),
+                )
 
             self._set_meta(connection, "schema_version", SCHEMA_VERSION)
             self._set_meta(connection, "last_sequence", str(last_sequence))
@@ -263,6 +286,11 @@ class PostgresProjectionStore:
             self._set_meta(connection, "crew_legacy_count", str(len(crew_legacies)))
             self._set_meta(connection, "proof_dossier_count", str(len(proof_dossiers)))
             self._set_meta(connection, "chat_message_count", str(len(chat_messages)))
+            self._set_meta(
+                connection,
+                "pending_decision_count",
+                str(len(pending_decisions)),
+            )
             self._set_meta(connection, "visible_event_count", str(len(visible_events)))
             self._set_meta(
                 connection,
@@ -303,6 +331,9 @@ class PostgresProjectionStore:
                 chat_message_count = connection.execute(
                     "select count(*) from chat_message_surface"
                 ).fetchone()[0]
+                pending_decision_count = connection.execute(
+                    "select count(*) from pending_decision_surface"
+                ).fetchone()[0]
                 visible_event_count = connection.execute(
                     "select count(*) from visible_event_surface"
                 ).fetchone()[0]
@@ -340,6 +371,7 @@ class PostgresProjectionStore:
                 "crew_legacy_count": 0,
                 "proof_dossier_count": 0,
                 "chat_message_count": 0,
+                "pending_decision_count": 0,
                 "schema_migration_count": 0,
                 "latest_schema_migration": None,
                 "visible_event_count": 0,
@@ -373,6 +405,9 @@ class PostgresProjectionStore:
             ),
             "chat_message_count": int(
                 meta.get("chat_message_count", str(chat_message_count))
+            ),
+            "pending_decision_count": int(
+                meta.get("pending_decision_count", str(pending_decision_count))
             ),
             "schema_migration_count": int(schema_migration_count),
             "latest_schema_migration": (
@@ -561,6 +596,29 @@ class PostgresProjectionStore:
             if _visibility_matches(visibility, principals):
                 visible.append(_load_json(payload_json))
         return visible
+
+    def read_pending_decisions(
+        self,
+        player_id: str,
+        *,
+        crew_ids: list[str] | tuple[str, ...] = (),
+    ) -> list[dict[str, Any]]:
+        crew_set = set(crew_ids)
+        if not crew_set:
+            return []
+        with self._connect() as connection:
+            self._ensure_schema(connection)
+            rows = connection.execute(
+                """
+                select payload_json
+                from pending_decision_surface
+                where player_id = %s
+                  and crew_id = any(%s)
+                order by crew_id, decision_index
+                """,
+                (player_id, sorted(crew_set)),
+            ).fetchall()
+        return [_load_json(row[0]) for row in rows]
 
     def _connect(self) -> Any:
         try:
@@ -751,6 +809,25 @@ class PostgresProjectionStore:
             """
             create index if not exists idx_chat_message_surface_sequence
             on chat_message_surface (sequence)
+            """
+        )
+        connection.execute(
+            """
+            create table if not exists pending_decision_surface (
+                player_id text not null,
+                crew_id text not null,
+                decision_index integer not null,
+                kind text not null,
+                payload_json jsonb not null,
+                updated_sequence bigint not null,
+                primary key (player_id, crew_id, decision_index)
+            )
+            """
+        )
+        connection.execute(
+            """
+            create index if not exists idx_pending_decision_surface_player
+            on pending_decision_surface (player_id, crew_id, kind)
             """
         )
 

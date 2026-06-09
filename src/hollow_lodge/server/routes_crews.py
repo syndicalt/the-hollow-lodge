@@ -14,6 +14,7 @@ from hollow_lodge.server.projected_artifacts import projected_visible_artifacts
 from hollow_lodge.server.projected_deals import projected_visible_deals
 from hollow_lodge.server.projected_dossiers import projected_proof_dossier
 from hollow_lodge.server.projected_legacy import projected_crew_legacy
+from hollow_lodge.server.projected_pending_decisions import projected_pending_decisions
 from hollow_lodge.server.runtime_services import ensure_deal_service
 from hollow_lodge.server.rumors import visible_rumors_for_crew
 from hollow_lodge.server.projections import (
@@ -133,16 +134,13 @@ def crew_board(
     )
     rumors = visible_rumors_for_crew(request.app.state.event_store, crew_id)
     crew = _crew_summary(request, crew_id)
-    return {
-        "player_id": player.player_id,
-        "crew": crew,
-        "active_contracts": shaped_contracts,
-        "legacy": legacy,
-        "dossier": _crew_board_dossier(dossier),
-        "visible_artifacts": _visible_artifacts_for_player(request, player.player_id),
-        "deals": deals,
-        "rumors": rumors,
-        "pending_decisions": pending_decisions_for_player(
+    projected_decisions = projected_pending_decisions(
+        request,
+        player.player_id,
+        crew_ids=[crew_id],
+    )
+    if projected_decisions is None:
+        projected_decisions = pending_decisions_for_player(
             player_id=player.player_id,
             crew_ids=[crew_id],
             active_contracts=shaped_contracts,
@@ -154,7 +152,17 @@ def crew_board(
             },
             rumors_by_crew={crew_id: rumors},
             crew_legacies={crew_id: legacy},
-        ),
+        )
+    return {
+        "player_id": player.player_id,
+        "crew": crew,
+        "active_contracts": shaped_contracts,
+        "legacy": legacy,
+        "dossier": _crew_board_dossier(dossier),
+        "visible_artifacts": _visible_artifacts_for_player(request, player.player_id),
+        "deals": deals,
+        "rumors": rumors,
+        "pending_decisions": projected_decisions,
     }
 
 

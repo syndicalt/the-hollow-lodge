@@ -395,6 +395,144 @@ def test_chat_messages_route_falls_back_when_projection_is_stale(tmp_path, monke
     ]
 
 
+def test_projection_store_materializes_pending_decisions_without_private_deal_terms(
+    tmp_path,
+):
+    client = TestClient(create_app(data_dir=tmp_path, invite_codes=["a", "b", "c"]))
+    ada = register(client, "a", "Ada")
+    bela = register(client, "b", "Bela")
+    caro = register(client, "c", "Caro")
+    gilt = create_crew(client, ada["token"], "crew-create-gilt", "The Gilt Knives")
+    moth = create_crew(client, bela["token"], "crew-create-moth", "The Moth Choir")
+    ash = create_crew(client, caro["token"], "crew-create-ash", "The Ash Keys")
+    proposed = client.post(
+        "/deals",
+        headers=command_auth(ada["token"], "deal-propose"),
+        json=proposed_deal_payload(gilt, moth),
+    )
+
+    assert proposed.status_code == 201
+
+    client.app.state.projection_store.rebuild(client.app.state.event_store.read())
+    bela_decisions = client.app.state.projection_store.read_pending_decisions(
+        bela["player_id"],
+        crew_ids=[moth["crew_id"]],
+    )
+    caro_decisions = client.app.state.projection_store.read_pending_decisions(
+        caro["player_id"],
+        crew_ids=[ash["crew_id"]],
+    )
+    with sqlite3.connect(tmp_path / "server-projections.sqlite3") as connection:
+        rows = connection.execute(
+            """
+            select player_id, crew_id, kind, payload_json
+            from pending_decision_surface
+            order by player_id, crew_id, decision_index
+            """
+        ).fetchall()
+
+    assert any(
+        decision["kind"] == "incoming_deal"
+        and decision["deal_id"] == proposed.json()["deal_id"]
+        for decision in bela_decisions
+    )
+    assert not any(
+        decision.get("deal_id") == proposed.json()["deal_id"]
+        for decision in caro_decisions
+    )
+    serialized_rows = str(rows)
+    assert "Do not cite us." not in serialized_rows
+    assert "artifact_ledger_rubric" not in serialized_rows
+    assert "artifact_chapel_debt_mark" not in serialized_rows
+    assert "deal-propose" not in serialized_rows
+
+
+def test_inbox_and_crew_board_read_fresh_pending_decision_projection_when_enabled(
+    tmp_path,
+    monkeypatch,
+):
+    monkeypatch.setenv("HOLLOW_LODGE_PENDING_DECISION_PROJECTION_READS", "1")
+    client = TestClient(create_app(data_dir=tmp_path, invite_codes=["a", "b"]))
+    ada = register(client, "a", "Ada")
+    bela = register(client, "b", "Bela")
+    gilt = create_crew(client, ada["token"], "crew-create-gilt", "The Gilt Knives")
+    moth = create_crew(client, bela["token"], "crew-create-moth", "The Moth Choir")
+    proposed = client.post(
+        "/deals",
+        headers=command_auth(ada["token"], "deal-propose"),
+        json=proposed_deal_payload(gilt, moth),
+    )
+    original_read = client.app.state.projection_store.read_pending_decisions
+    calls = {"count": 0}
+
+    def tracked_read_pending_decisions(player_id: str, *, crew_ids=()):
+        calls["count"] += 1
+        return original_read(player_id, crew_ids=crew_ids)
+
+    client.app.state.projection_store.read_pending_decisions = (
+        tracked_read_pending_decisions
+    )
+
+    inbox = client.get("/inbox", headers=auth(bela["token"]))
+    crew_board = client.get(
+        f"/crews/{moth['crew_id']}/board",
+        headers=auth(bela["token"]),
+    )
+
+    assert proposed.status_code == 201
+    assert inbox.status_code == 200
+    assert crew_board.status_code == 200
+    assert calls["count"] == 2
+    assert any(
+        decision["kind"] == "incoming_deal"
+        and decision["deal_id"] == proposed.json()["deal_id"]
+        for decision in inbox.json()["pending_decisions"]
+    )
+    assert crew_board.json()["pending_decisions"] == inbox.json()["pending_decisions"]
+
+
+def test_pending_decision_projection_reads_fall_back_when_stale(tmp_path, monkeypatch):
+    monkeypatch.setenv("HOLLOW_LODGE_PENDING_DECISION_PROJECTION_READS", "1")
+    client = TestClient(create_app(data_dir=tmp_path, invite_codes=["a"]))
+    ada = register(client, "a", "Ada")
+    crew = create_crew(client, ada["token"], "crew-create-gilt", "The Gilt Knives")
+    client.app.state.projection_store.rebuild(client.app.state.event_store.read())
+    out_of_band_contract = STARTER_CONTRACT.model_copy(
+        update={"contract_id": "contract_out_of_band", "title": "Out Of Band"}
+    )
+    client.app.state.event_store.append_command(
+        event_type="contract.board.published",
+        actor_id="server",
+        visibility=EventVisibility.public(),
+        payload=out_of_band_contract.model_dump(mode="json"),
+        idempotency_key="out-of-band-contract",
+    )
+
+    def fail_if_projection_read(player_id: str, *, crew_ids=()):
+        raise AssertionError("stale pending-decision projection should not be used")
+
+    client.app.state.projection_store.read_pending_decisions = fail_if_projection_read
+
+    inbox = client.get("/inbox", headers=auth(ada["token"]))
+    crew_board = client.get(
+        f"/crews/{crew['crew_id']}/board",
+        headers=auth(ada["token"]),
+    )
+
+    assert inbox.status_code == 200
+    assert crew_board.status_code == 200
+    assert any(
+        decision["kind"] == "contract_action"
+        and decision["contract_id"] == "contract_out_of_band"
+        for decision in inbox.json()["pending_decisions"]
+    )
+    assert any(
+        decision["kind"] == "contract_action"
+        and decision["contract_id"] == "contract_out_of_band"
+        for decision in crew_board.json()["pending_decisions"]
+    )
+
+
 def test_contract_board_route_reads_fresh_projection_when_enabled(tmp_path, monkeypatch):
     monkeypatch.setenv("HOLLOW_LODGE_CONTRACT_BOARD_PROJECTION_READS", "1")
     client = TestClient(create_app(data_dir=tmp_path, invite_codes=["a"]))
