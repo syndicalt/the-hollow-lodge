@@ -306,6 +306,10 @@ Status:
   can read safe public and scoped artifact surfaces from SQLite when fresh,
   while artifact inspection, transfer authorization, full text, hidden flags,
   unlock rules, and server-only graph internals remain outside the read model.
+- Embedded artifact projection reads completed: contract board, inbox, and
+  crew board `visible_artifacts` blocks reuse the same fresh SQLite artifact
+  projection and stale fallback used by `/artifacts`, keeping Codex-facing
+  packets aligned with the dedicated artifact list surface.
 - Deferred: deeper death/legacy inheritance, additional long-term unlock paths,
   and migrating heavier campaign reads onto the projection database.
 
@@ -1192,6 +1196,26 @@ Expected verification:
 
 - `pytest tests/server/test_projection_store.py::test_artifact_route_reads_fresh_projected_visible_artifacts_when_enabled tests/server/test_projection_store.py::test_artifact_route_falls_back_when_projection_is_stale tests/server/test_projection_store.py::test_artifact_projection_reads_player_and_crew_scoped_surfaces tests/server/test_projection_store.py::test_artifact_transfer_refreshes_projection_for_flagged_reads tests/server/test_projection_store.py::test_projection_store_materializes_visible_artifacts_without_hidden_fields -q`
 - `pytest tests/server/test_projection_store.py tests/server/test_artifact_routes.py tests/server/test_artifact_projections.py tests/server/test_artifact_transfer.py tests/server/test_contract_seed.py tests/server/test_phase_resolution.py tests/server/test_crew_routes.py tests/server/test_deal_routes.py tests/client/test_render_packets.py tests/client/test_contract_board.py tests/test_mcp_server.py -q`
+- `pytest -q`
+
+### Slice 45: Embedded Artifact Projection Reads
+
+Status: completed.
+
+Reuse the artifact visibility projection across player packets that embed
+artifact lists. Contract board, inbox, and crew board now call a shared
+projection helper for `visible_artifacts` when
+`HOLLOW_LODGE_ARTIFACT_PROJECTION_READS=1`, the projection is available, and
+lag is zero. Stale, missing, or unreadable projection state falls back to
+`ArtifactService`, preserving the existing behavior. The helper keeps player
+and crew visibility filtering centralized, so Codex-facing surfaces and the
+dedicated `/artifacts` route use the same read-model gate and safe artifact
+surface shape.
+
+Expected verification:
+
+- `pytest tests/server/test_projection_store.py::test_contract_board_embeds_projected_visible_artifacts_when_enabled tests/server/test_projection_store.py::test_inbox_embeds_projected_visible_artifacts_when_enabled tests/server/test_projection_store.py::test_crew_board_embeds_projected_visible_artifacts_when_enabled tests/server/test_projection_store.py::test_embedded_visible_artifacts_fall_back_when_projection_is_stale -q`
+- `pytest tests/server/test_projection_store.py tests/server/test_artifact_routes.py tests/server/test_artifact_projections.py tests/server/test_artifact_transfer.py tests/server/test_contract_seed.py tests/server/test_phase_resolution.py tests/server/test_crew_routes.py tests/server/test_deal_routes.py tests/client/test_render_packets.py tests/client/test_contract_board.py tests/test_mcp_server.py tests/e2e/test_codex_render_surfaces.py -q`
 - `pytest -q`
 
 ## Completion Standard

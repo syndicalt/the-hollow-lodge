@@ -1,7 +1,6 @@
 from __future__ import annotations
 
 import logging
-import os
 
 from fastapi import APIRouter, Depends, Header, HTTPException, Request, status
 from pydantic import BaseModel, Field
@@ -10,6 +9,7 @@ from hollow_lodge.domain.identity import Player
 from hollow_lodge.eventlog.jsonl_store import IdempotencyConflictError
 from hollow_lodge.server.artifact_service import ArtifactService
 from hollow_lodge.server.auth import current_player
+from hollow_lodge.server.projected_artifacts import projected_visible_artifacts
 
 
 router = APIRouter(prefix="/artifacts", tags=["artifacts"])
@@ -25,7 +25,7 @@ def artifacts(
     request: Request,
     player: Player = Depends(current_player),
 ):
-    projected = _projected_visible_artifacts(request, player.player_id)
+    projected = projected_visible_artifacts(request, player.player_id)
     if projected is not None:
         return projected
     return _artifact_service(request).visible_artifacts_for_player(
@@ -121,25 +121,6 @@ def _artifact_service(request: Request) -> ArtifactService:
             event_store=request.app.state.event_store,
         )
     return request.app.state.artifact_service
-
-
-def _projected_visible_artifacts(request: Request, player_id: str) -> dict | None:
-    if os.environ.get("HOLLOW_LODGE_ARTIFACT_PROJECTION_READS") != "1":
-        return None
-    events = request.app.state.event_store.read()
-    authoritative_last_sequence = events[-1].sequence if events else 0
-    diagnostics = request.app.state.projection_store.diagnostics(
-        authoritative_last_sequence=authoritative_last_sequence,
-    )
-    if diagnostics.get("status") != "available" or diagnostics.get("lag") != 0:
-        return None
-    try:
-        return request.app.state.projection_store.read_visible_artifacts(
-            player_id,
-            crew_ids=_crew_ids_for_player(request, player_id),
-        )
-    except Exception:
-        return None
 
 
 def _refresh_projection_store(request: Request) -> None:

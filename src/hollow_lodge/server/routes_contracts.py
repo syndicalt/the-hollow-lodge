@@ -13,6 +13,7 @@ from hollow_lodge.server.artifact_service import ArtifactService
 from hollow_lodge.server.auth import current_player
 from hollow_lodge.server.contract_seed import ContractSeed, load_contract_seed_file
 from hollow_lodge.server.pending_decisions import pending_decisions_for_player
+from hollow_lodge.server.projected_artifacts import projected_visible_artifacts
 from hollow_lodge.server.projections import (
     apply_contract_unlock_status,
     crew_legacy_from_contracts,
@@ -251,6 +252,9 @@ def _contract_service(request: Request) -> ContractService:
 
 
 def _visible_artifacts_for_player(request: Request, player_id: str) -> list[dict]:
+    projected = projected_visible_artifacts(request, player_id)
+    if projected is not None:
+        return projected["artifacts"]
     return request.app.state.artifact_service.visible_artifacts_for_player(
         player_id,
         crew_ids=request.app.state.crew_service.crew_ids_for_player(player_id),
