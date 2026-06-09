@@ -246,6 +246,23 @@ class HollowLodgeApi:
     def visible_events(self) -> list[dict[str, Any]]:
         return self.visible_events_since(since_sequence=0)
 
+    def visible_chat_events(
+        self,
+        *,
+        conversation_id: str | None = None,
+    ) -> list[dict[str, Any]]:
+        params = {}
+        if conversation_id is not None:
+            params["conversation_id"] = conversation_id
+        response = httpx.get(
+            f"{self.server_url}/chat/messages",
+            headers=self._auth_headers(),
+            params=params,
+            timeout=10,
+        )
+        response.raise_for_status()
+        return response.json()["events"]
+
     def visible_events_since(self, *, since_sequence: int) -> list[dict[str, Any]]:
         response = httpx.get(
             f"{self.server_url}/events",

@@ -2,12 +2,15 @@ from __future__ import annotations
 
 import logging
 
+from typing import Any
+
 from pydantic import BaseModel, Field
-from fastapi import APIRouter, Depends, Header, HTTPException, Request, status
+from fastapi import APIRouter, Depends, Header, HTTPException, Query, Request, status
 
 from hollow_lodge.domain.identity import Player
 from hollow_lodge.server.artifact_service import ArtifactService
 from hollow_lodge.server.auth import current_player
+from hollow_lodge.server.projected_chat import projected_visible_chat_events
 
 
 router = APIRouter(prefix="/chat", tags=["chat"])
@@ -36,6 +39,37 @@ class CrewToCrewMessageRequest(BaseModel):
 class ChatMessageResponse(BaseModel):
     message_id: str
     conversation_id: str
+
+
+class ChatMessagesResponse(BaseModel):
+    events: list[dict[str, Any]]
+
+
+@router.get("/messages", response_model=ChatMessagesResponse)
+def visible_chat_messages(
+    request: Request,
+    conversation_id: str | None = Query(None, min_length=1),
+    player: Player = Depends(current_player),
+) -> ChatMessagesResponse:
+    projected = projected_visible_chat_events(
+        request,
+        player.player_id,
+        conversation_id=conversation_id,
+    )
+    if projected is not None:
+        return ChatMessagesResponse(events=projected)
+    events = [
+        event
+        for event in request.app.state.visibility_service.visible_events_for_player(
+            player.player_id
+        )
+        if event.type == "chat.message.created"
+        and (
+            conversation_id is None
+            or _payload_matches_conversation(event.payload, conversation_id)
+        )
+    ]
+    return ChatMessagesResponse(events=[event.model_dump(mode="json") for event in events])
 
 
 @router.post("/direct", response_model=ChatMessageResponse, status_code=status.HTTP_201_CREATED)
@@ -147,3 +181,16 @@ def _refresh_projection_store(request: Request) -> None:
             )
         except Exception:
             logger.exception("failed to refresh chat projection")
+
+
+def _payload_matches_conversation(payload: dict[str, Any], conversation_id: str) -> bool:
+    if payload.get("message_id") == conversation_id:
+        return True
+    sender_crew_id = payload.get("sender_crew_id")
+    recipient_crew_id = payload.get("recipient_crew_id")
+    if sender_crew_id and recipient_crew_id:
+        return conversation_id in {
+            f"{sender_crew_id}:{recipient_crew_id}",
+            f"{recipient_crew_id}:{sender_crew_id}",
+        }
+    return sender_crew_id == conversation_id

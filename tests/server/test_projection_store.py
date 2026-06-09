@@ -264,6 +264,137 @@ def test_projection_store_records_schema_migration_ledger(tmp_path):
     assert projection["latest_schema_migration"] == SCHEMA_VERSION
 
 
+def test_projection_store_materializes_visible_chat_messages_without_bystander_access(
+    tmp_path,
+):
+    client = TestClient(create_app(data_dir=tmp_path, invite_codes=["a", "b", "c"]))
+    ada = register(client, "a", "Ada")
+    bela = register(client, "b", "Bela")
+    cora = register(client, "c", "Cora")
+    gilt = create_crew(client, ada["token"], "crew-create-gilt", "The Gilt Knives")
+    moth = create_crew(client, bela["token"], "crew-create-moth", "The Moth Choir")
+    create_crew(client, cora["token"], "crew-create-cora", "The Glass Index")
+    sent = client.post(
+        "/chat/crew-to-crew",
+        headers=command_auth(ada["token"], "chat-gilt-moth"),
+        json={
+            "sender_crew_id": gilt["crew_id"],
+            "recipient_crew_id": moth["crew_id"],
+            "body": "The ledger is useful, but keep this private.",
+        },
+    )
+
+    assert sent.status_code == 201
+
+    client.app.state.projection_store.rebuild(client.app.state.event_store.read())
+    ada_visible = client.app.state.projection_store.read_visible_chat_events(
+        ada["player_id"],
+        crew_ids=[gilt["crew_id"]],
+    )
+    bela_thread = client.app.state.projection_store.read_visible_chat_events(
+        bela["player_id"],
+        crew_ids=[moth["crew_id"]],
+        conversation_id=f"{moth['crew_id']}:{gilt['crew_id']}",
+    )
+    cora_visible = client.app.state.projection_store.read_visible_chat_events(
+        cora["player_id"],
+        crew_ids=[],
+    )
+    with sqlite3.connect(tmp_path / "server-projections.sqlite3") as connection:
+        rows = connection.execute(
+            """
+            select message_id, conversation_id, payload_json
+            from chat_message_surface
+            """
+        ).fetchall()
+
+    assert len(rows) == 1
+    assert rows[0][0] == sent.json()["message_id"]
+    assert rows[0][1] == f"{gilt['crew_id']}:{moth['crew_id']}"
+    assert "chat-gilt-moth" not in rows[0][2]
+    assert len(ada_visible) == 1
+    assert len(bela_thread) == 1
+    assert cora_visible == []
+    assert ada_visible[0]["payload"]["body"] == "The ledger is useful, but keep this private."
+
+
+def test_chat_messages_route_reads_fresh_projection_when_enabled(tmp_path, monkeypatch):
+    monkeypatch.setenv("HOLLOW_LODGE_CHAT_PROJECTION_READS", "1")
+    client = TestClient(create_app(data_dir=tmp_path, invite_codes=["a", "b"]))
+    ada = register(client, "a", "Ada")
+    bela = register(client, "b", "Bela")
+    gilt = create_crew(client, ada["token"], "crew-create-gilt", "The Gilt Knives")
+    moth = create_crew(client, bela["token"], "crew-create-moth", "The Moth Choir")
+    sent = client.post(
+        "/chat/crew-to-crew",
+        headers=command_auth(ada["token"], "chat-gilt-moth"),
+        json={
+            "sender_crew_id": gilt["crew_id"],
+            "recipient_crew_id": moth["crew_id"],
+            "body": "Meet after the preview.",
+        },
+    )
+    original_read = client.app.state.projection_store.read_visible_chat_events
+    calls = {"count": 0}
+
+    def tracked_read_visible_chat_events(player_id: str, *, crew_ids=(), conversation_id=None):
+        calls["count"] += 1
+        return original_read(
+            player_id,
+            crew_ids=crew_ids,
+            conversation_id=conversation_id,
+        )
+
+    client.app.state.projection_store.read_visible_chat_events = (
+        tracked_read_visible_chat_events
+    )
+
+    response = client.get(
+        "/chat/messages",
+        headers=auth(ada["token"]),
+        params={"conversation_id": f"{moth['crew_id']}:{gilt['crew_id']}"},
+    )
+
+    assert sent.status_code == 201
+    assert response.status_code == 200
+    assert calls["count"] == 1
+    assert [event["payload"]["body"] for event in response.json()["events"]] == [
+        "Meet after the preview."
+    ]
+
+
+def test_chat_messages_route_falls_back_when_projection_is_stale(tmp_path, monkeypatch):
+    monkeypatch.setenv("HOLLOW_LODGE_CHAT_PROJECTION_READS", "1")
+    client = TestClient(create_app(data_dir=tmp_path, invite_codes=["a", "b"]))
+    ada = register(client, "a", "Ada")
+    bela = register(client, "b", "Bela")
+    gilt = create_crew(client, ada["token"], "crew-create-gilt", "The Gilt Knives")
+    moth = create_crew(client, bela["token"], "crew-create-moth", "The Moth Choir")
+    client.app.state.projection_store.rebuild(client.app.state.event_store.read())
+    sent = client.post(
+        "/chat/crew-to-crew",
+        headers=command_auth(ada["token"], "chat-gilt-moth"),
+        json={
+            "sender_crew_id": gilt["crew_id"],
+            "recipient_crew_id": moth["crew_id"],
+            "body": "This arrives after the projection checkpoint.",
+        },
+    )
+
+    def fail_if_projection_read(player_id: str, *, crew_ids=(), conversation_id=None):
+        raise AssertionError("stale chat projection should not be used")
+
+    client.app.state.projection_store.read_visible_chat_events = fail_if_projection_read
+
+    response = client.get("/chat/messages", headers=auth(ada["token"]))
+
+    assert sent.status_code == 201
+    assert response.status_code == 200
+    assert [event["payload"]["body"] for event in response.json()["events"]] == [
+        "This arrives after the projection checkpoint."
+    ]
+
+
 def test_contract_board_route_reads_fresh_projection_when_enabled(tmp_path, monkeypatch):
     monkeypatch.setenv("HOLLOW_LODGE_CONTRACT_BOARD_PROJECTION_READS", "1")
     client = TestClient(create_app(data_dir=tmp_path, invite_codes=["a"]))

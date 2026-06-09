@@ -1640,14 +1640,37 @@ authority out of the Eventloom JSONL log. SQLite and Postgres projection stores
 now maintain a `projection_schema_migrations` ledger with the applied
 projection schema versions and descriptions, and projection diagnostics expose
 `schema_version`, `schema_migration_count`, and `latest_schema_migration`.
-The current projection schema version is `2`, covering the initial read models
-and the proof dossier read model. The operations guide now documents using
-diagnostics to verify projection schema drift before hosted cutovers.
+This slice introduced projection schema version `2` for the proof dossier read
+model. The operations guide now documents using diagnostics to verify
+projection schema drift before hosted cutovers.
 
 Expected verification:
 
 - `pytest tests/server/test_projection_store.py::test_projection_store_records_schema_migration_ledger tests/server/test_app_config.py::test_postgres_projection_database_url_selects_postgres_backend tests/server/test_app_config.py::test_require_postgres_projection_allows_postgres_backend -q`
 - `pytest tests/server/test_projection_store.py tests/server/test_app_config.py tests/e2e/test_projection_backend_smoke.py -q`
+- `pytest -q`
+
+### Slice 66: Chat Message Projection Reads
+
+Status: completed.
+
+Move brokered chat discovery onto the projection database without moving chat
+writes out of the event-log service path. SQLite and Postgres projection stores
+now materialize sanitized `chat_message_surface` rows for player-visible chat
+events, keyed by message id, sequence, kind, and normalized conversation id.
+The stored chat surface excludes idempotency keys and hash-chain metadata while
+preserving the visible message payload needed by Codex conversation and thread
+renders. `GET /chat/messages` returns visibility-filtered chat events, using
+the projection when `HOLLOW_LODGE_CHAT_PROJECTION_READS=1` and the projection
+has zero lag, with stale or unavailable projections falling back to the
+existing visibility service. Codex `render_conversations` and `render_thread`
+now use this narrower chat endpoint after syncing local perspective logs. This
+slice advances the projection schema to version `3`.
+
+Expected verification:
+
+- `pytest tests/server/test_projection_store.py::test_projection_store_materializes_visible_chat_messages_without_bystander_access tests/server/test_projection_store.py::test_chat_messages_route_reads_fresh_projection_when_enabled tests/server/test_projection_store.py::test_chat_messages_route_falls_back_when_projection_is_stale tests/client/test_api.py::test_api_fetches_visible_chat_events tests/client/test_codex_session.py::test_codex_session_renders_thread_with_cli_compatible_matching tests/client/test_codex_session.py::test_codex_session_renders_conversations_from_synced_visible_events -q`
+- `pytest tests/server/test_projection_store.py tests/server/test_chat_routes.py tests/server/test_event_sync.py tests/client/test_api.py tests/client/test_codex_session.py tests/client/test_render_packets.py tests/test_mcp_server.py tests/e2e/test_full_game_loop_with_escrow.py -q`
 - `pytest -q`
 
 ## Completion Standard

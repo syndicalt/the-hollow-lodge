@@ -10,6 +10,9 @@ from hollow_lodge.server.projection_store import (
     SCHEMA_VERSION,
     _artifact_scope_key,
     _visibility_matches,
+    _chat_conversation_id,
+    _chat_event_surface,
+    _normalized_chat_conversation_id,
     build_projection_snapshot,
 )
 
@@ -29,6 +32,7 @@ class PostgresProjectionStore:
         deals = snapshot["deals"]
         crew_legacies = snapshot["crew_legacies"]
         proof_dossiers = snapshot["proof_dossiers"]
+        chat_messages = snapshot["chat_messages"]
         visible_events = snapshot["visible_events"]
         last_sequence = snapshot["last_sequence"]
 
@@ -44,6 +48,7 @@ class PostgresProjectionStore:
                 "visible_event_surface",
                 "crew_legacy",
                 "proof_dossier",
+                "chat_message_surface",
             ):
                 connection.execute(f"delete from {table}")
 
@@ -222,6 +227,33 @@ class PostgresProjectionStore:
                         last_sequence,
                     ),
                 )
+            for chat_event in chat_messages:
+                payload = _chat_event_surface(chat_event)
+                message = payload["payload"]
+                connection.execute(
+                    """
+                    insert into chat_message_surface (
+                        event_id,
+                        message_id,
+                        sequence,
+                        kind,
+                        conversation_id,
+                        payload_json,
+                        visibility_json,
+                        updated_sequence
+                    ) values (%s, %s, %s, %s, %s, %s::jsonb, %s::jsonb, %s)
+                    """,
+                    (
+                        chat_event.event_id,
+                        message["message_id"],
+                        chat_event.sequence,
+                        message["kind"],
+                        _chat_conversation_id(message),
+                        _json_dumps(payload),
+                        _json_dumps(payload["visibility"]),
+                        last_sequence,
+                    ),
+                )
 
             self._set_meta(connection, "schema_version", SCHEMA_VERSION)
             self._set_meta(connection, "last_sequence", str(last_sequence))
@@ -230,6 +262,7 @@ class PostgresProjectionStore:
             self._set_meta(connection, "deal_count", str(len(deals)))
             self._set_meta(connection, "crew_legacy_count", str(len(crew_legacies)))
             self._set_meta(connection, "proof_dossier_count", str(len(proof_dossiers)))
+            self._set_meta(connection, "chat_message_count", str(len(chat_messages)))
             self._set_meta(connection, "visible_event_count", str(len(visible_events)))
             self._set_meta(
                 connection,
@@ -267,6 +300,9 @@ class PostgresProjectionStore:
                 proof_dossier_count = connection.execute(
                     "select count(*) from proof_dossier"
                 ).fetchone()[0]
+                chat_message_count = connection.execute(
+                    "select count(*) from chat_message_surface"
+                ).fetchone()[0]
                 visible_event_count = connection.execute(
                     "select count(*) from visible_event_surface"
                 ).fetchone()[0]
@@ -303,6 +339,7 @@ class PostgresProjectionStore:
                 "deal_count": 0,
                 "crew_legacy_count": 0,
                 "proof_dossier_count": 0,
+                "chat_message_count": 0,
                 "schema_migration_count": 0,
                 "latest_schema_migration": None,
                 "visible_event_count": 0,
@@ -333,6 +370,9 @@ class PostgresProjectionStore:
             ),
             "proof_dossier_count": int(
                 meta.get("proof_dossier_count", str(proof_dossier_count))
+            ),
+            "chat_message_count": int(
+                meta.get("chat_message_count", str(chat_message_count))
             ),
             "schema_migration_count": int(schema_migration_count),
             "latest_schema_migration": (
@@ -487,6 +527,34 @@ class PostgresProjectionStore:
                 """,
                 (since_sequence,),
             ).fetchall()
+        visible: list[dict[str, Any]] = []
+        for payload_json, visibility_json in rows:
+            visibility = _load_json(visibility_json)
+            if _visibility_matches(visibility, principals):
+                visible.append(_load_json(payload_json))
+        return visible
+
+    def read_visible_chat_events(
+        self,
+        player_id: str,
+        *,
+        crew_ids: list[str] | tuple[str, ...] = (),
+        conversation_id: str | None = None,
+    ) -> list[dict[str, Any]]:
+        principals = {("player", player_id)}
+        principals.update(("crew", crew_id) for crew_id in crew_ids)
+        query = """
+            select payload_json, visibility_json
+            from chat_message_surface
+        """
+        params: tuple[Any, ...] = ()
+        if conversation_id is not None:
+            query += " where conversation_id = %s or message_id = %s"
+            params = (_normalized_chat_conversation_id(conversation_id), conversation_id)
+        query += " order by sequence"
+        with self._connect() as connection:
+            self._ensure_schema(connection)
+            rows = connection.execute(query, params).fetchall()
         visible: list[dict[str, Any]] = []
         for payload_json, visibility_json in rows:
             visibility = _load_json(visibility_json)
@@ -657,6 +725,32 @@ class PostgresProjectionStore:
             """
             create index if not exists idx_visible_event_surface_sequence
             on visible_event_surface (sequence)
+            """
+        )
+        connection.execute(
+            """
+            create table if not exists chat_message_surface (
+                event_id text primary key,
+                message_id text not null,
+                sequence bigint not null,
+                kind text not null,
+                conversation_id text not null,
+                payload_json jsonb not null,
+                visibility_json jsonb not null,
+                updated_sequence bigint not null
+            )
+            """
+        )
+        connection.execute(
+            """
+            create index if not exists idx_chat_message_surface_conversation
+            on chat_message_surface (conversation_id, sequence)
+            """
+        )
+        connection.execute(
+            """
+            create index if not exists idx_chat_message_surface_sequence
+            on chat_message_surface (sequence)
             """
         )
 

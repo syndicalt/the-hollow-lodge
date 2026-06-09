@@ -304,6 +304,16 @@ class _TestClientCodexApi:
     def visible_events_since(self, *, since_sequence: int) -> list[dict[str, Any]]:
         return self._get(f"/events?since_sequence={since_sequence}")["events"]
 
+    def visible_chat_events(
+        self,
+        *,
+        conversation_id: str | None = None,
+    ) -> list[dict[str, Any]]:
+        path = "/chat/messages"
+        if conversation_id is not None:
+            path = f"{path}?conversation_id={conversation_id}"
+        return self._get(path)["events"]
+
     def contracts(self) -> dict[str, Any]:
         return self._get("/contracts")
 

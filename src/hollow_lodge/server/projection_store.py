@@ -19,10 +19,11 @@ from hollow_lodge.server.projections import (
 )
 
 
-SCHEMA_VERSION = "2"
+SCHEMA_VERSION = "3"
 PROJECTION_SCHEMA_MIGRATIONS: tuple[tuple[str, str], ...] = (
     ("1", "initial projection read models"),
     ("2", "proof dossier projection read model"),
+    ("3", "chat message projection read model"),
 )
 
 
@@ -41,6 +42,7 @@ class SqliteProjectionStore:
         deals = snapshot["deals"]
         crew_legacies = snapshot["crew_legacies"]
         proof_dossiers = snapshot["proof_dossiers"]
+        chat_messages = snapshot["chat_messages"]
         visible_events = snapshot["visible_events"]
         last_sequence = snapshot["last_sequence"]
         with sqlite3.connect(self.path) as connection:
@@ -54,6 +56,7 @@ class SqliteProjectionStore:
             connection.execute("delete from visible_event_surface")
             connection.execute("delete from crew_legacy")
             connection.execute("delete from proof_dossier")
+            connection.execute("delete from chat_message_surface")
             for contract in board["contracts"]:
                 connection.execute(
                     """
@@ -239,6 +242,37 @@ class SqliteProjectionStore:
                         last_sequence,
                     ),
                 )
+            for chat_event in chat_messages:
+                payload = _chat_event_surface(chat_event)
+                message = payload["payload"]
+                connection.execute(
+                    """
+                    insert into chat_message_surface (
+                        event_id,
+                        message_id,
+                        sequence,
+                        kind,
+                        conversation_id,
+                        payload_json,
+                        visibility_json,
+                        updated_sequence
+                    ) values (?, ?, ?, ?, ?, ?, ?, ?)
+                    """,
+                    (
+                        chat_event.event_id,
+                        message["message_id"],
+                        chat_event.sequence,
+                        message["kind"],
+                        _chat_conversation_id(message),
+                        json.dumps(payload, sort_keys=True, separators=(",", ":")),
+                        json.dumps(
+                            payload["visibility"],
+                            sort_keys=True,
+                            separators=(",", ":"),
+                        ),
+                        last_sequence,
+                    ),
+                )
             self._set_meta(connection, "schema_version", SCHEMA_VERSION)
             self._set_meta(connection, "last_sequence", str(last_sequence))
             self._set_meta(connection, "contract_count", str(len(board["contracts"])))
@@ -246,6 +280,7 @@ class SqliteProjectionStore:
             self._set_meta(connection, "deal_count", str(len(deals)))
             self._set_meta(connection, "crew_legacy_count", str(len(crew_legacies)))
             self._set_meta(connection, "proof_dossier_count", str(len(proof_dossiers)))
+            self._set_meta(connection, "chat_message_count", str(len(chat_messages)))
             self._set_meta(connection, "visible_event_count", str(len(visible_events)))
             self._set_meta(
                 connection,
@@ -287,6 +322,7 @@ class SqliteProjectionStore:
                 "deal_count": 0,
                 "crew_legacy_count": 0,
                 "proof_dossier_count": 0,
+                "chat_message_count": 0,
                 "schema_migration_count": 0,
                 "latest_schema_migration": None,
                 "visible_event_count": 0,
@@ -313,6 +349,9 @@ class SqliteProjectionStore:
                 ).fetchone()[0]
                 proof_dossier_count = connection.execute(
                     "select count(*) from proof_dossier"
+                ).fetchone()[0]
+                chat_message_count = connection.execute(
+                    "select count(*) from chat_message_surface"
                 ).fetchone()[0]
                 visible_event_count = connection.execute(
                     "select count(*) from visible_event_surface"
@@ -350,6 +389,7 @@ class SqliteProjectionStore:
                 "deal_count": 0,
                 "crew_legacy_count": 0,
                 "proof_dossier_count": 0,
+                "chat_message_count": 0,
                 "schema_migration_count": 0,
                 "latest_schema_migration": None,
                 "visible_event_count": 0,
@@ -380,6 +420,9 @@ class SqliteProjectionStore:
             ),
             "proof_dossier_count": int(
                 meta.get("proof_dossier_count", str(proof_dossier_count))
+            ),
+            "chat_message_count": int(
+                meta.get("chat_message_count", str(chat_message_count))
             ),
             "schema_migration_count": int(schema_migration_count),
             "latest_schema_migration": (
@@ -548,6 +591,34 @@ class SqliteProjectionStore:
                 visible.append(json.loads(payload_json))
         return visible
 
+    def read_visible_chat_events(
+        self,
+        player_id: str,
+        *,
+        crew_ids: list[str] | tuple[str, ...] = (),
+        conversation_id: str | None = None,
+    ) -> list[dict[str, Any]]:
+        principals = {("player", player_id)}
+        principals.update(("crew", crew_id) for crew_id in crew_ids)
+        query = """
+            select payload_json, visibility_json
+            from chat_message_surface
+        """
+        params: tuple[Any, ...] = ()
+        if conversation_id is not None:
+            query += " where conversation_id = ? or message_id = ?"
+            params = (_normalized_chat_conversation_id(conversation_id), conversation_id)
+        query += " order by sequence"
+        with sqlite3.connect(self.path) as connection:
+            self._ensure_schema(connection)
+            rows = connection.execute(query, params).fetchall()
+        visible: list[dict[str, Any]] = []
+        for payload_json, visibility_json in rows:
+            visibility = json.loads(visibility_json)
+            if _visibility_matches(visibility, principals):
+                visible.append(json.loads(payload_json))
+        return visible
+
     def _ensure_schema(self, connection: sqlite3.Connection) -> None:
         connection.execute(
             """
@@ -693,6 +764,32 @@ class SqliteProjectionStore:
             on visible_event_surface (sequence)
             """
         )
+        connection.execute(
+            """
+            create table if not exists chat_message_surface (
+                event_id text primary key,
+                message_id text not null,
+                sequence integer not null,
+                kind text not null,
+                conversation_id text not null,
+                payload_json text not null,
+                visibility_json text not null,
+                updated_sequence integer not null
+            )
+            """
+        )
+        connection.execute(
+            """
+            create index if not exists idx_chat_message_surface_conversation
+            on chat_message_surface (conversation_id, sequence)
+            """
+        )
+        connection.execute(
+            """
+            create index if not exists idx_chat_message_surface_sequence
+            on chat_message_surface (sequence)
+            """
+        )
 
     def _ensure_artifact_scoped_surface_schema(self, connection: sqlite3.Connection) -> None:
         existing_columns = {
@@ -753,6 +850,11 @@ def build_projection_snapshot(events: list[GameEvent]) -> dict[str, Any]:
         events=events,
     )
     proof_dossiers = proof_dossiers_from_events(events)
+    chat_messages = [
+        event
+        for event in events
+        if event.type == "chat.message.created" and _event_is_player_projectable(event)
+    ]
     visible_events = [
         event
         for event in events
@@ -765,6 +867,7 @@ def build_projection_snapshot(events: list[GameEvent]) -> dict[str, Any]:
         "deals": deals,
         "crew_legacies": crew_legacies,
         "proof_dossiers": proof_dossiers,
+        "chat_messages": chat_messages,
         "visible_events": visible_events,
         "last_sequence": events[-1].sequence if events else 0,
     }
@@ -779,6 +882,37 @@ def _event_is_player_projectable(event: GameEvent) -> bool:
         entry.kind in {"public", "player", "crew"}
         for entry in event.visibility.entries
     )
+
+
+def _chat_conversation_id(payload: dict[str, Any]) -> str:
+    sender_crew_id = payload.get("sender_crew_id")
+    recipient_crew_id = payload.get("recipient_crew_id")
+    if sender_crew_id and recipient_crew_id:
+        participants = sorted((str(sender_crew_id), str(recipient_crew_id)))
+        return f"{participants[0]}:{participants[1]}"
+    if sender_crew_id:
+        return str(sender_crew_id)
+    return str(payload["message_id"])
+
+
+def _normalized_chat_conversation_id(conversation_id: str) -> str:
+    if ":" not in conversation_id:
+        return conversation_id
+    participants = sorted(part for part in conversation_id.split(":") if part)
+    if len(participants) != 2:
+        return conversation_id
+    return f"{participants[0]}:{participants[1]}"
+
+
+def _chat_event_surface(event: GameEvent) -> dict[str, Any]:
+    payload = event.model_dump(mode="json")
+    return {
+        "event_id": payload["event_id"],
+        "sequence": payload["sequence"],
+        "type": payload["type"],
+        "payload": payload["payload"],
+        "visibility": payload["visibility"],
+    }
 
 
 def proof_dossiers_from_events(events: list[GameEvent]) -> dict[str, dict[str, Any]]:

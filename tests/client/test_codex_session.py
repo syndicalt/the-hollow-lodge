@@ -59,6 +59,24 @@ class FakeApi:
             },
         ]
 
+    def visible_chat_events(self, *, conversation_id=None):
+        self.calls.append(("visible_chat_events", conversation_id))
+        return [
+            {
+                "event_id": "evt_1",
+                "sequence": 1,
+                "type": "chat.message.created",
+                "payload": {
+                    "message_id": "msg_1",
+                    "sender_player_id": "player_0002",
+                    "sender_crew_id": "crew_0001",
+                    "recipient_crew_id": "crew_0002",
+                    "body": "The bell moved.",
+                    "server_only_note": "hidden",
+                },
+            }
+        ]
+
     def inbox(self):
         self.calls.append("inbox")
         return {
@@ -846,7 +864,7 @@ def test_codex_session_renders_thread_with_cli_compatible_matching(tmp_path):
     packet = session.render_thread("crew_0002:crew_0001")
 
     assert packet.surface == "thread"
-    assert fake_api.calls == ["visible_events"]
+    assert fake_api.calls == ["visible_events", ("visible_chat_events", "crew_0002:crew_0001")]
     assert "Conversation: crew_0002:crew_0001" in packet.player_markdown
     assert "1 player_0002: The bell moved." in packet.player_markdown
     assert "hidden" not in packet.player_markdown
@@ -876,7 +894,7 @@ def test_codex_session_renders_conversations_from_synced_visible_events(tmp_path
     packet = session.render_conversations()
 
     assert packet.surface == "conversations"
-    assert fake_api.calls == ["visible_events"]
+    assert fake_api.calls == ["visible_events", ("visible_chat_events", None)]
     assert "Visible conversations:" in packet.player_markdown
     assert "crew_0001:crew_0002" in packet.player_markdown
     assert packet.agent_context["conversation_count"] == 1

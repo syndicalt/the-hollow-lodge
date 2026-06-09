@@ -140,13 +140,13 @@ class CodexGameSession:
     def render_thread(self, conversation_id: str) -> RenderPacket:
         self.sync()
         return build_thread_packet(
-            self._visible_server_events(),
+            self.api.visible_chat_events(conversation_id=conversation_id),
             conversation_id=conversation_id,
         )
 
     def render_conversations(self) -> RenderPacket:
         self.sync()
-        return build_conversations_packet(self._visible_server_events())
+        return build_conversations_packet(self.api.visible_chat_events())
 
     def preview_deal_acceptance(self, deal_id: str) -> RenderPacket:
         self.sync()
