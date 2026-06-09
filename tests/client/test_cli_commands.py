@@ -870,6 +870,7 @@ def test_doctor_reports_registered_player_and_mcp_without_secret_material(
     assert "server: ok http://testserver" in result.output
     assert "player: registered player_0001 display=Ada active_crew=crew_0001" in result.output
     assert f"mcp: registered {codex_config}" in result.output
+    assert "mcp config command: ok hollow-lodge-mcp" in result.output
     assert "mcp command: available hollow-lodge-mcp" in result.output
     assert "secret-token" not in result.output
     assert created_clients[0].calls == [("health", {})]
@@ -915,6 +916,7 @@ def test_doctor_reports_pending_onboarding_without_contact(tmp_path, monkeypatch
     assert "server: ok http://pending-server" in result.output
     assert "player: pending key_request_0001 status=pending display=Ada" in result.output
     assert f"mcp: missing {codex_config}" in result.output
+    assert "mcp config command: missing" in result.output
     assert "mcp command: missing hollow-lodge-mcp" in result.output
     assert "ada@example.com" not in result.output
     assert created_clients[0].calls == [("health", {})]
@@ -950,7 +952,46 @@ def test_doctor_reports_unconfigured_install_and_unreachable_server(tmp_path, mo
     assert "server: unreachable http://downstream" in result.output
     assert "player: not configured" in result.output
     assert "mcp: missing" in result.output
+    assert "mcp config command: missing" in result.output
     assert "mcp command: missing hollow-lodge-mcp" in result.output
+    assert "secret-token" not in result.output
+
+
+def test_doctor_reports_mcp_config_command_mismatch_without_leaking_command(
+    tmp_path,
+    monkeypatch,
+):
+    runner = CliRunner()
+
+    monkeypatch.setattr(cli, "HollowLodgeApi", FakeApi)
+    monkeypatch.setattr(cli.shutil, "which", lambda command: f"/bin/{command}")
+    codex_config = tmp_path / "codex.toml"
+    codex_config.write_text(
+        '[mcp_servers."the-hollow-lodge"]\n'
+        'command = "old-hollow-lodge-mcp --token secret-token"\n',
+        encoding="utf-8",
+    )
+
+    result = runner.invoke(
+        cli.app,
+        [
+            "doctor",
+            "--server",
+            "http://testserver",
+            "--config",
+            str(tmp_path / "missing-config.json"),
+            "--onboarding-state",
+            str(tmp_path / "missing-onboarding.json"),
+            "--codex-config",
+            str(codex_config),
+        ],
+    )
+
+    assert result.exit_code == 0
+    assert f"mcp: registered {codex_config}" in result.output
+    assert "mcp config command: mismatch expected hollow-lodge-mcp" in result.output
+    assert "mcp command: available hollow-lodge-mcp" in result.output
+    assert "old-hollow-lodge-mcp" not in result.output
     assert "secret-token" not in result.output
 
 

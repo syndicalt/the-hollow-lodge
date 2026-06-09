@@ -3420,6 +3420,26 @@ Expected verification:
 - `pytest tests/client/test_cli_commands.py tests/client/test_installer_script.py tests/client/test_codex_mcp_config.py -q`
 - `pytest -q`
 
+### Slice 138: Doctor MCP Config Command Validation
+
+Status: completed.
+
+Harden the installed-client proof gate by making `hollow-lodge doctor` inspect
+the configured Codex MCP command, not just whether the Lodge MCP section exists.
+Doctor output now distinguishes section registration, parsed command status,
+and executable availability, so a stale Codex config block cannot look healthy
+just because `hollow-lodge-mcp` is on `PATH`.
+
+The command-status line is redacted: mismatched or unreadable configured
+commands are not echoed back, preventing accidental leakage of shell fragments,
+paths, or secret-looking material from local Codex config files.
+
+Expected verification:
+
+- `pytest tests/client/test_codex_mcp_config.py tests/client/test_cli_commands.py::test_doctor_reports_registered_player_and_mcp_without_secret_material tests/client/test_cli_commands.py::test_doctor_reports_pending_onboarding_without_contact tests/client/test_cli_commands.py::test_doctor_reports_unconfigured_install_and_unreachable_server tests/client/test_cli_commands.py::test_doctor_reports_mcp_config_command_mismatch_without_leaking_command -q`
+- `pytest tests/client/test_cli_commands.py tests/client/test_installer_script.py tests/client/test_codex_mcp_config.py -q`
+- `pytest -q`
+
 ## Completion Standard
 
 Each slice must:

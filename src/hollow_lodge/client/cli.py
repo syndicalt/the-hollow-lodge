@@ -15,6 +15,8 @@ from hollow_lodge.client.backend_smoke import (
     validate_backend_diagnostics,
 )
 from hollow_lodge.client.codex_mcp_config import (
+    EXPECTED_CODEX_MCP_COMMAND,
+    codex_mcp_server_command_status,
     codex_mcp_server_registered,
     install_codex_mcp_server,
 )
@@ -235,6 +237,10 @@ def doctor(
 
     mcp_status = "registered" if codex_mcp_server_registered(codex_config) else "missing"
     typer.echo(f"mcp: {mcp_status} {codex_config}")
+    typer.echo(
+        "mcp config command: "
+        f"{_mcp_config_command_status(codex_mcp_server_command_status(codex_config))}"
+    )
     typer.echo(f"mcp command: {_command_status('hollow-lodge-mcp')} hollow-lodge-mcp")
 
 
@@ -1477,6 +1483,16 @@ def _server_health_status(server_url: str) -> str:
 
 def _command_status(command: str) -> str:
     return "available" if shutil.which(command) else "missing"
+
+
+def _mcp_config_command_status(status: str) -> str:
+    if status == "ok":
+        return f"ok {EXPECTED_CODEX_MCP_COMMAND}"
+    if status == "mismatch":
+        return f"mismatch expected {EXPECTED_CODEX_MCP_COMMAND}"
+    if status == "unreadable":
+        return "unreadable"
+    return "missing"
 
 
 def _target_crew_id(config: ClientConfig, crew_id: str | None) -> str:
