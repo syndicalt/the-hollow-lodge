@@ -5,6 +5,7 @@ import sqlite3
 from pathlib import Path
 from typing import Any
 
+from hollow_lodge.domain.deals import deal_rows_from_events
 from hollow_lodge.domain.events import GameEvent
 from hollow_lodge.server.projections import (
     artifact_visibility_from_events,
@@ -25,6 +26,7 @@ class SqliteProjectionStore:
         board = contract_board_from_events(events)
         crew_summaries = crew_summaries_from_events(events)
         artifact_visibility = artifact_visibility_from_events(events)
+        deals = deal_rows_from_events(events)
         last_sequence = events[-1].sequence if events else 0
         with sqlite3.connect(self.path) as connection:
             self._ensure_schema(connection)
@@ -33,6 +35,7 @@ class SqliteProjectionStore:
             connection.execute("delete from artifact_surface")
             connection.execute("delete from artifact_edge")
             connection.execute("delete from artifact_scoped_surface")
+            connection.execute("delete from deal_surface")
             for contract in board["contracts"]:
                 connection.execute(
                     """
@@ -132,10 +135,32 @@ class SqliteProjectionStore:
                         last_sequence,
                     ),
                 )
+            for deal in deals:
+                connection.execute(
+                    """
+                    insert into deal_surface (
+                        deal_id,
+                        proposer_crew_id,
+                        recipient_crew_id,
+                        status,
+                        payload_json,
+                        updated_sequence
+                    ) values (?, ?, ?, ?, ?, ?)
+                    """,
+                    (
+                        deal["deal_id"],
+                        deal["proposer_crew_id"],
+                        deal["recipient_crew_id"],
+                        deal["status"],
+                        json.dumps(deal, sort_keys=True, separators=(",", ":")),
+                        last_sequence,
+                    ),
+                )
             self._set_meta(connection, "schema_version", SCHEMA_VERSION)
             self._set_meta(connection, "last_sequence", str(last_sequence))
             self._set_meta(connection, "contract_count", str(len(board["contracts"])))
             self._set_meta(connection, "crew_count", str(len(crew_summaries)))
+            self._set_meta(connection, "deal_count", str(len(deals)))
             self._set_meta(
                 connection,
                 "public_artifact_count",
@@ -172,6 +197,7 @@ class SqliteProjectionStore:
                 "lag": authoritative,
                 "contract_count": 0,
                 "crew_count": 0,
+                "deal_count": 0,
                 "public_artifact_count": 0,
                 "scoped_artifact_count": 0,
             }
@@ -186,6 +212,9 @@ class SqliteProjectionStore:
                 ).fetchone()[0]
                 crew_count = connection.execute(
                     "select count(*) from crew_summary"
+                ).fetchone()[0]
+                deal_count = connection.execute(
+                    "select count(*) from deal_surface"
                 ).fetchone()[0]
                 public_artifact_count = connection.execute(
                     "select count(*) from artifact_surface"
@@ -205,6 +234,7 @@ class SqliteProjectionStore:
                 "lag": authoritative,
                 "contract_count": 0,
                 "crew_count": 0,
+                "deal_count": 0,
                 "public_artifact_count": 0,
                 "scoped_artifact_count": 0,
             }
@@ -225,6 +255,7 @@ class SqliteProjectionStore:
             "lag": lag,
             "contract_count": int(meta.get("contract_count", str(contract_count))),
             "crew_count": int(meta.get("crew_count", str(crew_count))),
+            "deal_count": int(meta.get("deal_count", str(deal_count))),
             "public_artifact_count": int(
                 meta.get("public_artifact_count", str(public_artifact_count))
             ),
@@ -303,6 +334,37 @@ class SqliteProjectionStore:
             "edges": [json.loads(row[0]) for row in edge_rows],
         }
 
+    def read_visible_deals(
+        self,
+        player_id: str,
+        *,
+        crew_ids: list[str] | tuple[str, ...] = (),
+    ) -> list[dict[str, Any]]:
+        del player_id
+        crew_set = set(crew_ids)
+        if not crew_set:
+            return []
+        with sqlite3.connect(self.path) as connection:
+            self._ensure_schema(connection)
+            rows = connection.execute(
+                """
+                select payload_json
+                from deal_surface
+                where proposer_crew_id in (
+                    select value from json_each(?)
+                )
+                or recipient_crew_id in (
+                    select value from json_each(?)
+                )
+                order by deal_id
+                """,
+                (
+                    json.dumps(sorted(crew_set), separators=(",", ":")),
+                    json.dumps(sorted(crew_set), separators=(",", ":")),
+                ),
+            ).fetchall()
+        return [json.loads(row[0]) for row in rows]
+
     def _ensure_schema(self, connection: sqlite3.Connection) -> None:
         connection.execute(
             """
@@ -370,6 +432,30 @@ class SqliteProjectionStore:
                 visibility_json text not null,
                 updated_sequence integer not null
             )
+            """
+        )
+        connection.execute(
+            """
+            create table if not exists deal_surface (
+                deal_id text primary key,
+                proposer_crew_id text not null,
+                recipient_crew_id text not null,
+                status text not null,
+                payload_json text not null,
+                updated_sequence integer not null
+            )
+            """
+        )
+        connection.execute(
+            """
+            create index if not exists idx_deal_surface_proposer
+            on deal_surface (proposer_crew_id, status)
+            """
+        )
+        connection.execute(
+            """
+            create index if not exists idx_deal_surface_recipient
+            on deal_surface (recipient_crew_id, status)
             """
         )
 

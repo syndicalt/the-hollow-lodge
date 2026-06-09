@@ -1,15 +1,19 @@
 from __future__ import annotations
 
+import logging
+
 from fastapi import APIRouter, Depends, Header, HTTPException, Request, status
 from pydantic import BaseModel, Field
 
 from hollow_lodge.domain.identity import Player
 from hollow_lodge.server.auth import current_player
 from hollow_lodge.server.deal_service import DealService
+from hollow_lodge.server.projected_deals import projected_visible_deals
 from hollow_lodge.server.runtime_services import ensure_deal_service
 
 
 router = APIRouter(prefix="/deals", tags=["deals"])
+logger = logging.getLogger(__name__)
 
 
 class ProposeDealRequest(BaseModel):
@@ -27,6 +31,9 @@ def list_deals(
     request: Request,
     player: Player = Depends(current_player),
 ) -> dict[str, list[dict]]:
+    projected = projected_visible_deals(request, player.player_id)
+    if projected is not None:
+        return {"deals": projected}
     return {"deals": _deal_service(request).list_for_player(player.player_id)}
 
 
@@ -38,7 +45,7 @@ def propose_deal(
     player: Player = Depends(current_player),
 ) -> dict:
     try:
-        return _deal_service(request).propose(
+        result = _deal_service(request).propose(
             contract_id=payload.contract_id,
             proposer_crew_id=payload.proposer_crew_id,
             recipient_crew_id=payload.recipient_crew_id,
@@ -49,6 +56,8 @@ def propose_deal(
             proposer_player_id=player.player_id,
             idempotency_key=idempotency_key,
         )
+        _refresh_projection_store(request)
+        return result
     except (PermissionError, KeyError, ValueError) as exc:
         raise _deal_http_exception(exc) from exc
 
@@ -61,11 +70,13 @@ def accept_deal(
     player: Player = Depends(current_player),
 ) -> dict:
     try:
-        return _deal_service(request).accept(
+        result = _deal_service(request).accept(
             deal_id=deal_id,
             actor_player_id=player.player_id,
             idempotency_key=idempotency_key,
         )
+        _refresh_projection_store(request)
+        return result
     except (PermissionError, KeyError, ValueError) as exc:
         raise _deal_http_exception(exc, deal_id=deal_id) from exc
 
@@ -78,11 +89,13 @@ def decline_deal(
     player: Player = Depends(current_player),
 ) -> dict:
     try:
-        return _deal_service(request).decline(
+        result = _deal_service(request).decline(
             deal_id=deal_id,
             actor_player_id=player.player_id,
             idempotency_key=idempotency_key,
         )
+        _refresh_projection_store(request)
+        return result
     except (PermissionError, KeyError, ValueError) as exc:
         raise _deal_http_exception(exc, deal_id=deal_id) from exc
 
@@ -95,17 +108,29 @@ def cancel_deal(
     player: Player = Depends(current_player),
 ) -> dict:
     try:
-        return _deal_service(request).cancel(
+        result = _deal_service(request).cancel(
             deal_id=deal_id,
             actor_player_id=player.player_id,
             idempotency_key=idempotency_key,
         )
+        _refresh_projection_store(request)
+        return result
     except (PermissionError, KeyError, ValueError) as exc:
         raise _deal_http_exception(exc, deal_id=deal_id) from exc
 
 
 def _deal_service(request: Request) -> DealService:
     return ensure_deal_service(request)
+
+
+def _refresh_projection_store(request: Request) -> None:
+    if hasattr(request.app.state, "projection_store"):
+        try:
+            request.app.state.projection_store.rebuild(
+                request.app.state.event_store.read()
+            )
+        except Exception:
+            logger.exception("failed to refresh deal projection")
 
 
 def _deal_http_exception(

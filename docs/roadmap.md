@@ -310,6 +310,11 @@ Status:
   crew board `visible_artifacts` blocks reuse the same fresh SQLite artifact
   projection and stale fallback used by `/artifacts`, keeping Codex-facing
   packets aligned with the dedicated artifact list surface.
+- Feature-flagged deal projection reads completed: `/deals` can read
+  participant-visible brokered deals from SQLite when the projection is fresh,
+  while deal proposal, acceptance, decline, cancellation, authorization, and
+  artifact-copy fulfillment remain authoritative service writes against the
+  event log.
 - Deferred: deeper death/legacy inheritance, additional long-term unlock paths,
   and migrating heavier campaign reads onto the projection database.
 
@@ -1216,6 +1221,27 @@ Expected verification:
 
 - `pytest tests/server/test_projection_store.py::test_contract_board_embeds_projected_visible_artifacts_when_enabled tests/server/test_projection_store.py::test_inbox_embeds_projected_visible_artifacts_when_enabled tests/server/test_projection_store.py::test_crew_board_embeds_projected_visible_artifacts_when_enabled tests/server/test_projection_store.py::test_embedded_visible_artifacts_fall_back_when_projection_is_stale -q`
 - `pytest tests/server/test_projection_store.py tests/server/test_artifact_routes.py tests/server/test_artifact_projections.py tests/server/test_artifact_transfer.py tests/server/test_contract_seed.py tests/server/test_phase_resolution.py tests/server/test_crew_routes.py tests/server/test_deal_routes.py tests/client/test_render_packets.py tests/client/test_contract_board.py tests/test_mcp_server.py tests/e2e/test_codex_render_surfaces.py -q`
+- `pytest -q`
+
+### Slice 46: Feature-Flagged Deal Projection Reads
+
+Status: completed.
+
+Move the dedicated brokered deal list onto the SQLite projection path without
+moving deal authority. The projection store now materializes participant-safe
+deal surfaces from authoritative deal lifecycle events, including proposed,
+fulfilled, declined, and canceled states. `/deals` reads from SQLite only when
+`HOLLOW_LODGE_DEAL_PROJECTION_READS=1`, the projection is available, and lag is
+zero. Stale, missing, or unreadable projection state falls back to
+`DealService`. Deal proposal, acceptance, decline, and cancellation continue to
+validate membership, artifact visibility, idempotency, and escrow fulfillment
+through the service layer, then refresh the projection best-effort after a
+successful event-log write.
+
+Expected verification:
+
+- `pytest tests/server/test_projection_store.py::test_deal_route_reads_fresh_projected_visible_deals_when_enabled tests/server/test_projection_store.py::test_deal_route_falls_back_when_projection_is_stale tests/server/test_projection_store.py::test_deal_accept_refreshes_projection_for_flagged_reads tests/server/test_projection_store.py::test_projection_store_materializes_visible_deals_without_bystander_terms -q`
+- `pytest tests/server/test_projection_store.py tests/server/test_deal_routes.py tests/server/test_deal_service.py tests/server/test_crew_routes.py tests/server/test_contract_seed.py tests/client/test_deal_mcp_render.py tests/client/test_deal_render.py tests/client/test_render_packets.py tests/test_mcp_server.py -q`
 - `pytest -q`
 
 ## Completion Standard

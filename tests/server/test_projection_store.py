@@ -3,6 +3,7 @@ import sqlite3
 
 from fastapi.testclient import TestClient
 
+from hollow_lodge.domain.deals import deal_rows_from_events
 from hollow_lodge.domain.events import EventVisibility
 from hollow_lodge.server.app import create_app
 from hollow_lodge.server.projections import (
@@ -38,6 +39,18 @@ def create_crew(client: TestClient, token: str, key: str, name: str) -> dict:
     )
     assert response.status_code == 201
     return response.json()
+
+
+def proposed_deal_payload(gilt: dict, moth: dict) -> dict:
+    return {
+        "contract_id": "contract_false_finger",
+        "proposer_crew_id": gilt["crew_id"],
+        "recipient_crew_id": moth["crew_id"],
+        "offered_artifact_ids": ["artifact_ledger_rubric"],
+        "requested_artifact_ids": ["artifact_chapel_debt_mark"],
+        "soft_terms": ["Do not cite us."],
+        "expires_phase": "Auction Preview",
+    }
 
 
 def submit_action(client: TestClient, player: dict, crew: dict, key: str, intent: str) -> dict:
@@ -723,6 +736,192 @@ def test_embedded_visible_artifacts_fall_back_when_projection_is_stale(
         artifact["artifact_id"]
         for artifact in response.json()["visible_artifacts"]
     } == {"artifact_lot_card", "artifact_ledger_rubric"}
+
+
+def test_deal_route_reads_fresh_projected_visible_deals_when_enabled(
+    tmp_path,
+    monkeypatch,
+):
+    monkeypatch.setenv("HOLLOW_LODGE_DEAL_PROJECTION_READS", "1")
+    client = TestClient(create_app(data_dir=tmp_path, invite_codes=["a", "b", "c"]))
+    ada = register(client, "a", "Ada")
+    bela = register(client, "b", "Bela")
+    caro = register(client, "c", "Caro")
+    gilt = create_crew(client, ada["token"], "crew-create-gilt", "The Gilt Knives")
+    moth = create_crew(client, bela["token"], "crew-create-moth", "The Moth Choir")
+    ash = create_crew(client, caro["token"], "crew-create-ash", "The Ash Keys")
+    proposed = client.post(
+        "/deals",
+        headers=command_auth(ada["token"], "deal-propose"),
+        json=proposed_deal_payload(gilt, moth),
+    )
+    original_read = client.app.state.projection_store.read_visible_deals
+    calls = {"count": 0}
+
+    def tracked_read_visible_deals(player_id: str, crew_ids=()):
+        calls["count"] += 1
+        return original_read(player_id, crew_ids=crew_ids)
+
+    client.app.state.projection_store.read_visible_deals = tracked_read_visible_deals
+    client.app.state.deal_service.list_for_player = (
+        lambda player_id: (_ for _ in ()).throw(
+            AssertionError("fresh deal projection should be used")
+        )
+    )
+
+    participant = client.get("/deals", headers=auth(bela["token"]))
+    bystander = client.get("/deals", headers=auth(caro["token"]))
+    diagnostics = client.get("/diagnostics").json()["data"]["projection_db"]
+
+    assert proposed.status_code == 201
+    assert participant.status_code == 200
+    assert bystander.status_code == 200
+    assert diagnostics["lag"] == 0
+    assert diagnostics["deal_count"] == 1
+    assert calls["count"] == 2
+    assert participant.json()["deals"] == [proposed.json()]
+    assert bystander.json()["deals"] == []
+    assert "Do not cite us." not in str(bystander.json())
+    assert ash["crew_id"] not in {
+        deal["proposer_crew_id"] for deal in participant.json()["deals"]
+    }
+
+
+def test_deal_route_falls_back_when_projection_is_stale(tmp_path, monkeypatch):
+    monkeypatch.setenv("HOLLOW_LODGE_DEAL_PROJECTION_READS", "1")
+    client = TestClient(create_app(data_dir=tmp_path, invite_codes=["a", "b"]))
+    ada = register(client, "a", "Ada")
+    bela = register(client, "b", "Bela")
+    gilt = create_crew(client, ada["token"], "crew-create-gilt", "The Gilt Knives")
+    moth = create_crew(client, bela["token"], "crew-create-moth", "The Moth Choir")
+    proposed = client.post(
+        "/deals",
+        headers=command_auth(ada["token"], "deal-propose"),
+        json=proposed_deal_payload(gilt, moth),
+    )
+    out_of_band_contract = STARTER_CONTRACT.model_copy(
+        update={"contract_id": "contract_out_of_band", "title": "Out Of Band"}
+    )
+    client.app.state.event_store.append_command(
+        event_type="contract.board.published",
+        actor_id="server",
+        visibility=EventVisibility.public(),
+        payload=out_of_band_contract.model_dump(mode="json"),
+        idempotency_key="out-of-band-contract",
+    )
+
+    def fail_if_projection_read(player_id: str, crew_ids=()):
+        raise AssertionError("stale deal projection should not be used")
+
+    client.app.state.projection_store.read_visible_deals = fail_if_projection_read
+
+    response = client.get("/deals", headers=auth(bela["token"]))
+
+    assert proposed.status_code == 201
+    assert response.status_code == 200
+    assert response.json()["deals"] == [proposed.json()]
+
+
+def test_deal_accept_refreshes_projection_for_flagged_reads(tmp_path, monkeypatch):
+    monkeypatch.setenv("HOLLOW_LODGE_DEAL_PROJECTION_READS", "1")
+    client = TestClient(create_app(data_dir=tmp_path, invite_codes=["a", "b"]))
+    ada = register(client, "a", "Ada")
+    bela = register(client, "b", "Bela")
+    gilt = create_crew(client, ada["token"], "crew-create-gilt", "The Gilt Knives")
+    moth = create_crew(client, bela["token"], "crew-create-moth", "The Moth Choir")
+    client.app.state.artifact_service.grant_artifact_access(
+        artifact_id="artifact_chapel_debt_mark",
+        actor_id="server",
+        player_ids=[],
+        crew_ids=[moth["crew_id"]],
+        reason="test setup",
+        idempotency_key="grant-chapel",
+    )
+    proposed = client.post(
+        "/deals",
+        headers=command_auth(ada["token"], "deal-propose"),
+        json=proposed_deal_payload(gilt, moth),
+    ).json()
+    accepted = client.post(
+        f"/deals/{proposed['deal_id']}/accept",
+        headers=command_auth(bela["token"], "deal-accept"),
+    )
+    original_read = client.app.state.projection_store.read_visible_deals
+    calls = {"count": 0}
+
+    def tracked_read_visible_deals(player_id: str, crew_ids=()):
+        calls["count"] += 1
+        return original_read(player_id, crew_ids=crew_ids)
+
+    client.app.state.projection_store.read_visible_deals = tracked_read_visible_deals
+    client.app.state.deal_service.list_for_player = (
+        lambda player_id: (_ for _ in ()).throw(
+            AssertionError("fresh deal projection should be used after accept")
+        )
+    )
+
+    response = client.get("/deals", headers=auth(ada["token"]))
+    diagnostics = client.get("/diagnostics").json()["data"]["projection_db"]
+
+    assert accepted.status_code == 200
+    assert accepted.json()["status"] == "fulfilled"
+    assert response.status_code == 200
+    assert diagnostics["lag"] == 0
+    assert diagnostics["deal_count"] == 1
+    assert calls["count"] == 1
+    assert response.json()["deals"][0]["status"] == "fulfilled"
+    assert response.json()["deals"][0]["proposer_received_artifact_ids"] == (
+        accepted.json()["proposer_received_artifact_ids"]
+    )
+    assert response.json()["deals"][0]["recipient_received_artifact_ids"] == (
+        accepted.json()["recipient_received_artifact_ids"]
+    )
+
+
+def test_projection_store_materializes_visible_deals_without_bystander_terms(tmp_path):
+    client = TestClient(create_app(data_dir=tmp_path, invite_codes=["a", "b", "c"]))
+    ada = register(client, "a", "Ada")
+    bela = register(client, "b", "Bela")
+    caro = register(client, "c", "Caro")
+    gilt = create_crew(client, ada["token"], "crew-create-gilt", "The Gilt Knives")
+    moth = create_crew(client, bela["token"], "crew-create-moth", "The Moth Choir")
+    ash = create_crew(client, caro["token"], "crew-create-ash", "The Ash Keys")
+    proposed = client.post(
+        "/deals",
+        headers=command_auth(ada["token"], "deal-propose"),
+        json=proposed_deal_payload(gilt, moth),
+    )
+
+    participant = client.app.state.projection_store.read_visible_deals(
+        bela["player_id"],
+        crew_ids=[moth["crew_id"]],
+    )
+    bystander = client.app.state.projection_store.read_visible_deals(
+        caro["player_id"],
+        crew_ids=[ash["crew_id"]],
+    )
+    with sqlite3.connect(tmp_path / "server-projections.sqlite3") as connection:
+        rows = connection.execute(
+            "select deal_id, proposer_crew_id, recipient_crew_id, payload_json "
+            "from deal_surface order by deal_id"
+        ).fetchall()
+
+    assert proposed.status_code == 201
+    assert participant == [proposed.json()]
+    assert bystander == []
+    assert rows == [
+        (
+            proposed.json()["deal_id"],
+            gilt["crew_id"],
+            moth["crew_id"],
+            json.dumps(proposed.json(), sort_keys=True, separators=(",", ":")),
+        )
+    ]
+    assert "Do not cite us." not in str(bystander)
+    assert client.app.state.projection_store.read_visible_deals(
+        ada["player_id"],
+        crew_ids=[gilt["crew_id"]],
+    ) == deal_rows_from_events(client.app.state.event_store.read())
 
 
 def test_projection_store_materializes_visible_artifacts_without_hidden_fields(tmp_path):
