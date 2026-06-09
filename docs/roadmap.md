@@ -3790,6 +3790,29 @@ Expected verification:
 - `pytest tests/client/test_cli_commands.py tests/client/test_codex_session.py tests/client/test_render_packets.py tests/test_mcp_server.py -q`
 - `pytest -q`
 
+### Slice 155: Full-Loop Action-Based Trade Artifact Unlock
+
+Status: completed.
+
+Remove the last mock-only artifact shortcut from the documented full-loop
+proof gate. `scripts/mock_full_game_loop.py` now has the Moth crew unlock the
+chapel debt mark through a Codex `submit_action` preview/confirm pair before
+using that artifact in an escrowed deal, instead of directly calling the server
+artifact service to grant access.
+
+The e2e test now proves the chapel artifact was awarded by
+`artifact.award.action_*` event keys and that the old `grant-chapel-to-moth`
+test shortcut is absent. This keeps the playthrough closer to the real player
+loop: clue acquisition, trade negotiation, escrow, dossier work, action
+submission, phase lock, and final Codex render state all pass through normal
+client/server surfaces.
+
+Expected verification:
+
+- `pytest tests/e2e/test_full_game_loop_with_escrow.py -q`
+- `pytest tests/e2e/test_full_game_loop_with_escrow.py tests/e2e/test_artifact_game_loop.py tests/server/test_action_artifact_awards.py -q`
+- `pytest -q`
+
 ## Completion Standard
 
 Each slice must:

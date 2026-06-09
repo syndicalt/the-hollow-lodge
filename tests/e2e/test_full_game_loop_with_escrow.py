@@ -36,6 +36,8 @@ def test_full_game_loop_with_escrow_trade(tmp_path):
         "conversations",
         "mutation",
         "mutation",
+        "mutation",
+        "mutation",
         "deals",
         "deal_preview",
         "inbox",
@@ -74,6 +76,8 @@ def test_full_game_loop_with_escrow_trade(tmp_path):
         {"operation": "send_message", "confirmed": True},
         {"operation": "send_message", "confirmed": False},
         {"operation": "send_message", "confirmed": True},
+        {"operation": "submit_action", "confirmed": False},
+        {"operation": "submit_action", "confirmed": True},
         {"operation": "propose_deal", "confirmed": False},
         {"operation": "propose_deal", "confirmed": True},
         {"operation": "accept_deal", "confirmed": True},
@@ -101,6 +105,7 @@ def test_full_game_loop_with_escrow_trade(tmp_path):
     assert "The Saint's False Finger" in "\n".join(result["lines"])
     assert "Visible artifacts:" in "\n".join(result["lines"])
     assert "Visible conversations:" in "\n".join(result["lines"])
+    assert "chapel unlock action: action_" in "\n".join(result["lines"])
     assert "Phase result:" in "\n".join(result["lines"])
     assert "What changed since sequence" in "\n".join(result["lines"])
     assert "What Now: Ada Corelumen" in "\n".join(result["lines"])
@@ -132,3 +137,21 @@ def test_full_game_loop_with_escrow_trade(tmp_path):
         "artifact.deal_copied.internal",
         "deal.fulfilled",
     ]
+    chapel_awards = result["action_award_timeline"]
+    assert chapel_awards
+    assert "grant-chapel-to-moth" not in {
+        award["idempotency_key"] for award in chapel_awards
+    }
+    assert all(award["type"] == "artifact.access.granted" for award in chapel_awards)
+    assert all(
+        award["idempotency_key"].startswith("artifact.award.action_")
+        for award in chapel_awards
+    )
+    assert all(
+        award["payload"]["artifact_id"] == "artifact_chapel_debt_mark"
+        for award in chapel_awards
+    )
+    assert any(
+        result["moth_crew_id"] in award["payload"]["crew_ids"]
+        for award in chapel_awards
+    )

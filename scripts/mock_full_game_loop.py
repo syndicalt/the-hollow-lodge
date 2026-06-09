@@ -54,14 +54,18 @@ def run_mock(data_dir: str) -> dict[str, Any]:
         artifact_id="artifact_ledger_rubric",
         confirm=True,
     )
-    client.app.state.artifact_service.grant_artifact_access(
-        artifact_id="artifact_chapel_debt_mark",
-        actor_id="server",
-        player_ids=[],
-        crew_ids=[moth["crew_id"]],
-        reason="mock side action unlock",
-        idempotency_key="grant-chapel-to-moth",
+    chapel_unlock_preview = bela_session.submit_action(
+        crew_id=moth["crew_id"],
+        intent="Question the chapel keeper about the debt mark before the auction preview closes.",
+        confirm=False,
     )
+    chapel_unlock_packet = bela_session.submit_action(
+        crew_id=moth["crew_id"],
+        intent="Question the chapel keeper about the debt mark before the auction preview closes.",
+        confirm=True,
+    )
+    chapel_unlock_action = chapel_unlock_packet.agent_context["result"]
+    _get(client, "/artifacts/artifact_chapel_debt_mark", headers=bela_headers)
     opening_message_preview = ada_session.send_message(
         scope="crew_to_crew",
         sender_crew_id=gilt["crew_id"],
@@ -269,6 +273,8 @@ def run_mock(data_dir: str) -> dict[str, Any]:
         reply_message_preview,
         reply_message,
         conversations_packet,
+        chapel_unlock_preview,
+        chapel_unlock_packet,
         deal_preview,
         proposed_packet,
         deals_packet,
@@ -308,6 +314,16 @@ def run_mock(data_dir: str) -> dict[str, Any]:
         for event in client.app.state.event_store.read()
         if event.type.startswith("deal.") or event.type.startswith("artifact.deal_copied")
     ]
+    action_award_timeline = [
+        {
+            "type": event.type,
+            "idempotency_key": event.idempotency_key,
+            "payload": event.payload,
+        }
+        for event in client.app.state.event_store.read()
+        if event.type == "artifact.access.granted"
+        and event.payload.get("artifact_id") == "artifact_chapel_debt_mark"
+    ]
     opening_message_result = opening_message.agent_context["result"]
     reply_message_result = reply_message.agent_context["result"]
     codex_mutation_packets = [
@@ -340,6 +356,7 @@ def run_mock(data_dir: str) -> dict[str, Any]:
                 for mutation in codex_mutations
             )
         ),
+        f"chapel unlock action: {chapel_unlock_action['action_id']}",
         "visible conversations:",
         conversations_packet.player_markdown,
         f"deal proposed: {proposed['deal_id']} {proposed['status']}",
@@ -378,11 +395,13 @@ def run_mock(data_dir: str) -> dict[str, Any]:
     ]
     return {
         "deal": fulfilled,
+        "moth_crew_id": moth["crew_id"],
         "gilt_board": gilt_board,
         "moth_board": moth_board,
         "reveal": reveal,
         "conversations": conversations_packet.model_dump(mode="json"),
         "timeline": timeline,
+        "action_award_timeline": action_award_timeline,
         "codex_packets": [packet.surface for packet in codex_packets],
         "codex_mutations": codex_mutations,
         "final_dossier": final_dossier_packet.model_dump(mode="json"),
