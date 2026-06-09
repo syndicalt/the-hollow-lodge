@@ -404,6 +404,168 @@ def test_completed_contract_unlock_requires_crew_completion_before_actionable(
     assert "hidden_truth" not in visible_events.text
 
 
+def test_rumor_escalation_unlock_requires_matching_crew_follow_through(
+    tmp_path,
+    monkeypatch,
+):
+    monkeypatch.setenv("HOLLOW_LODGE_ADMIN_TOKEN", "admin-secret")
+    seed = json.loads(Path("tests/fixtures/ash_window_contract.json").read_text(encoding="utf-8"))
+    seed["unlock_requirements"] = [
+        {
+            "scope": "crew",
+            "metric": "rumor_integration",
+            "minimum": 1,
+            "label": "Integrate a credible rumor pattern",
+            "description": "Fold repeated credible rumor signals into crew strategy.",
+            "hidden_truth": "server-only",
+        }
+    ]
+    client = TestClient(create_app(data_dir=tmp_path, invite_codes=["a", "b", "c"]))
+    ada = register(client, "a", "Ada")
+    grace = register(client, "b", "Grace")
+    linus = register(client, "c", "Linus")
+    gilt = client.post(
+        "/crews",
+        headers={
+            **auth(ada["token"]),
+            "Idempotency-Key": "crew-create-gilt",
+        },
+        json={"name": "The Gilt Knives"},
+    ).json()
+    moth = client.post(
+        "/crews",
+        headers={
+            **auth(grace["token"]),
+            "Idempotency-Key": "crew-create-moth",
+        },
+        json={"name": "The Moth Choir"},
+    ).json()
+    ash = client.post(
+        "/crews",
+        headers={
+            **auth(linus["token"]),
+            "Idempotency-Key": "crew-create-ash",
+        },
+        json={"name": "The Ash Keys"},
+    ).json()
+
+    activated = client.post(
+        "/contracts/admin/activate",
+        headers={
+            "Idempotency-Key": "activate-rumor-integration-locked-ash-window",
+            "X-Hollow-Lodge-Admin-Token": "admin-secret",
+        },
+        json={"seed": seed},
+    )
+    contracts_before = client.get("/contracts", headers=auth(linus["token"]))
+    inbox_before = client.get("/inbox", headers=auth(linus["token"]))
+    crew_before = client.get(f"/crews/{ash['crew_id']}/board", headers=auth(linus["token"]))
+
+    assert activated.status_code == 201
+    locked = {
+        contract["contract_id"]: contract
+        for contract in contracts_before.json()["contracts"]
+    }["contract_ash_window"]
+    assert locked["unlock_status"] == {
+        "state": "locked",
+        "requirements": [
+            {
+                "scope": "crew",
+                "metric": "rumor_integration",
+                "minimum": 1,
+                "current": 0,
+                "label": "Integrate a credible rumor pattern",
+                "description": "Fold repeated credible rumor signals into crew strategy.",
+                "satisfied": False,
+            }
+        ],
+    }
+    assert "contract_ash_window" not in {
+        contract["contract_id"]
+        for contract in inbox_before.json()["active_contracts"]
+    }
+    assert "contract_ash_window" not in {
+        contract["contract_id"]
+        for contract in crew_before.json()["active_contracts"]
+    }
+
+    for index in range(2):
+        chat = client.post(
+            "/chat/crew-to-crew",
+            headers={
+                **auth(ada["token"]),
+                "Idempotency-Key": f"chat-gilt-moth-ledger-{index}",
+            },
+            json={
+                "sender_crew_id": gilt["crew_id"],
+                "recipient_crew_id": moth["crew_id"],
+                "body": f"The ledger proves our leverage. Keep quiet. {index}",
+                "artifact_ids": ["artifact_ledger_rubric"],
+            },
+        )
+        investigated = client.post(
+            "/actions",
+            headers={
+                **auth(linus["token"]),
+                "Idempotency-Key": f"action-investigate-rumor-{index}",
+            },
+            json={
+                "crew_id": ash["crew_id"],
+                "intent": "Quietly verify the artifact rumor through the auction clerk.",
+                "confirmed": True,
+                "rumor_id": f"rumor_msg_00000{index + 1}",
+            },
+        )
+
+        assert chat.status_code == 201
+        assert investigated.status_code == 201
+
+    escalated = client.post(
+        "/actions",
+        headers={
+            **auth(linus["token"]),
+            "Idempotency-Key": "action-integrate-rumors",
+        },
+        json={
+            "crew_id": ash["crew_id"],
+            "intent": "Fold the repeated rumor pattern into the proof strategy.",
+            "confirmed": True,
+            "responds_to_rumor_escalation": True,
+            "rumor_escalation_mode": "integrate",
+        },
+    )
+    contracts_after = client.get("/contracts", headers=auth(linus["token"]))
+    inbox_after = client.get("/inbox", headers=auth(linus["token"]))
+    crew_after = client.get(f"/crews/{ash['crew_id']}/board", headers=auth(linus["token"]))
+    visible_events = client.get("/events", headers=auth(linus["token"]))
+
+    assert escalated.status_code == 201
+    unlocked = {
+        contract["contract_id"]: contract
+        for contract in contracts_after.json()["contracts"]
+    }["contract_ash_window"]
+    assert unlocked["unlock_status"]["state"] == "unlocked"
+    assert unlocked["unlock_status"]["requirements"][0]["current"] == 1
+    assert unlocked["unlock_status"]["requirements"][0]["satisfied"] is True
+    assert "contract_ash_window" in {
+        contract["contract_id"]
+        for contract in inbox_after.json()["active_contracts"]
+    }
+    assert "contract_ash_window" in {
+        contract["contract_id"]
+        for contract in crew_after.json()["active_contracts"]
+    }
+    assert "unlock_requirements" not in visible_events.text
+    assert "hidden_truth" not in visible_events.text
+    assert "The ledger proves" not in visible_events.text
+    assert "artifact_ledger_rubric" not in visible_events.text
+    assert "The ledger proves" not in unlocked["unlock_status"]["requirements"][0].get(
+        "description",
+        "",
+    )
+    assert "artifact_ledger_rubric" not in str(unlocked["unlock_status"])
+
+
 def test_completed_contract_unlock_rejects_missing_required_contract(
     tmp_path,
     monkeypatch,

@@ -279,8 +279,12 @@ Status:
 - Campaign arc progress rendering completed: Codex contract boards now summarize
   visible arc progress across chapters with safe resolved, active, locked, and
   archived counts before the per-contract details.
+- Rumor-escalation unlocks completed: contract seeds can now require prior
+  crew containment, exploitation, or integration follow-through from repeated
+  credible rumor signals, using only safe aggregate legacy counts to unlock
+  future opportunities.
 - Deferred: multi-day campaign arc authoring, deeper death/legacy inheritance,
-  and richer long-term unlock paths.
+  and additional long-term unlock paths.
 
 Likely files:
 
@@ -1024,6 +1028,23 @@ Expected verification:
 
 - `pytest tests/server/test_deal_routes.py::test_deal_proposal_leaks_partial_rumor_to_bystander_crew_without_deal_terms tests/server/test_deal_routes.py::test_deal_rumor_becomes_pending_decision_for_bystander_crew tests/server/test_deal_routes.py::test_deal_rumor_without_soft_terms_uses_artifact_swap_leak_vector tests/server/test_action_routes.py::test_deal_rumor_investigation_preserves_contract_id_without_terms -q`
 - `pytest tests/server/test_deal_routes.py tests/server/test_action_routes.py tests/server/test_crew_routes.py tests/client/test_render_packets.py -q`
+- `pytest -q`
+
+### Slice 38: Rumor Escalation Unlock Requirements
+
+Status: completed.
+
+Connect social-pressure follow-through to the retention layer. Contract seeds
+can now use `rumor_containment`, `rumor_exploitation`, or `rumor_integration`
+as crew unlock metrics. Those requirements evaluate against the bounded
+`rumor_escalation` legacy aggregate, so repeated credible rumor handling can
+unlock later contracts without exposing rumor IDs, message text, artifact IDs,
+deal terms, source crews, or suspected crews through `unlock_status`.
+
+Expected verification:
+
+- `pytest tests/server/test_contract_seed_pipeline.py::test_contract_seed_accepts_rumor_escalation_unlock_requirement tests/server/test_contract_seed.py::test_rumor_escalation_unlock_requires_matching_crew_follow_through -q`
+- `pytest tests/server/test_contract_seed_pipeline.py tests/server/test_contract_seed.py tests/server/test_crew_routes.py tests/server/test_crew_legacy_projection.py tests/client/test_render_packets.py -q`
 - `pytest -q`
 
 ## Completion Standard

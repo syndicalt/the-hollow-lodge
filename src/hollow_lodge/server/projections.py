@@ -299,6 +299,12 @@ def _unlock_metric_value(
         return int(legacy.get(metric, 0))
     if metric == "deal_conduct_score":
         return int(legacy.get("deal_conduct", {}).get("score", 0))
+    if metric == "rumor_containment":
+        return int(legacy.get("rumor_escalation", {}).get("contain_count", 0))
+    if metric == "rumor_exploitation":
+        return int(legacy.get("rumor_escalation", {}).get("exploit_count", 0))
+    if metric == "rumor_integration":
+        return int(legacy.get("rumor_escalation", {}).get("integrate_count", 0))
     if metric == "completed_contract":
         return int(
             any(

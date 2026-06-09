@@ -66,6 +66,42 @@ def test_contract_seed_accepts_completed_contract_unlock_requirement():
     assert seed.unlock_requirements[0].minimum == 1
 
 
+def test_contract_seed_accepts_rumor_escalation_unlock_requirement():
+    raw = json.loads(FIXTURE.read_text(encoding="utf-8"))
+    raw["unlock_requirements"] = [
+        {
+            "scope": "crew",
+            "metric": "rumor_containment",
+            "minimum": 1,
+            "label": "Contain a credible rumor pattern",
+            "description": "Suppress repeated credible rumor signals.",
+        },
+        {
+            "scope": "crew",
+            "metric": "rumor_exploitation",
+            "minimum": 1,
+            "label": "Exploit a credible rumor pattern",
+            "description": "Turn repeated credible rumor signals into leverage.",
+        },
+        {
+            "scope": "crew",
+            "metric": "rumor_integration",
+            "minimum": 1,
+            "label": "Integrate a credible rumor pattern",
+            "description": "Fold repeated credible rumor signals into crew strategy.",
+        }
+    ]
+
+    seed = ContractSeed.model_validate(raw)
+
+    assert tuple(requirement.metric for requirement in seed.unlock_requirements) == (
+        "rumor_containment",
+        "rumor_exploitation",
+        "rumor_integration",
+    )
+    assert all(requirement.minimum == 1 for requirement in seed.unlock_requirements)
+
+
 def test_contract_seed_accepts_public_campaign_arc_metadata():
     raw = json.loads(FIXTURE.read_text(encoding="utf-8"))
     raw["contract"]["arc"] = {

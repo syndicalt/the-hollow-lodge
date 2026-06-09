@@ -29,6 +29,9 @@ class ContractUnlockRequirement(BaseModel):
         "favors",
         "deal_conduct_score",
         "completed_contract",
+        "rumor_containment",
+        "rumor_exploitation",
+        "rumor_integration",
     ]
     required_contract_id: str | None = Field(default=None, min_length=1)
     minimum: int = Field(ge=0)
