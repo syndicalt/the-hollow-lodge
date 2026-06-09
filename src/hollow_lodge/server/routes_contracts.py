@@ -133,11 +133,6 @@ def inbox(
     payload["visible_artifacts"] = _visible_artifacts_for_player(request, player.player_id)
     payload["deals"] = _deals_for_player(request, player.player_id)
     crew_ids = request.app.state.crew_service.crew_ids_for_player(player.player_id)
-    events = request.app.state.event_store.read()
-    deals_by_crew = {
-        crew_id: _deals_for_crew(request, player.player_id, crew_id)
-        for crew_id in crew_ids
-    }
     projected_decisions = projected_pending_decisions(
         request,
         player.player_id,
@@ -146,6 +141,11 @@ def inbox(
     if projected_decisions is not None:
         payload["pending_decisions"] = projected_decisions
     else:
+        events = request.app.state.event_store.read()
+        deals_by_crew = {
+            crew_id: _deals_for_crew(request, player.player_id, crew_id)
+            for crew_id in crew_ids
+        }
         payload["pending_decisions"] = pending_decisions_for_player(
             player_id=player.player_id,
             crew_ids=crew_ids,

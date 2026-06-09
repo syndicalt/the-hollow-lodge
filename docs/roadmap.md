@@ -2351,6 +2351,26 @@ Expected verification:
 - `pytest tests/server/test_projection_store.py tests/server/test_app_config.py tests/server/test_crew_routes.py tests/server/test_contract_seed.py tests/server/test_deal_routes.py tests/server/test_chat_routes.py tests/server/test_event_sync.py tests/server/test_artifact_routes.py tests/server/test_proof_routes.py tests/client/test_render_packets.py tests/test_mcp_server.py tests/e2e/test_projection_backend_smoke.py -q`
 - `pytest -q`
 
+### Slice 94: Lazy Inbox Decision Fallback Inputs
+
+Status: completed.
+
+Avoid preparing event-log-derived local pending-decision inputs when `/inbox`
+has already obtained fresh projected pending decisions. The inbox route now
+defers crew-specific deal maps, event-log replay data, and crew legacy
+derivation until the pending-decision projection is unavailable or stale. This
+keeps projected read behavior identical, preserves fallback behavior, and
+removes unnecessary replay work from the common database-backed inbox path.
+
+No projection schema change is required; this is a route-level cutover cleanup
+for the existing `pending_decision_surface`.
+
+Expected verification:
+
+- `pytest tests/server/test_projection_store.py::test_inbox_skips_local_decision_inputs_when_pending_projection_is_fresh tests/server/test_projection_store.py::test_inbox_projection_reads_share_request_freshness_check tests/server/test_projection_store.py::test_pending_decision_projection_reads_fall_back_when_stale -q`
+- `pytest tests/server/test_projection_store.py tests/server/test_contract_seed.py tests/server/test_crew_routes.py tests/server/test_deal_routes.py tests/server/test_chat_routes.py tests/server/test_app_config.py tests/client/test_render_packets.py tests/test_mcp_server.py -q`
+- `pytest -q`
+
 ## Completion Standard
 
 Each slice must:

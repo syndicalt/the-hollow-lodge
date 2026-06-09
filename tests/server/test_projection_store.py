@@ -825,6 +825,44 @@ def test_inbox_projection_reads_share_request_freshness_check(tmp_path, monkeypa
     } == {"artifact_lot_card", "artifact_ledger_rubric"}
 
 
+def test_inbox_skips_local_decision_inputs_when_pending_projection_is_fresh(
+    tmp_path,
+    monkeypatch,
+):
+    monkeypatch.setenv("HOLLOW_LODGE_PENDING_DECISION_PROJECTION_READS", "1")
+    client = TestClient(create_app(data_dir=tmp_path, invite_codes=["a", "b"]))
+    ada = register(client, "a", "Ada")
+    bela = register(client, "b", "Bela")
+    gilt = create_crew(client, ada["token"], "crew-create-gilt", "The Gilt Knives")
+    moth = create_crew(client, bela["token"], "crew-create-moth", "The Moth Choir")
+    proposed = client.post(
+        "/deals",
+        headers=command_auth(ada["token"], "deal-propose"),
+        json=proposed_deal_payload(gilt, moth),
+    )
+
+    def fail_if_local_legacy_inputs_are_built(*args, **kwargs):
+        raise AssertionError(
+            "fresh pending-decision projection should skip local legacy inputs"
+        )
+
+    monkeypatch.setattr(
+        routes_contracts,
+        "crew_legacy_from_contracts",
+        fail_if_local_legacy_inputs_are_built,
+    )
+
+    response = client.get("/inbox", headers=auth(bela["token"]))
+
+    assert proposed.status_code == 201
+    assert response.status_code == 200
+    assert any(
+        decision["kind"] == "incoming_deal"
+        and decision["deal_id"] == proposed.json()["deal_id"]
+        for decision in response.json()["pending_decisions"]
+    )
+
+
 def test_pending_decision_projection_reads_fall_back_when_stale(tmp_path, monkeypatch):
     monkeypatch.setenv("HOLLOW_LODGE_PENDING_DECISION_PROJECTION_READS", "1")
     client = TestClient(create_app(data_dir=tmp_path, invite_codes=["a"]))
