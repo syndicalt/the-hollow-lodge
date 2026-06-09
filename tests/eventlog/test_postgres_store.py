@@ -2,7 +2,11 @@ import pytest
 from fastapi.testclient import TestClient
 
 from hollow_lodge.domain.events import EventVisibility
-from hollow_lodge.eventlog.jsonl_store import IdempotencyConflictError
+from hollow_lodge.eventlog.jsonl_store import (
+    EventLogIntegrityError,
+    IdempotencyConflictError,
+    JsonlEventStore,
+)
 from hollow_lodge.eventlog.postgres_store import PostgresEventStore
 from hollow_lodge.eventlog.visibility import Principal
 from hollow_lodge.server.app import create_app
@@ -167,6 +171,65 @@ def test_app_does_not_use_platform_database_url_for_authoritative_events(
     assert event_log["backend"] == "jsonl"
     assert event_log["path"] == str(tmp_path / "server-events.jsonl")
     assert "secret" not in response.text
+
+
+def test_postgres_event_store_imports_validated_events_exactly(tmp_path, monkeypatch):
+    source = JsonlEventStore(tmp_path / "events.jsonl")
+    first = source.append_command(
+        event_type="action.submitted",
+        actor_id="player_ada",
+        visibility=EventVisibility.players(["player_ada"]),
+        payload={"intent": "inspect the ledger"},
+        idempotency_key="submit-action-1",
+    )
+    second = source.append(
+        event_type="contract.board.published",
+        actor_id="server",
+        visibility=EventVisibility.crews(["crew_ember"]),
+        payload={"contract_id": "contract_false_finger"},
+    )
+    fake = FakePostgresConnector()
+    monkeypatch.setattr(PostgresEventStore, "_connect", lambda self: fake())
+    destination = PostgresEventStore(
+        "postgresql://user:secret@example.com:5432/hollow_lodge"
+    )
+
+    report = destination.import_events(source.read())
+
+    assert report.ok is True
+    assert report.event_count == 2
+    imported = destination.read()
+    assert imported == [first, second]
+    assert imported[0].event_id == first.event_id
+    assert imported[0].event_hash == first.event_hash
+    assert imported[0].idempotency_key == "submit-action-1"
+
+
+def test_postgres_event_store_import_refuses_non_empty_destination(
+    tmp_path,
+    monkeypatch,
+):
+    source = JsonlEventStore(tmp_path / "events.jsonl")
+    source.append(
+        event_type="contract.seeded",
+        actor_id="server",
+        visibility=EventVisibility.server_only(),
+        payload={"contract_id": "contract_false_finger"},
+    )
+    fake = FakePostgresConnector()
+    monkeypatch.setattr(PostgresEventStore, "_connect", lambda self: fake())
+    destination = PostgresEventStore(
+        "postgresql://user:secret@example.com:5432/hollow_lodge"
+    )
+    destination.append(
+        event_type="other.seeded",
+        actor_id="server",
+        visibility=EventVisibility.server_only(),
+        payload={"n": 1},
+    )
+
+    with pytest.raises(EventLogIntegrityError, match="destination event log is not empty"):
+        destination.import_events(source.read())
 
 
 class FakePostgresConnector:

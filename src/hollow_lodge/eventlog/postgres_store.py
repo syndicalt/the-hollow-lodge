@@ -184,6 +184,22 @@ class PostgresEventStore(EventStore):
             "event_count": int(count),
         }
 
+    def import_events(self, events: list[GameEvent]) -> IntegrityReport:
+        validate_event_chain(events)
+        with self._connect() as connection:
+            self._ensure_schema(connection)
+            self._lock_event_log(connection)
+            existing = self._read_unlocked(connection)
+            validate_event_chain(existing)
+            if existing:
+                raise EventLogIntegrityError(
+                    "destination event log is not empty; refusing import"
+                )
+            for event in events:
+                self._insert_existing_event(connection, event)
+            connection.commit()
+        return IntegrityReport(ok=True, event_count=len(existing) + len(events))
+
     def _connect(self) -> Any:
         try:
             import psycopg
@@ -226,6 +242,42 @@ class PostgresEventStore(EventStore):
 
     def _lock_event_log(self, connection: Any) -> None:
         connection.execute("select pg_advisory_xact_lock(746930728)")
+
+    def _insert_existing_event(self, connection: Any, event: GameEvent) -> None:
+        connection.execute(
+            """
+            insert into event_log (
+                sequence,
+                event_id,
+                event_type,
+                actor_id,
+                visibility_json,
+                payload_json,
+                previous_hash,
+                event_hash,
+                schema_version,
+                idempotency_key,
+                command_fingerprint,
+                event_json
+            ) values (
+                %s, %s, %s, %s, %s::jsonb, %s::jsonb, %s, %s, %s, %s, %s, %s::jsonb
+            )
+            """,
+            (
+                event.sequence,
+                event.event_id,
+                event.type,
+                event.actor_id,
+                _json_dumps(event.visibility.model_dump(mode="json", by_alias=True)),
+                _json_dumps(event.payload),
+                event.previous_hash,
+                event.event_hash,
+                event.schema_version,
+                event.idempotency_key,
+                event.command_fingerprint,
+                _json_dumps(event.model_dump(mode="json")),
+            ),
+        )
 
     def _read_unlocked(
         self,

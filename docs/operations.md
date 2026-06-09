@@ -230,6 +230,36 @@ Export a JSON backup:
 hollow-lodge admin event-log-export --output backups/hollow-lodge-events.json
 ```
 
+Before moving the authoritative event log to Postgres, validate the exported
+chain without writing:
+
+```sh
+python scripts/migrate_event_log_to_postgres.py \
+  --source backups/hollow-lodge-events.json \
+  --dry-run
+```
+
+Then import into an empty Postgres event-log database:
+
+```sh
+HOLLOW_LODGE_EVENT_DATABASE_URL=postgresql://user:password@host:5432/database \
+python scripts/migrate_event_log_to_postgres.py \
+  --source backups/hollow-lodge-events.json
+```
+
+The importer refuses to write to a non-empty destination. It preserves existing
+event IDs, sequence numbers, timestamps, hash-chain fields, idempotency keys,
+and command fingerprints exactly, and it prints only a redacted destination
+URL. After the import succeeds, set `HOLLOW_LODGE_EVENT_DATABASE_URL` on the
+server, redeploy, and verify the hosted backend:
+
+```sh
+python scripts/smoke_projection_backend.py \
+  --server-url https://server.thehollowlodge.com \
+  --expected-backend postgres \
+  --expected-event-backend postgres
+```
+
 Treat exports as sensitive operational data. They include server-visible events
 and hashed auth material, but not raw player tokens, raw generated invite codes,
 or admin tokens.

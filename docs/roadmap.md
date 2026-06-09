@@ -237,6 +237,11 @@ Status:
   verifies both authoritative event-log and projection backends, catches stale
   projections, rejects unredacted database credentials, and can require all
   projection read surfaces during hosted cutover.
+- Event-log Postgres migration utility completed: operators can validate an
+  exported JSON/JSONL event chain, import it into an empty Postgres event-log
+  backend while preserving event IDs, sequences, hashes, idempotency metadata,
+  and timestamps exactly, and then verify the hosted cutover with the backend
+  smoke.
 
 Proof gate:
 
@@ -374,6 +379,11 @@ Status:
   now checks `data.event_log` alongside `data.projection_db`, preserving a
   projection-only compatibility helper for older tests while giving operators a
   single hosted command for event/projection backend readiness.
+- Event-log Postgres migration utility completed:
+  `scripts/migrate_event_log_to_postgres.py` accepts admin export JSON, JSON
+  arrays, or JSONL rows, supports `--dry-run`, validates the source hash chain
+  before connecting, and refuses to import into a non-empty Postgres
+  destination by default.
 - Admin oracle audit surface completed: operators can inspect redacted
   provider, validation, fallback, count, and hash evidence for server-only
   oracle audit events without exposing raw oracle inputs, hidden truth, or
@@ -1900,6 +1910,28 @@ Expected verification:
 
 - `pytest tests/e2e/test_projection_backend_smoke.py -q`
 - `pytest tests/e2e/test_projection_backend_smoke.py tests/server/test_app_config.py tests/eventlog/test_postgres_store.py -q`
+- `pytest -q`
+
+### Slice 76: Event Log Postgres Migration Utility
+
+Status: completed.
+
+Add an offline migration utility for moving the authoritative event log from a
+JSONL/admin-export source into the explicit Postgres event-log backend.
+`scripts/migrate_event_log_to_postgres.py` accepts admin export JSON, a raw JSON
+array, a single event object, or JSONL rows; `--dry-run` validates the source
+chain without requiring a database URL. The Postgres event store now exposes a
+guarded `import_events` path that validates the full source chain before
+connecting, uses the same advisory lock as appends, refuses non-empty
+destinations by default, preserves exact event IDs, sequences, timestamps,
+hashes, idempotency keys, and command fingerprints, and prints only redacted
+destination URLs. Operations docs now describe verify, export, dry-run, import,
+redeploy, and hosted smoke verification.
+
+Expected verification:
+
+- `pytest tests/e2e/test_event_log_migration.py tests/eventlog/test_postgres_store.py -q`
+- `pytest tests/e2e/test_event_log_migration.py tests/eventlog tests/server/test_identity_routes.py tests/client/test_cli_commands.py::test_admin_event_log_commands_verify_and_export -q`
 - `pytest -q`
 
 ## Completion Standard
