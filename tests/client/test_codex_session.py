@@ -1,6 +1,7 @@
 import subprocess
 import sys
 
+import httpx
 import pytest
 
 from hollow_lodge.client.backend_smoke import (
@@ -829,6 +830,58 @@ def test_codex_session_backend_readiness_returns_failure_packet(tmp_path):
     assert packet.surface == "backend_readiness"
     assert "Backend Readiness: fail (production_postgres)" in packet.player_markdown
     assert "Postgres operational startup guard is not enabled" in packet.player_markdown
+    assert packet.agent_context["backend_readiness"]["ok"] is False
+
+
+def test_codex_session_backend_readiness_returns_transport_failure_packet(tmp_path):
+    class UnreachableApi(FakeApi):
+        def health(self):
+            self.calls.append("health")
+            request = httpx.Request("GET", "https://server.thehollowlodge.com/health")
+            raise httpx.ConnectError("database_url=postgresql://user:secret@host", request=request)
+
+    config_path = tmp_path / "config.json"
+    log_path = tmp_path / "local.jsonl"
+    fake_api = UnreachableApi()
+    save_config(
+        config_path,
+        ClientConfig(server_url="http://testserver", player_id="player_0001", token="token"),
+    )
+    session = CodexGameSession(config_path=config_path, local_log_path=log_path, api=fake_api)
+
+    packet = session.check_backend_readiness()
+
+    assert fake_api.calls == ["health"]
+    assert packet.surface == "backend_readiness"
+    assert "Backend Readiness: fail (production_postgres)" in packet.player_markdown
+    assert "server request failed: ConnectError" in packet.player_markdown
+    assert "secret" not in packet.player_markdown
+    assert "postgresql://" not in packet.player_markdown
+    assert packet.agent_context["backend_readiness"]["ok"] is False
+
+
+def test_codex_session_backend_readiness_returns_malformed_response_packet(tmp_path):
+    class MalformedDiagnosticsApi(FakeApi):
+        def diagnostics(self):
+            self.calls.append("diagnostics")
+            raise ValueError("password=secret malformed JSON body")
+
+    config_path = tmp_path / "config.json"
+    log_path = tmp_path / "local.jsonl"
+    fake_api = MalformedDiagnosticsApi()
+    save_config(
+        config_path,
+        ClientConfig(server_url="http://testserver", player_id="player_0001", token="token"),
+    )
+    session = CodexGameSession(config_path=config_path, local_log_path=log_path, api=fake_api)
+
+    packet = session.check_backend_readiness()
+
+    assert fake_api.calls == ["health", "diagnostics"]
+    assert packet.surface == "backend_readiness"
+    assert "server returned malformed readiness response" in packet.player_markdown
+    assert "secret" not in packet.player_markdown
+    assert "malformed JSON body" not in packet.player_markdown
     assert packet.agent_context["backend_readiness"]["ok"] is False
 
 

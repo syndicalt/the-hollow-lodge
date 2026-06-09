@@ -3162,6 +3162,26 @@ Expected verification:
 - `pytest tests/client/test_render_packets.py tests/client/test_codex_session.py tests/test_mcp_server.py -q`
 - `pytest -q`
 
+### Slice 126: Codex Readiness Failure Hardening
+
+Status: completed.
+
+Make the Codex readiness check robust when the server is unreachable or returns
+malformed response bodies. `CodexGameSession.check_backend_readiness` now
+distinguishes readiness drift from transport failures and malformed server
+responses, returning a bounded `backend_readiness` failure packet in each case
+instead of letting HTTP or JSON parsing exceptions escape through the MCP tool.
+
+Transport failures report only the exception class, and malformed responses use
+a fixed message, so raw request URLs, database URLs, and response body text are
+not echoed into player markdown or agent context.
+
+Expected verification:
+
+- `pytest tests/client/test_codex_session.py::test_codex_session_backend_readiness_returns_transport_failure_packet tests/client/test_codex_session.py::test_codex_session_backend_readiness_returns_malformed_response_packet -q`
+- `pytest tests/client/test_codex_session.py tests/client/test_render_packets.py tests/test_mcp_server.py -q`
+- `pytest -q`
+
 ## Completion Standard
 
 Each slice must:

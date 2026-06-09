@@ -3,6 +3,8 @@ from __future__ import annotations
 from pathlib import Path
 from typing import Any
 
+import httpx
+
 from hollow_lodge.client.api import HollowLodgeApi, new_command_key
 from hollow_lodge.client.artifact_render import (
     build_artifact_graph_packet,
@@ -194,6 +196,22 @@ class CodexGameSession:
                     "ok": False,
                     "mode": mode,
                     "errors": str(exc).split("; "),
+                }
+            )
+        except httpx.HTTPError as exc:
+            return build_backend_readiness_packet(
+                {
+                    "ok": False,
+                    "mode": mode,
+                    "errors": [f"server request failed: {exc.__class__.__name__}"],
+                }
+            )
+        except ValueError:
+            return build_backend_readiness_packet(
+                {
+                    "ok": False,
+                    "mode": mode,
+                    "errors": ["server returned malformed readiness response"],
                 }
             )
         return build_backend_readiness_packet(
