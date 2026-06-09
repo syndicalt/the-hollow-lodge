@@ -9,7 +9,10 @@ from hollow_lodge.domain.identity import Player
 from hollow_lodge.server.auth import current_player
 from hollow_lodge.server.deal_service import DealService
 from hollow_lodge.server.projected_deals import projected_visible_deals
-from hollow_lodge.server.runtime_services import ensure_deal_service
+from hollow_lodge.server.runtime_services import (
+    ensure_deal_service,
+    refresh_projection_store,
+)
 
 
 router = APIRouter(prefix="/deals", tags=["deals"])
@@ -124,13 +127,7 @@ def _deal_service(request: Request) -> DealService:
 
 
 def _refresh_projection_store(request: Request) -> None:
-    if hasattr(request.app.state, "projection_store"):
-        try:
-            request.app.state.projection_store.rebuild(
-                request.app.state.event_store.read()
-            )
-        except Exception:
-            logger.exception("failed to refresh deal projection")
+    refresh_projection_store(request, context="deals", logger=logger)
 
 
 def _deal_http_exception(

@@ -31,6 +31,13 @@ curl -fsSIL https://www.thehollowlodge.com/install.sh
 directory without returning API keys, admin tokens, invite codes, or player
 tokens.
 
+`data.projection_refresh` reports whether the process last refreshed the
+projection read model successfully. Failed best-effort refreshes do not reject
+the authoritative mutation, but diagnostics expose the safe failure context,
+exception type, last successful event sequence, and failure count so operators
+can see when projection-backed reads may be stale without leaking connection
+strings or raw exception messages.
+
 ## Authoritative Event Log
 
 The authoritative game record is the append-only Eventloom log. Local

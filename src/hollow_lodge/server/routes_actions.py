@@ -9,6 +9,7 @@ from fastapi import APIRouter, Depends, Header, HTTPException, Request, status
 from hollow_lodge.domain.identity import Player
 from hollow_lodge.server.auth import current_player
 from hollow_lodge.server.artifact_service import ArtifactService
+from hollow_lodge.server.runtime_services import refresh_projection_store
 from hollow_lodge.server.services import ActionService
 
 
@@ -124,10 +125,4 @@ def _action_service(request: Request) -> ActionService:
 
 
 def _refresh_projection_store(request: Request) -> None:
-    if hasattr(request.app.state, "projection_store"):
-        try:
-            request.app.state.projection_store.rebuild(
-                request.app.state.event_store.read()
-            )
-        except Exception:
-            logger.exception("failed to refresh action projection")
+    refresh_projection_store(request, context="actions", logger=logger)

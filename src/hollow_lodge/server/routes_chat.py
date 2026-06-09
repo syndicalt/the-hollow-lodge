@@ -11,6 +11,7 @@ from hollow_lodge.domain.identity import Player
 from hollow_lodge.server.artifact_service import ArtifactService
 from hollow_lodge.server.auth import current_player
 from hollow_lodge.server.projected_chat import projected_visible_chat_events
+from hollow_lodge.server.runtime_services import refresh_projection_store
 
 
 router = APIRouter(prefix="/chat", tags=["chat"])
@@ -174,13 +175,7 @@ def _ensure_chat_artifact_service(request: Request) -> None:
 
 
 def _refresh_projection_store(request: Request) -> None:
-    if hasattr(request.app.state, "projection_store"):
-        try:
-            request.app.state.projection_store.rebuild(
-                request.app.state.event_store.read()
-            )
-        except Exception:
-            logger.exception("failed to refresh chat projection")
+    refresh_projection_store(request, context="chat", logger=logger)
 
 
 def _payload_matches_conversation(payload: dict[str, Any], conversation_id: str) -> bool:

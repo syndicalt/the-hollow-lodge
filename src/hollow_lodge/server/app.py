@@ -28,6 +28,10 @@ from hollow_lodge.server.routes_events import router as events_router
 from hollow_lodge.server.routes_identity import router as identity_router
 from hollow_lodge.server.routes_oracle import router as oracle_router
 from hollow_lodge.server.routes_proofs import router as proofs_router
+from hollow_lodge.server.runtime_services import (
+    projection_refresh_diagnostics,
+    record_projection_refresh_success,
+)
 from hollow_lodge.server.services import (
     ActionService,
     ChatService,
@@ -108,7 +112,13 @@ def create_app(
             artifact_service=artifact_service,
         )
     if storage_configured:
-        projection_store.rebuild(event_store.read())
+        startup_events = event_store.read()
+        projection_store.rebuild(startup_events)
+        record_projection_refresh_success(
+            app.state,
+            context="startup",
+            last_sequence=_last_event_sequence(startup_events),
+        )
 
     app.include_router(identity_router)
     app.include_router(crews_router)
@@ -141,6 +151,7 @@ def create_app(
                     )
                 ),
                 "projection_reads": projection_read_diagnostics(),
+                "projection_refresh": projection_refresh_diagnostics(app.state),
                 "storage_guards": {
                     **event_store_guard_diagnostics(),
                     **projection_guard_diagnostics(),

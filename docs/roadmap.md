@@ -267,6 +267,10 @@ Status:
 - Event-log restore drill completed: installed clients can restore a validated
   export into an empty local JSONL event log with manifest verification, and the
   e2e drill boots a fresh server from that restored chain head.
+- Projection refresh diagnostics completed: best-effort projection refresh
+  failures after authoritative mutations remain non-blocking but are now visible
+  in `/diagnostics` as bounded status, context, exception type, last successful
+  sequence, and failure count.
 
 Proof gate:
 
@@ -434,6 +438,10 @@ Status:
   backup/export by restoring an export plus manifest into an empty local JSONL
   log and booting a clean app at the same safe chain head before relying on the
   backup during a production storage incident.
+- Projection refresh diagnostics completed: all mutation routes now use a
+  shared projection-refresh helper that records safe success/failure telemetry
+  in diagnostics, preventing silent stale read-model incidents while preserving
+  the Eventloom write authority boundary.
 - Admin oracle audit surface completed: operators can inspect redacted
   provider, validation, fallback, count, and hash evidence for server-only
   oracle audit events without exposing raw oracle inputs, hidden truth, or
@@ -2203,6 +2211,26 @@ Expected verification:
 
 - `pytest tests/e2e/test_event_log_migration.py::test_event_log_restore_jsonl_drill_boots_fresh_server_at_chain_head tests/client/test_cli_commands.py::test_admin_event_log_restore_jsonl_writes_empty_destination_with_manifest tests/client/test_cli_commands.py::test_admin_event_log_restore_jsonl_refuses_non_empty_destination tests/eventlog/test_jsonl_store.py::test_jsonl_event_store_import_preserves_exported_chain tests/eventlog/test_jsonl_store.py::test_jsonl_event_store_import_refuses_non_empty_destination -q`
 - `pytest tests/e2e/test_event_log_migration.py tests/client/test_cli_commands.py tests/eventlog/test_jsonl_store.py -q`
+- `pytest -q`
+
+### Slice 88: Projection Refresh Failure Diagnostics
+
+Status: completed.
+
+Make projection refresh health observable without making projection refresh
+part of the authoritative write path. Mutation routes now share one
+best-effort refresh helper. Successful refreshes record the context and last
+successfully projected event sequence; failures preserve mutation success but
+record a bounded diagnostic with status, failure count, failure context, and
+exception type only. `/diagnostics.data.projection_refresh` exposes that state
+without raw exception messages, connection strings, event payloads, or auth
+material, giving operators a clear signal when projection-backed reads may be
+stale after an authoritative Eventloom write.
+
+Expected verification:
+
+- `pytest tests/server/test_app_config.py::test_diagnostics_reports_safe_operational_status tests/server/test_projection_store.py::test_contract_mutation_still_succeeds_when_projection_refresh_fails -q`
+- `pytest tests/server/test_app_config.py tests/server/test_projection_store.py tests/server/test_contract_seed.py tests/server/test_action_routes.py tests/server/test_chat_routes.py tests/server/test_deal_routes.py tests/server/test_proof_routes.py tests/server/test_crew_routes.py tests/server/test_artifact_routes.py tests/server/test_identity_routes.py -q`
 - `pytest -q`
 
 ## Completion Standard

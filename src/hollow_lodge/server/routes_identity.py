@@ -10,6 +10,7 @@ from fastapi import APIRouter, Depends, Header, HTTPException, Request, status
 from hollow_lodge.domain.identity import Player
 from hollow_lodge.eventlog.jsonl_store import EventLogIntegrityError
 from hollow_lodge.server.auth import current_player
+from hollow_lodge.server.runtime_services import refresh_projection_store
 
 
 router = APIRouter(prefix="/identity", tags=["identity"])
@@ -139,13 +140,7 @@ def register(
 
 
 def _refresh_projection_store(request: Request) -> None:
-    if hasattr(request.app.state, "projection_store"):
-        try:
-            request.app.state.projection_store.rebuild(
-                request.app.state.event_store.read()
-            )
-        except Exception:
-            logger.exception("failed to refresh projection store after identity mutation")
+    refresh_projection_store(request, context="identity", logger=logger)
 
 
 @router.post(

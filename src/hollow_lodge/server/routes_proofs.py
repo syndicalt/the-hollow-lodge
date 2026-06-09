@@ -9,6 +9,7 @@ from hollow_lodge.domain.identity import Player
 from hollow_lodge.server.artifact_service import ArtifactService
 from hollow_lodge.server.auth import current_player
 from hollow_lodge.server.projected_dossiers import projected_proof_dossier
+from hollow_lodge.server.runtime_services import refresh_projection_store
 from hollow_lodge.server.services import ProofService
 
 
@@ -225,13 +226,7 @@ def vote_packet_lead(
 
 
 def _refresh_projection_store(request: Request) -> None:
-    if hasattr(request.app.state, "projection_store"):
-        try:
-            request.app.state.projection_store.rebuild(
-                request.app.state.event_store.read()
-            )
-        except Exception:
-            logger.exception("failed to refresh proof dossier projection")
+    refresh_projection_store(request, context="proofs", logger=logger)
 
 
 def _proof_service(request: Request) -> ProofService:

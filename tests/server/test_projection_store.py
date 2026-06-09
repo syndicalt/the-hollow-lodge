@@ -920,7 +920,7 @@ def test_contract_mutation_still_succeeds_when_projection_refresh_fails(
     client = TestClient(create_app(data_dir=tmp_path, invite_codes=["a"]))
 
     def fail_refresh(events):
-        raise sqlite3.OperationalError("projection store unavailable")
+        raise sqlite3.OperationalError("projection secret postgresql://user:secret@db")
 
     client.app.state.projection_store.rebuild = fail_refresh
 
@@ -935,6 +935,17 @@ def test_contract_mutation_still_succeeds_when_projection_refresh_fails(
 
     assert response.status_code == 201
     assert response.json()["contract_id"] == "contract_ash_window"
+    diagnostics_response = client.get("/diagnostics")
+    refresh = diagnostics_response.json()["data"]["projection_refresh"]
+    assert refresh["status"] == "failed"
+    assert refresh["last_context"] == "contracts"
+    assert refresh["last_success_sequence"] == 5
+    assert refresh["failure_count"] == 1
+    assert refresh["last_failure"] == {
+        "context": "contracts",
+        "error_type": "OperationalError",
+    }
+    assert "secret" not in diagnostics_response.text
 
 
 def test_crew_board_reads_fresh_projected_crew_summary_when_enabled(

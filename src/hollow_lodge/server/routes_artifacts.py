@@ -10,6 +10,7 @@ from hollow_lodge.eventlog.jsonl_store import IdempotencyConflictError
 from hollow_lodge.server.artifact_service import ArtifactService
 from hollow_lodge.server.auth import current_player
 from hollow_lodge.server.projected_artifacts import projected_visible_artifacts
+from hollow_lodge.server.runtime_services import refresh_projection_store
 
 
 router = APIRouter(prefix="/artifacts", tags=["artifacts"])
@@ -124,13 +125,7 @@ def _artifact_service(request: Request) -> ArtifactService:
 
 
 def _refresh_projection_store(request: Request) -> None:
-    if hasattr(request.app.state, "projection_store"):
-        try:
-            request.app.state.projection_store.rebuild(
-                request.app.state.event_store.read()
-            )
-        except Exception:
-            logger.exception("failed to refresh artifact projection")
+    refresh_projection_store(request, context="artifacts", logger=logger)
 
 
 def _crew_ids_for_player(request: Request, player_id: str) -> list[str]:

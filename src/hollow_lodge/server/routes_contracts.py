@@ -25,7 +25,10 @@ from hollow_lodge.server.projections import (
     inbox_from_board,
     unlocked_actionable_contracts,
 )
-from hollow_lodge.server.runtime_services import ensure_deal_service
+from hollow_lodge.server.runtime_services import (
+    ensure_deal_service,
+    refresh_projection_store,
+)
 from hollow_lodge.server.rumors import visible_rumors_for_crew
 from hollow_lodge.server.services import ActionService, ContractService, ProofService
 
@@ -215,13 +218,7 @@ def _projection_contract_board(request: Request) -> dict | None:
 
 
 def _refresh_projection_store(request: Request) -> None:
-    if hasattr(request.app.state, "projection_store"):
-        try:
-            request.app.state.projection_store.rebuild(
-                request.app.state.event_store.read()
-            )
-        except Exception:
-            logger.exception("failed to refresh contract board projection")
+    refresh_projection_store(request, context="contracts", logger=logger)
 
 
 @router.post("/contracts/{contract_id}/phases/auction-preview/lock")

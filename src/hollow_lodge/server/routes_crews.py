@@ -16,7 +16,10 @@ from hollow_lodge.server.projected_dossiers import projected_proof_dossier
 from hollow_lodge.server.projected_legacy import projected_crew_legacy
 from hollow_lodge.server.projected_pending_decisions import projected_pending_decisions
 from hollow_lodge.server.projection_config import projection_read_enabled
-from hollow_lodge.server.runtime_services import ensure_deal_service
+from hollow_lodge.server.runtime_services import (
+    ensure_deal_service,
+    refresh_projection_store,
+)
 from hollow_lodge.server.rumors import visible_rumors_for_crew
 from hollow_lodge.server.projections import (
     apply_crew_modifiers_to_contracts,
@@ -212,13 +215,7 @@ def _projected_crew_summary(request: Request, crew_id: str) -> dict | None:
 
 
 def _refresh_projection_store(request: Request) -> None:
-    if hasattr(request.app.state, "projection_store"):
-        try:
-            request.app.state.projection_store.rebuild(
-                request.app.state.event_store.read()
-            )
-        except Exception:
-            logger.exception("failed to refresh crew summary projection")
+    refresh_projection_store(request, context="crews", logger=logger)
 
 
 def _crew_board_contract(contract: dict) -> dict:

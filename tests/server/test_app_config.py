@@ -65,6 +65,13 @@ def test_diagnostics_reports_safe_operational_status(tmp_path, monkeypatch):
         "require_postgres_event_log": False,
         "require_postgres_projection": False,
     }
+    assert body["data"]["projection_refresh"] == {
+        "status": "ok",
+        "last_context": "startup",
+        "last_success_sequence": 0,
+        "failure_count": 0,
+        "last_failure": None,
+    }
     assert body["oracle"]["configured_provider"] == "openai"
     assert body["oracle"]["active_provider"] == "deterministic"
     assert body["oracle"]["ready"] is False
