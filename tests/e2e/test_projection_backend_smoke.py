@@ -47,6 +47,104 @@ def test_projection_backend_smoke_accepts_available_zero_lag_backend():
     assert result["projection_reads"]["surfaces"]["contract_board"] is True
 
 
+def test_backend_smoke_accepts_event_and_projection_backends():
+    smoke = _load_smoke_module()
+
+    result = smoke.validate_backend_diagnostics(
+        {
+            "server": {"version": "0.1.0"},
+            "data": {
+                "event_log": {
+                    "backend": "postgres",
+                    "database_url": "postgresql://event:***@host:5432/db",
+                    "status": "available",
+                    "event_count": 23,
+                },
+                "projection_db": {
+                    "backend": "postgres",
+                    "database_url": "postgresql://projection:***@host:5432/db",
+                    "status": "available",
+                    "lag": 0,
+                    "last_sequence": 23,
+                    "authoritative_last_sequence": 23,
+                },
+                "projection_reads": {
+                    "global_enabled": True,
+                    "surfaces": {"contract_board": True, "crew_summary": True},
+                },
+            },
+        },
+        expected_backend="postgres",
+        expected_event_backend="postgres",
+        require_projection_reads=True,
+    )
+
+    assert result["event_log"] == {"backend": "postgres", "status": "available"}
+    assert result["projection"]["backend"] == "postgres"
+    assert result["projection"]["lag"] == 0
+
+
+def test_backend_smoke_rejects_event_backend_mismatch():
+    smoke = _load_smoke_module()
+
+    try:
+        smoke.validate_backend_diagnostics(
+            {
+                "data": {
+                    "event_log": {
+                        "backend": "jsonl",
+                        "status": "available",
+                    },
+                    "projection_db": {
+                        "backend": "postgres",
+                        "status": "available",
+                        "lag": 0,
+                    },
+                }
+            },
+            expected_backend="postgres",
+            expected_event_backend="postgres",
+        )
+    except RuntimeError as exc:
+        message = str(exc)
+    else:
+        raise AssertionError("event backend mismatch should fail the smoke")
+
+    assert "expected event-log backend postgres, got jsonl" in message
+
+
+def test_backend_smoke_rejects_unredacted_event_database_url_password():
+    smoke = _load_smoke_module()
+
+    try:
+        smoke.validate_backend_diagnostics(
+            {
+                "data": {
+                    "event_log": {
+                        "backend": "postgres",
+                        "database_url": "postgresql://user:secret@host:5432/db",
+                        "status": "available",
+                    },
+                    "projection_db": {
+                        "backend": "postgres",
+                        "database_url": "postgresql://user:***@host:5432/db",
+                        "status": "available",
+                        "lag": 0,
+                    },
+                }
+            },
+            expected_backend="postgres",
+            expected_event_backend="postgres",
+        )
+    except RuntimeError as exc:
+        message = str(exc)
+    else:
+        raise AssertionError("unredacted event DB password should fail the smoke")
+
+    assert "event-log diagnostics expose an unredacted database URL password" in message
+    assert "secret" not in message
+
+
 def test_projection_backend_smoke_rejects_backend_mismatch():
     smoke = _load_smoke_module()
 

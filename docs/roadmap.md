@@ -233,6 +233,10 @@ Status:
   `HOLLOW_LODGE_EVENT_DATABASE_URL`, preserving append-only hash-chain
   validation, idempotency replay/conflict behavior, visibility-scoped reads,
   admin verify/export, and redacted diagnostics.
+- Hosted database smoke coverage completed: the first-party backend smoke now
+  verifies both authoritative event-log and projection backends, catches stale
+  projections, rejects unredacted database credentials, and can require all
+  projection read surfaces during hosted cutover.
 
 Proof gate:
 
@@ -366,6 +370,10 @@ Status:
   Postgres event backend with `HOLLOW_LODGE_EVENT_DATABASE_URL`, while identity
   replay secrets remain in the configured data directory and diagnostics no
   longer assume the authoritative log is file-backed.
+- Hosted database smoke coverage completed: `scripts/smoke_projection_backend.py`
+  now checks `data.event_log` alongside `data.projection_db`, preserving a
+  projection-only compatibility helper for older tests while giving operators a
+  single hosted command for event/projection backend readiness.
 - Admin oracle audit surface completed: operators can inspect redacted
   provider, validation, fallback, count, and hash evidence for server-only
   oracle audit events without exposing raw oracle inputs, hidden truth, or
@@ -1872,6 +1880,26 @@ Expected verification:
 
 - `pytest tests/eventlog/test_postgres_store.py tests/eventlog/test_jsonl_store.py tests/server/test_app_config.py::test_diagnostics_reports_safe_operational_status tests/server/test_app_config.py::test_diagnostics_reports_existing_event_log -q`
 - `pytest tests/eventlog tests/server/test_app_config.py tests/server/test_identity_routes.py -q`
+- `pytest -q`
+
+### Slice 75: Hosted Database Backend Smoke
+
+Status: completed.
+
+Extend the hosted backend smoke so production cutovers can verify both
+authoritative event-log storage and projection storage from `/diagnostics`.
+`scripts/smoke_projection_backend.py` now accepts
+`--expected-event-backend jsonl|postgres`, validates event-log status, rejects
+unredacted event-log database URLs, continues to validate projection backend,
+freshness, lag, redaction, and optional projection-read surface enablement, and
+preserves the existing projection-only validation helper for compatibility.
+The operations guide now documents JSONL-event/Postgres-projection and
+Postgres-event/Postgres-projection smoke commands separately.
+
+Expected verification:
+
+- `pytest tests/e2e/test_projection_backend_smoke.py -q`
+- `pytest tests/e2e/test_projection_backend_smoke.py tests/server/test_app_config.py tests/eventlog/test_postgres_store.py -q`
 - `pytest -q`
 
 ## Completion Standard

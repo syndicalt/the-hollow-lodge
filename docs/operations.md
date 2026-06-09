@@ -85,19 +85,22 @@ Individual surface flags such as `HOLLOW_LODGE_CHAT_PROJECTION_READS=0` can
 override the global switch during a targeted rollback. `/diagnostics` reports
 the effective projection read configuration in `data.projection_reads`.
 
-Only the projection database moves to Postgres. The Eventloom JSONL log remains
-authoritative. `/diagnostics` reports the active projection backend and redacts
-the configured Postgres password before returning operational status. Projection
-diagnostics also include the current projection schema version, migration count,
-and latest applied migration so operators can verify schema drift before
-enabling projection reads.
+Projection storage and authoritative event storage are separate cutovers.
+Projection storage can use `DATABASE_URL` for Railway convenience; the
+authoritative event log uses Postgres only when
+`HOLLOW_LODGE_EVENT_DATABASE_URL` is set explicitly. `/diagnostics` reports the
+active projection backend and redacts the configured Postgres password before
+returning operational status. Projection diagnostics also include the current
+projection schema version, migration count, and latest applied migration so
+operators can verify schema drift before enabling projection reads.
 
 Before any projection backend cutover, verify the current backend:
 
 ```sh
 python scripts/smoke_projection_backend.py \
   --server-url https://server.thehollowlodge.com \
-  --expected-backend sqlite
+  --expected-backend sqlite \
+  --expected-event-backend jsonl
 ```
 
 After configuring `HOLLOW_LODGE_PROJECTION_DATABASE_URL`, or attaching a
@@ -107,7 +110,18 @@ server, verify the new backend:
 ```sh
 python scripts/smoke_projection_backend.py \
   --server-url https://server.thehollowlodge.com \
-  --expected-backend postgres
+  --expected-backend postgres \
+  --expected-event-backend jsonl
+```
+
+If you intentionally set `HOLLOW_LODGE_EVENT_DATABASE_URL`, verify both
+Postgres backends:
+
+```sh
+python scripts/smoke_projection_backend.py \
+  --server-url https://server.thehollowlodge.com \
+  --expected-backend postgres \
+  --expected-event-backend postgres
 ```
 
 After the backend smoke passes, set `HOLLOW_LODGE_PROJECTION_READS=1` and verify
@@ -117,6 +131,7 @@ that all implemented projection read surfaces are enabled:
 python scripts/smoke_projection_backend.py \
   --server-url https://server.thehollowlodge.com \
   --expected-backend postgres \
+  --expected-event-backend jsonl \
   --require-projection-reads
 ```
 
@@ -124,10 +139,12 @@ After the Postgres smoke passes, set `HOLLOW_LODGE_REQUIRE_POSTGRES_PROJECTION=1
 on the server service and redeploy once more. This turns the cutover from a
 best-effort configuration into a startup invariant.
 
-The smoke fails if `/health` is not ok, the projection backend is not the
-expected backend, projection status is not `available`, projection lag is not
-zero, diagnostics expose an unredacted database URL password, or
-`--require-projection-reads` is set and any projection read surface is disabled.
+The smoke fails if `/health` is not ok, the event-log backend does not match
+`--expected-event-backend`, event-log status is not `available` or
+`not_created`, the projection backend is not the expected backend, projection
+status is not `available`, projection lag is not zero, diagnostics expose an
+unredacted database URL password, or `--require-projection-reads` is set and
+any projection read surface is disabled.
 
 Rollback is to remove `HOLLOW_LODGE_PROJECTION_DATABASE_URL` from the server
 service and redeploy. The server will return to
