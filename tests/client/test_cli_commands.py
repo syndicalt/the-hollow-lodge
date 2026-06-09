@@ -3299,7 +3299,7 @@ def test_artifact_transfer_command_previews_until_confirmed(tmp_path, monkeypatc
     ]
 
 
-def test_proof_transfer_command_uses_saved_config(tmp_path, monkeypatch):
+def test_proof_transfer_command_previews_until_confirmed(tmp_path, monkeypatch):
     runner = CliRunner()
     created_clients: list[FakeApi] = []
 
@@ -3316,7 +3316,7 @@ def test_proof_transfer_command_uses_saved_config(tmp_path, monkeypatch):
         ClientConfig(server_url="http://testserver", player_id="player_0001", token="token"),
     )
 
-    result = runner.invoke(
+    preview = runner.invoke(
         cli.app,
         [
             "proof",
@@ -3328,8 +3328,28 @@ def test_proof_transfer_command_uses_saved_config(tmp_path, monkeypatch):
         ],
     )
 
-    assert result.exit_code == 0
-    assert result.output == "fragment_starter_ledger.copy.player_0002.1 transferred\n"
+    assert preview.exit_code == 0
+    assert "Preview: transfer_proof_fragment" in preview.output
+    assert "No server mutation was submitted." in preview.output
+    assert "- fragment_id: fragment_starter_ledger" in preview.output
+    assert "- recipient_player_id: player_0002" in preview.output
+    assert created_clients == []
+
+    confirmed = runner.invoke(
+        cli.app,
+        [
+            "proof",
+            "transfer",
+            "fragment_starter_ledger",
+            "player_0002",
+            "--confirm",
+            "--config",
+            str(config_path),
+        ],
+    )
+
+    assert confirmed.exit_code == 0
+    assert confirmed.output == "fragment_starter_ledger.copy.player_0002.1 transferred\n"
     assert created_clients[0].calls == [
         (
             "transfer_proof_fragment",

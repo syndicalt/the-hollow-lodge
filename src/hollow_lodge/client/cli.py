@@ -1181,9 +1181,21 @@ def check(
 def proof_transfer(
     fragment_id: str = typer.Argument(..., help="Proof fragment id."),
     recipient: str = typer.Argument(..., help="Recipient player id."),
+    confirm: bool = typer.Option(False, "--confirm", help="Transfer the proof fragment on the server."),
     config: Path = typer.Option(DEFAULT_CONFIG_PATH, "--config", help="Local config path."),
 ) -> None:
     """Transfer a proof fragment to another player."""
+    if not confirm:
+        packet = build_mutation_result_packet(
+            operation="transfer_proof_fragment",
+            confirmed=False,
+            preview_fields={
+                "fragment_id": fragment_id,
+                "recipient_player_id": recipient,
+            },
+        )
+        typer.echo(packet.player_markdown)
+        return
     response = _api_from_config(load_config(config)).transfer_proof_fragment(
         fragment_id=fragment_id,
         recipient_player_id=recipient,

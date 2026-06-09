@@ -3857,6 +3857,27 @@ Expected verification:
 - `pytest tests/client/test_cli_commands.py tests/client/test_deal_cli.py tests/client/test_codex_session.py tests/test_mcp_server.py -q`
 - `pytest -q`
 
+### Slice 158: CLI Proof Transfer Confirmation Guard
+
+Status: completed.
+
+Apply the same confirmation boundary to proof-fragment transfers.
+`hollow-lodge proof transfer` now renders a no-mutation
+`transfer_proof_fragment` preview by default, showing the fragment id and
+recipient player id, and only transfers the proof fragment when rerun with
+`--confirm`.
+
+This keeps proof custody changes explicit in shell play, matching the roadmap
+rule that irreversible operations require confirmation. The confirmed path
+preserves the existing API call, idempotency key, and concise transfer output,
+while preview mode never creates an API client or contacts the server.
+
+Expected verification:
+
+- `pytest tests/client/test_cli_commands.py::test_proof_transfer_command_previews_until_confirmed -q`
+- `pytest tests/client/test_cli_commands.py tests/client/test_action_cli.py tests/client/test_deal_cli.py tests/client/test_codex_session.py tests/test_mcp_server.py -q`
+- `pytest -q`
+
 ## Completion Standard
 
 Each slice must:
