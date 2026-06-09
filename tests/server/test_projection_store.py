@@ -730,6 +730,31 @@ def test_contract_board_route_reads_fresh_projection_when_enabled(tmp_path, monk
     assert response.json()["contracts"][0]["contract_id"] == "contract_false_finger"
 
 
+def test_contract_board_route_reads_projection_when_global_flag_enabled(
+    tmp_path,
+    monkeypatch,
+):
+    monkeypatch.setenv("HOLLOW_LODGE_PROJECTION_READS", "1")
+    monkeypatch.delenv("HOLLOW_LODGE_CONTRACT_BOARD_PROJECTION_READS", raising=False)
+    client = TestClient(create_app(data_dir=tmp_path, invite_codes=["a"]))
+    ada = register(client, "a", "Ada")
+    client.app.state.projection_store.rebuild(client.app.state.event_store.read())
+    original_read = client.app.state.projection_store.read_contract_board
+    calls = {"count": 0}
+
+    def tracked_read_contract_board():
+        calls["count"] += 1
+        return original_read()
+
+    client.app.state.projection_store.read_contract_board = tracked_read_contract_board
+
+    response = client.get("/contracts", headers=auth(ada["token"]))
+
+    assert response.status_code == 200
+    assert calls["count"] == 1
+    assert response.json()["contracts"][0]["contract_id"] == "contract_false_finger"
+
+
 def test_contract_board_route_falls_back_to_event_log_when_projection_is_stale(
     tmp_path,
     monkeypatch,

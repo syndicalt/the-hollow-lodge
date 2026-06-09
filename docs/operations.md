@@ -68,6 +68,17 @@ any `sqlite:///` projection URL. Local development and tests should leave the
 guard unset unless they are intentionally exercising the production cutover
 path.
 
+Production deployments can enable all implemented projection-backed read paths
+with one switch:
+
+```sh
+HOLLOW_LODGE_PROJECTION_READS=1
+```
+
+Individual surface flags such as `HOLLOW_LODGE_CHAT_PROJECTION_READS=0` can
+override the global switch during a targeted rollback. `/diagnostics` reports
+the effective projection read configuration in `data.projection_reads`.
+
 Only the projection database moves to Postgres. The Eventloom JSONL log remains
 authoritative. `/diagnostics` reports the active projection backend and redacts
 the configured Postgres password before returning operational status. Projection
@@ -92,13 +103,24 @@ python scripts/smoke_projection_backend.py \
   --expected-backend postgres
 ```
 
+After the backend smoke passes, set `HOLLOW_LODGE_PROJECTION_READS=1` and verify
+that all implemented projection read surfaces are enabled:
+
+```sh
+python scripts/smoke_projection_backend.py \
+  --server-url https://server.thehollowlodge.com \
+  --expected-backend postgres \
+  --require-projection-reads
+```
+
 After the Postgres smoke passes, set `HOLLOW_LODGE_REQUIRE_POSTGRES_PROJECTION=1`
 on the server service and redeploy once more. This turns the cutover from a
 best-effort configuration into a startup invariant.
 
 The smoke fails if `/health` is not ok, the projection backend is not the
 expected backend, projection status is not `available`, projection lag is not
-zero, or diagnostics expose an unredacted database URL password.
+zero, diagnostics expose an unredacted database URL password, or
+`--require-projection-reads` is set and any projection read surface is disabled.
 
 Rollback is to remove `HOLLOW_LODGE_PROJECTION_DATABASE_URL` from the server
 service and redeploy. The server will return to

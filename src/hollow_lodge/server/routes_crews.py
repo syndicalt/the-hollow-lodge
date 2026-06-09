@@ -1,7 +1,6 @@
 from __future__ import annotations
 
 import logging
-import os
 
 from pydantic import BaseModel, Field
 from fastapi import APIRouter, Depends, Header, HTTPException, Request, status
@@ -16,6 +15,7 @@ from hollow_lodge.server.projected_deals import projected_visible_deals
 from hollow_lodge.server.projected_dossiers import projected_proof_dossier
 from hollow_lodge.server.projected_legacy import projected_crew_legacy
 from hollow_lodge.server.projected_pending_decisions import projected_pending_decisions
+from hollow_lodge.server.projection_config import projection_read_enabled
 from hollow_lodge.server.runtime_services import ensure_deal_service
 from hollow_lodge.server.rumors import visible_rumors_for_crew
 from hollow_lodge.server.projections import (
@@ -196,7 +196,7 @@ def _dossier_for_crew(request: Request, *, player_id: str, crew_id: str) -> dict
 
 
 def _projected_crew_summary(request: Request, crew_id: str) -> dict | None:
-    if os.environ.get("HOLLOW_LODGE_CREW_SUMMARY_PROJECTION_READS") != "1":
+    if not projection_read_enabled("HOLLOW_LODGE_CREW_SUMMARY_PROJECTION_READS"):
         return None
     events = request.app.state.event_store.read()
     authoritative_last_sequence = events[-1].sequence if events else 0

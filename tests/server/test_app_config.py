@@ -6,6 +6,7 @@ import pytest
 from fastapi.testclient import TestClient
 
 from hollow_lodge.server.app import create_app
+from hollow_lodge.server.projection_config import projection_read_enabled
 from hollow_lodge.server.projection_store import SCHEMA_VERSION
 
 
@@ -229,6 +230,40 @@ def test_require_postgres_projection_rejects_invalid_flag_value(
     assert "HOLLOW_LODGE_REQUIRE_POSTGRES_PROJECTION must be one of" in str(
         exc_info.value
     )
+
+
+def test_global_projection_read_flag_enables_all_surfaces(tmp_path, monkeypatch):
+    monkeypatch.setenv("HOLLOW_LODGE_PROJECTION_READS", "1")
+
+    client = TestClient(create_app(data_dir=tmp_path))
+
+    projection_reads = client.get("/diagnostics").json()["data"]["projection_reads"]
+    assert projection_reads["global_enabled"] is True
+    assert projection_reads["surfaces"]
+    assert all(projection_reads["surfaces"].values())
+    assert projection_read_enabled("HOLLOW_LODGE_CONTRACT_BOARD_PROJECTION_READS") is True
+
+
+def test_surface_projection_read_flag_overrides_global_flag(tmp_path, monkeypatch):
+    monkeypatch.setenv("HOLLOW_LODGE_PROJECTION_READS", "1")
+    monkeypatch.setenv("HOLLOW_LODGE_CHAT_PROJECTION_READS", "0")
+
+    client = TestClient(create_app(data_dir=tmp_path))
+
+    projection_reads = client.get("/diagnostics").json()["data"]["projection_reads"]
+    assert projection_reads["global_enabled"] is True
+    assert projection_reads["surfaces"]["chat"] is False
+    assert projection_reads["surfaces"]["contract_board"] is True
+    assert projection_read_enabled("HOLLOW_LODGE_CHAT_PROJECTION_READS") is False
+
+
+def test_projection_read_flag_rejects_invalid_values(monkeypatch):
+    monkeypatch.setenv("HOLLOW_LODGE_PROJECTION_READS", "sometimes")
+
+    with pytest.raises(RuntimeError) as exc_info:
+        projection_read_enabled("HOLLOW_LODGE_CONTRACT_BOARD_PROJECTION_READS")
+
+    assert "HOLLOW_LODGE_PROJECTION_READS must be one of" in str(exc_info.value)
 
 
 def test_server_docker_image_installs_openai_client_for_openai_oracle():

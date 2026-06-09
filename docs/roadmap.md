@@ -1752,6 +1752,25 @@ Expected verification:
 - `pytest tests/server/test_resolution_oracle.py tests/server/test_phase_resolution.py tests/workflows/test_oracle_boundary.py tests/workflows/test_openai_oracle.py tests/workflows/test_deterministic_oracle.py tests/workflows/test_oracle_factory.py tests/server/test_app_config.py -q`
 - `pytest -q`
 
+### Slice 70: Global Projection Read Cutover Switch
+
+Status: completed.
+
+Make the database projection cutover operable as one production switch without
+moving authority out of the Eventloom JSONL log. Server configuration now
+supports `HOLLOW_LODGE_PROJECTION_READS=1`, which enables every implemented
+projection-backed read path while preserving individual surface overrides for
+targeted rollback. `/diagnostics` reports the effective projection-read
+configuration, and `scripts/smoke_projection_backend.py` can require all
+implemented projection read surfaces to be enabled during the hosted Postgres
+smoke. Existing per-surface flags remain compatible.
+
+Expected verification:
+
+- `pytest tests/server/test_app_config.py::test_global_projection_read_flag_enables_all_surfaces tests/server/test_app_config.py::test_surface_projection_read_flag_overrides_global_flag tests/server/test_app_config.py::test_projection_read_flag_rejects_invalid_values tests/server/test_projection_store.py::test_contract_board_route_reads_projection_when_global_flag_enabled tests/e2e/test_projection_backend_smoke.py::test_projection_backend_smoke_accepts_available_zero_lag_backend tests/e2e/test_projection_backend_smoke.py::test_projection_backend_smoke_rejects_disabled_projection_read_surfaces -q`
+- `pytest tests/server/test_app_config.py tests/server/test_projection_store.py tests/e2e/test_projection_backend_smoke.py -q`
+- `pytest -q`
+
 ## Completion Standard
 
 Each slice must:

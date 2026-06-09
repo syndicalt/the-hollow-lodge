@@ -1,16 +1,17 @@
 from __future__ import annotations
 
-import os
 from typing import Any
 
 from fastapi import Request
+
+from hollow_lodge.server.projection_config import projection_read_enabled
 
 
 def projected_proof_dossier(
     request: Request,
     crew_id: str,
 ) -> dict[str, Any] | None:
-    if os.environ.get("HOLLOW_LODGE_PROOF_DOSSIER_PROJECTION_READS") != "1":
+    if not projection_read_enabled("HOLLOW_LODGE_PROOF_DOSSIER_PROJECTION_READS"):
         return None
     events = request.app.state.event_store.read()
     authoritative_last_sequence = events[-1].sequence if events else 0

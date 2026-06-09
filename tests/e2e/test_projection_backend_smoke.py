@@ -30,15 +30,21 @@ def test_projection_backend_smoke_accepts_available_zero_lag_backend():
                     "lag": 0,
                     "last_sequence": 23,
                     "authoritative_last_sequence": 23,
-                }
+                },
+                "projection_reads": {
+                    "global_enabled": True,
+                    "surfaces": {"contract_board": True, "crew_summary": True},
+                },
             },
         },
         expected_backend="postgres",
+        require_projection_reads=True,
     )
 
     assert result["backend"] == "postgres"
     assert result["lag"] == 0
     assert result["last_sequence"] == 23
+    assert result["projection_reads"]["surfaces"]["contract_board"] is True
 
 
 def test_projection_backend_smoke_rejects_backend_mismatch():
@@ -114,3 +120,36 @@ def test_projection_backend_smoke_rejects_unredacted_database_url_password():
 
     assert "projection diagnostics expose an unredacted database URL password" in message
     assert "secret" not in message
+
+
+def test_projection_backend_smoke_rejects_disabled_projection_read_surfaces():
+    smoke = _load_smoke_module()
+
+    try:
+        smoke.validate_projection_diagnostics(
+            {
+                "data": {
+                    "projection_db": {
+                        "backend": "postgres",
+                        "database_url": "postgresql://user:***@host:5432/db",
+                        "status": "available",
+                        "lag": 0,
+                    },
+                    "projection_reads": {
+                        "global_enabled": True,
+                        "surfaces": {
+                            "contract_board": True,
+                            "crew_summary": False,
+                        },
+                    },
+                }
+            },
+            expected_backend="postgres",
+            require_projection_reads=True,
+        )
+    except RuntimeError as exc:
+        message = str(exc)
+    else:
+        raise AssertionError("disabled projection read surfaces should fail the smoke")
+
+    assert "projection read surfaces disabled: crew_summary" in message

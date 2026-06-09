@@ -10,6 +10,19 @@ from hollow_lodge.server.projection_store import SqliteProjectionStore
 
 PROJECTION_DATABASE_URL_ENV = "HOLLOW_LODGE_PROJECTION_DATABASE_URL"
 REQUIRE_POSTGRES_PROJECTION_ENV = "HOLLOW_LODGE_REQUIRE_POSTGRES_PROJECTION"
+PROJECTION_READS_ENV = "HOLLOW_LODGE_PROJECTION_READS"
+PROJECTION_READ_SURFACE_ENVS = {
+    "actions": "HOLLOW_LODGE_ACTION_PROJECTION_READS",
+    "artifacts": "HOLLOW_LODGE_ARTIFACT_PROJECTION_READS",
+    "chat": "HOLLOW_LODGE_CHAT_PROJECTION_READS",
+    "contract_board": "HOLLOW_LODGE_CONTRACT_BOARD_PROJECTION_READS",
+    "crew_legacy": "HOLLOW_LODGE_CREW_LEGACY_PROJECTION_READS",
+    "crew_summary": "HOLLOW_LODGE_CREW_SUMMARY_PROJECTION_READS",
+    "deals": "HOLLOW_LODGE_DEAL_PROJECTION_READS",
+    "pending_decisions": "HOLLOW_LODGE_PENDING_DECISION_PROJECTION_READS",
+    "proof_dossiers": "HOLLOW_LODGE_PROOF_DOSSIER_PROJECTION_READS",
+    "visible_events": "HOLLOW_LODGE_VISIBLE_EVENT_PROJECTION_READS",
+}
 
 
 def projection_store_from_env(root: Path) -> SqliteProjectionStore | PostgresProjectionStore:
@@ -41,6 +54,22 @@ def projection_store_from_env(root: Path) -> SqliteProjectionStore | PostgresPro
         f"{scheme!r}; expected sqlite:/// or postgresql://. "
         f"Configured URL: {_redact_database_url(database_url)}"
     )
+
+
+def projection_read_enabled(surface_env: str) -> bool:
+    if os.environ.get(surface_env) is not None:
+        return _env_flag(surface_env)
+    return _env_flag(PROJECTION_READS_ENV)
+
+
+def projection_read_diagnostics() -> dict[str, object]:
+    return {
+        "global_enabled": _env_flag(PROJECTION_READS_ENV),
+        "surfaces": {
+            surface: projection_read_enabled(env_name)
+            for surface, env_name in PROJECTION_READ_SURFACE_ENVS.items()
+        },
+    }
 
 
 def _env_flag(name: str) -> bool:

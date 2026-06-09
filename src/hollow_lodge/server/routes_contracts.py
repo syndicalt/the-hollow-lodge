@@ -18,6 +18,7 @@ from hollow_lodge.server.projected_artifacts import projected_visible_artifacts
 from hollow_lodge.server.projected_deals import projected_visible_deals
 from hollow_lodge.server.projected_dossiers import projected_proof_dossier
 from hollow_lodge.server.projected_pending_decisions import projected_pending_decisions
+from hollow_lodge.server.projection_config import projection_read_enabled
 from hollow_lodge.server.projections import (
     apply_contract_unlock_status,
     crew_legacy_from_contracts,
@@ -198,7 +199,7 @@ def _board_for_player_with_unlocks(request: Request, player_id: str) -> dict:
 
 
 def _projection_contract_board(request: Request) -> dict | None:
-    if os.environ.get("HOLLOW_LODGE_CONTRACT_BOARD_PROJECTION_READS") != "1":
+    if not projection_read_enabled("HOLLOW_LODGE_CONTRACT_BOARD_PROJECTION_READS"):
         return None
     events = request.app.state.event_store.read()
     authoritative_last_sequence = events[-1].sequence if events else 0

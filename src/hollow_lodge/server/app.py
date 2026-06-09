@@ -10,7 +10,10 @@ from hollow_lodge import __version__
 from hollow_lodge.eventlog.jsonl_store import JsonlEventStore
 from hollow_lodge.server.artifact_service import ArtifactService
 from hollow_lodge.server.deal_service import DealService
-from hollow_lodge.server.projection_config import projection_store_from_env
+from hollow_lodge.server.projection_config import (
+    projection_read_diagnostics,
+    projection_store_from_env,
+)
 from hollow_lodge.server.routes_actions import router as actions_router
 from hollow_lodge.server.routes_artifacts import router as artifacts_router
 from hollow_lodge.server.routes_chat import router as chat_router
@@ -132,6 +135,7 @@ def create_app(
                         app.state.event_store.read()
                     )
                 ),
+                "projection_reads": projection_read_diagnostics(),
             },
         }
 
