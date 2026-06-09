@@ -705,6 +705,44 @@ def test_register_command_saves_local_config(tmp_path, monkeypatch):
     ]
 
 
+def test_register_command_clears_pending_onboarding_state(tmp_path, monkeypatch):
+    runner = CliRunner()
+
+    monkeypatch.setattr(cli, "HollowLodgeApi", FakeApi)
+    monkeypatch.setattr(cli, "new_command_key", lambda prefix: f"{prefix}-key")
+    config_path = tmp_path / "config.json"
+    onboarding_path = tmp_path / "onboarding.json"
+    onboarding_path.write_text(
+        (
+            '{"server_url":"http://testserver","display_name":"Ada",'
+            '"contact":"ada@example.com","request_id":"key_request_0001",'
+            '"status":"pending"}\n'
+        ),
+        encoding="utf-8",
+    )
+
+    result = runner.invoke(
+        cli.app,
+        [
+            "register",
+            "--server",
+            "http://testserver",
+            "--invite",
+            "invite-a",
+            "--name",
+            "Ada",
+            "--config",
+            str(config_path),
+            "--onboarding-state",
+            str(onboarding_path),
+        ],
+    )
+
+    assert result.exit_code == 0
+    assert load_config(config_path).player_id == "player_0001"
+    assert onboarding_path.exists() is False
+
+
 def test_onboard_with_invite_registers_and_saves_local_config(tmp_path, monkeypatch):
     runner = CliRunner()
     created_clients: list[FakeApi] = []

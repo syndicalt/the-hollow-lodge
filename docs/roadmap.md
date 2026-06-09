@@ -3724,6 +3724,28 @@ Expected verification:
 - `pytest tests/client/test_cli_commands.py tests/client/test_installer_script.py tests/client/test_codex_mcp_config.py tests/client/test_local_log.py tests/client/test_codex_session.py -q`
 - `pytest -q`
 
+### Slice 152: Register Clears Pending Onboarding State
+
+Status: completed.
+
+Tighten the hosted access redemption path. `hollow-lodge onboard --invite`
+already removed pending onboarding state after successful registration; the
+standalone `hollow-lodge register` command now accepts the same
+`--onboarding-state` option and clears that pending state after saving the
+registered player config.
+
+This prevents a request-access-key flow from leaving stale pending state behind
+when a player redeems an approved invite through the explicit register command.
+The cleanup happens only after successful registration and local config save,
+preserving the pending state if the server rejects the invite or the command
+fails before a token is stored.
+
+Expected verification:
+
+- `pytest tests/client/test_cli_commands.py::test_register_command_saves_local_config tests/client/test_cli_commands.py::test_register_command_clears_pending_onboarding_state tests/client/test_cli_commands.py::test_onboard_with_invite_registers_and_saves_local_config -q`
+- `pytest tests/client/test_cli_commands.py tests/client/test_installer_script.py tests/client/test_codex_mcp_config.py tests/client/test_local_log.py tests/client/test_codex_session.py -q`
+- `pytest -q`
+
 ## Completion Standard
 
 Each slice must:

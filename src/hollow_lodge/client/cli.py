@@ -102,6 +102,11 @@ def register(
     invite: str = typer.Option(..., "--invite", help="Invite code."),
     name: str = typer.Option(..., "--name", help="Display name."),
     config: Path = typer.Option(DEFAULT_CONFIG_PATH, "--config", help="Local config path."),
+    onboarding_state: Path = typer.Option(
+        DEFAULT_ONBOARDING_STATE_PATH,
+        "--onboarding-state",
+        help="Pending onboarding state path.",
+    ),
 ) -> None:
     """Register an invited player and save the local token."""
     api = HollowLodgeApi(server_url=server)
@@ -119,6 +124,8 @@ def register(
             token=response["token"],
         ),
     )
+    if onboarding_state.exists():
+        onboarding_state.unlink()
     typer.echo(response["player_id"])
 
 
