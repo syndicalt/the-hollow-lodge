@@ -1205,11 +1205,20 @@ def replay(
 def check(
     fragment_id: str = typer.Argument(..., help="Proof fragment id."),
     check_type: str = typer.Argument(..., help="Check type."),
+    confirm: bool = typer.Option(False, "--confirm", help="Spend the proof check side action."),
     config: Path = typer.Option(DEFAULT_CONFIG_PATH, "--config", help="Local config path."),
 ) -> None:
     """Spend a side action on a proof check."""
     if check_type != "provenance":
         raise typer.BadParameter("only provenance checks are available")
+    if not confirm:
+        packet = build_mutation_result_packet(
+            operation="check_provenance",
+            confirmed=False,
+            preview_fields={"fragment_id": fragment_id, "check_type": check_type},
+        )
+        _echo_packet(packet, as_json=False)
+        return
     result = _api_from_config(load_config(config)).check_provenance(
         fragment_id=fragment_id,
         idempotency_key=new_command_key("proof-provenance"),

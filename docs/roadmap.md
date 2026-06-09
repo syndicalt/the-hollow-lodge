@@ -3939,6 +3939,26 @@ Expected verification:
 - `pytest tests/client/test_action_cli.py tests/client/test_cli_commands.py tests/client/test_codex_session.py tests/client/test_render_packets.py tests/test_mcp_server.py tests/server/test_action_routes.py -q`
 - `pytest -q`
 
+### Slice 162: CLI Provenance Check Confirmation Guard
+
+Status: completed.
+
+Protect proof provenance checks from accidental shell submission. The
+`hollow-lodge check <fragment-id> provenance` command now renders a no-mutation
+`check_provenance` preview by default, showing the target fragment id and check
+type, and only spends the side action when rerun with `--confirm`.
+
+Confirmed provenance checks preserve the existing concise result output with
+the returned provenance flags. This keeps shell play aligned with the broader
+preview-before-mutation rule while leaving the useful post-check feedback
+unchanged.
+
+Expected verification:
+
+- `pytest tests/client/test_cli_commands.py::test_check_provenance_command_previews_until_confirmed -q`
+- `pytest tests/client/test_cli_commands.py tests/client/test_action_cli.py tests/client/test_codex_session.py tests/client/test_render_packets.py tests/test_mcp_server.py tests/server/test_proof_routes.py -q`
+- `pytest -q`
+
 ## Completion Standard
 
 Each slice must:

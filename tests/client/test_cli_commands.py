@@ -3748,7 +3748,7 @@ def test_replay_command_renders_local_perspective_log(tmp_path):
     assert "8 player_0002: Ledger moved." in result.output
 
 
-def test_check_provenance_command_uses_saved_config(tmp_path, monkeypatch):
+def test_check_provenance_command_previews_until_confirmed(tmp_path, monkeypatch):
     runner = CliRunner()
     created_clients: list[FakeApi] = []
 
@@ -3765,13 +3765,32 @@ def test_check_provenance_command_uses_saved_config(tmp_path, monkeypatch):
         ClientConfig(server_url="http://testserver", player_id="player_0001", token="token"),
     )
 
-    result = runner.invoke(
+    preview = runner.invoke(
         cli.app,
         ["check", "fragment_starter_ledger", "provenance", "--config", str(config_path)],
     )
 
-    assert result.exit_code == 0
-    assert "copied-hand" in result.output
+    assert preview.exit_code == 0
+    assert "Preview: check_provenance" in preview.output
+    assert "No server mutation was submitted." in preview.output
+    assert "- fragment_id: fragment_starter_ledger" in preview.output
+    assert "- check_type: provenance" in preview.output
+    assert created_clients == []
+
+    confirmed = runner.invoke(
+        cli.app,
+        [
+            "check",
+            "fragment_starter_ledger",
+            "provenance",
+            "--confirm",
+            "--config",
+            str(config_path),
+        ],
+    )
+
+    assert confirmed.exit_code == 0
+    assert "copied-hand" in confirmed.output
     assert created_clients[0].calls == [
         (
             "check_provenance",
