@@ -2621,6 +2621,29 @@ Expected verification:
 - `pytest tests/server/test_projection_store.py tests/server/test_proof_routes.py tests/server/test_app_config.py tests/e2e/test_projection_backend_smoke.py tests/client/test_cli_commands.py tests/client/test_api.py -q`
 - `pytest -q`
 
+### Slice 103: Postgres Event-Log Append Hardening
+
+Status: completed.
+
+Harden the hosted authoritative Eventloom backend by removing the full
+`event_json` replay from ordinary Postgres appends. The append path now takes
+the existing advisory transaction lock, validates sequence and previous-hash
+metadata from the structured event-log columns, performs idempotent command
+replay through an indexed idempotency-key lookup, and appends from the current
+chain head. This keeps the append-only authority boundary intact while reducing
+write-path payload replay before production Postgres cutover.
+
+Full payload/hash validation remains on read, verify, export, and import
+paths. Idempotent replays still validate chain metadata before returning an
+existing command event, so a broken metadata chain fails closed rather than
+silently replaying a command.
+
+Expected verification:
+
+- `pytest tests/eventlog/test_postgres_store.py -q`
+- `pytest tests/eventlog/test_postgres_store.py tests/eventlog/test_jsonl_store.py tests/client/test_cli_commands.py tests/server/test_app_config.py tests/e2e/test_projection_backend_smoke.py -q`
+- `pytest -q`
+
 ## Completion Standard
 
 Each slice must:

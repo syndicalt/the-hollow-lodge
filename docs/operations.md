@@ -71,6 +71,12 @@ When this guard is enabled, server startup rejects a missing
 unset for local development and tests unless intentionally exercising the
 production event-log cutover path.
 
+Postgres event-log appends take an advisory transaction lock, validate
+sequence and previous-hash metadata, read idempotent command replays by key,
+and append from the current chain head without replaying full event payloads on
+every write. Full payload/hash validation remains available through read,
+verify, export, and import paths.
+
 ## Projection Database
 
 The authoritative game record remains the append-only Eventloom log.

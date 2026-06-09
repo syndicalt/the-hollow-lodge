@@ -69,6 +69,67 @@ def test_postgres_event_store_replays_idempotent_commands(monkeypatch):
     assert len(store.read()) == 1
 
 
+def test_postgres_event_store_append_uses_metadata_head_without_full_replay(monkeypatch):
+    fake = FakePostgresConnector()
+    monkeypatch.setattr(PostgresEventStore, "_connect", lambda self: fake())
+    store = PostgresEventStore("postgresql://user:secret@example.com:5432/hollow_lodge")
+
+    first = store.append(
+        event_type="contract.seeded",
+        actor_id="server",
+        visibility=EventVisibility.server_only(),
+        payload={"contract_id": "contract_false_finger"},
+    )
+    second = store.append(
+        event_type="contract.board.published",
+        actor_id="server",
+        visibility=EventVisibility.crews(["crew_ember"]),
+        payload={"contract_id": "contract_false_finger"},
+    )
+
+    assert first.sequence == 1
+    assert second.sequence == 2
+    assert second.previous_hash == first.event_hash
+    append_statements = [
+        " ".join(sql.lower().split())
+        for connection in fake.connections
+        for sql, _ in connection.statements
+    ]
+    assert any(
+        statement.startswith("select sequence, event_id, event_hash, previous_hash")
+        for statement in append_statements
+    )
+    assert not any(
+        statement == "select event_json from event_log order by sequence"
+        for statement in append_statements
+    )
+
+
+def test_postgres_event_store_idempotent_replay_validates_metadata_chain(monkeypatch):
+    fake = FakePostgresConnector()
+    monkeypatch.setattr(PostgresEventStore, "_connect", lambda self: fake())
+    store = PostgresEventStore("postgresql://user:secret@example.com:5432/hollow_lodge")
+    store.append_command(
+        event_type="action.submitted",
+        actor_id="player_ada",
+        visibility=EventVisibility.players(["player_ada"]),
+        payload={"intent": "inspect the ledger"},
+        idempotency_key="submit-action-1",
+    )
+    corrupted = json.loads(fake.event_rows[0])
+    corrupted["previous_hash"] = "broken-chain"
+    fake.event_rows[0] = json.dumps(corrupted)
+
+    with pytest.raises(EventLogIntegrityError, match="hash chain break"):
+        store.append_command(
+            event_type="action.submitted",
+            actor_id="player_ada",
+            visibility=EventVisibility.players(["player_ada"]),
+            payload={"intent": "inspect the ledger"},
+            idempotency_key="submit-action-1",
+        )
+
+
 def test_postgres_event_store_rejects_idempotency_conflicts(monkeypatch):
     fake = FakePostgresConnector()
     monkeypatch.setattr(PostgresEventStore, "_connect", lambda self: fake())
@@ -425,6 +486,16 @@ class FakePostgresConnection:
     def execute(self, sql: str, params: tuple = ()) -> "FakePostgresCursor":
         self.statements.append((sql, params))
         normalized = " ".join(sql.lower().split())
+        if normalized.startswith(
+            "select event_json from event_log where idempotency_key"
+        ):
+            key = params[0]
+            rows = [
+                (row,)
+                for row in self.connector.event_rows
+                if json.loads(row).get("idempotency_key") == key
+            ]
+            return FakePostgresCursor(row=rows[0] if rows else None)
         if normalized.startswith("select event_json from event_log"):
             return FakePostgresCursor(rows=[(row,) for row in self.connector.event_rows])
         if normalized.startswith("select sequence, event_id, event_hash, previous_hash"):

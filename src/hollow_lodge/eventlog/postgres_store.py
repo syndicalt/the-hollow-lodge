@@ -14,7 +14,6 @@ from hollow_lodge.eventlog.jsonl_store import (
     IdempotencyConflictError,
     IntegrityReport,
     _command_fingerprint,
-    _find_idempotent,
     validate_event_chain,
 )
 from hollow_lodge.eventlog.visibility import Principal, filter_visible_events
@@ -45,8 +44,8 @@ class PostgresEventStore(EventStore):
         with self._connect() as connection:
             self._ensure_schema(connection)
             self._lock_event_log(connection)
-            events = self._read_unlocked(connection)
-            validate_event_chain(events)
+            chain_rows = self._read_chain_metadata(connection)
+            self._validate_chain_metadata(chain_rows)
             if idempotency_key:
                 fingerprint = _command_fingerprint(
                     event_type=event_type,
@@ -54,16 +53,17 @@ class PostgresEventStore(EventStore):
                     visibility=visibility,
                     payload=payload,
                 )
-                existing = _find_idempotent(events, idempotency_key)
+                existing = self._read_idempotent_event(connection, idempotency_key)
                 if existing is not None:
                     if existing.command_fingerprint != fingerprint:
                         raise IdempotencyConflictError("idempotency key conflict")
                     return existing
             else:
                 fingerprint = None
-            previous_hash = events[-1].event_hash if events else None
+            latest = chain_rows[-1] if chain_rows else None
+            previous_hash = latest["event_hash"] if latest is not None else None
             event = GameEvent.new(
-                sequence=len(events) + 1,
+                sequence=(latest["sequence"] + 1 if latest is not None else 1),
                 event_type=event_type,
                 actor_id=actor_id,
                 visibility=visibility,
@@ -300,10 +300,7 @@ class PostgresEventStore(EventStore):
         ).fetchall()
         events: list[GameEvent] = []
         for index, row in enumerate(rows):
-            try:
-                events.append(GameEvent.model_validate(_load_json(row[0])))
-            except ValidationError as exc:
-                raise EventLogIntegrityError(f"invalid event row {index + 1}") from exc
+            events.append(_event_from_row(row[0], row_number=index + 1))
         return events
 
     def _read_chain_metadata(self, connection: Any) -> list[dict[str, Any]]:
@@ -323,6 +320,23 @@ class PostgresEventStore(EventStore):
             }
             for row in rows
         ]
+
+    def _read_idempotent_event(
+        self,
+        connection: Any,
+        idempotency_key: str,
+    ) -> GameEvent | None:
+        row = connection.execute(
+            """
+            select event_json
+            from event_log
+            where idempotency_key = %s
+            """,
+            (idempotency_key,),
+        ).fetchone()
+        if row is None:
+            return None
+        return _event_from_row(row[0], row_number="idempotency lookup")
 
     def _validate_chain_metadata(self, rows: list[dict[str, Any]]) -> None:
         previous_hash: str | None = None
@@ -360,6 +374,13 @@ def _load_json(value: Any) -> Any:
     if isinstance(value, str):
         return json.loads(value)
     return value
+
+
+def _event_from_row(value: Any, *, row_number: int | str) -> GameEvent:
+    try:
+        return GameEvent.model_validate(_load_json(value))
+    except ValidationError as exc:
+        raise EventLogIntegrityError(f"invalid event row {row_number}") from exc
 
 
 def _redact_database_url(database_url: str) -> str:
