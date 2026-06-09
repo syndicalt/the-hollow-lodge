@@ -21,13 +21,14 @@ from hollow_lodge.server.pending_decisions import pending_decisions_for_player
 from hollow_lodge.server.rumors import SAFE_RUMOR_FIELDS
 
 
-SCHEMA_VERSION = "5"
+SCHEMA_VERSION = "6"
 PROJECTION_SCHEMA_MIGRATIONS: tuple[tuple[str, str], ...] = (
     ("1", "initial projection read models"),
     ("2", "proof dossier projection read model"),
     ("3", "chat message projection read model"),
     ("4", "pending decision projection read model"),
     ("5", "current action projection read model"),
+    ("6", "visible rumor projection read model"),
 )
 
 
@@ -49,6 +50,7 @@ class SqliteProjectionStore:
         chat_messages = snapshot["chat_messages"]
         actions_by_crew = snapshot["actions_by_crew"]
         pending_decisions = snapshot["pending_decisions"]
+        visible_rumors_by_crew = snapshot["visible_rumors_by_crew"]
         visible_events = snapshot["visible_events"]
         last_sequence = snapshot["last_sequence"]
         with sqlite3.connect(self.path) as connection:
@@ -65,6 +67,7 @@ class SqliteProjectionStore:
             connection.execute("delete from chat_message_surface")
             connection.execute("delete from action_surface")
             connection.execute("delete from pending_decision_surface")
+            connection.execute("delete from visible_rumor_surface")
             for contract in board["contracts"]:
                 connection.execute(
                     """
@@ -334,6 +337,32 @@ class SqliteProjectionStore:
                         last_sequence,
                     ),
                 )
+            rumor_count = 0
+            for crew_id, rumors in visible_rumors_by_crew.items():
+                for rumor_index, rumor in enumerate(rumors):
+                    rumor_count += 1
+                    connection.execute(
+                        """
+                        insert into visible_rumor_surface (
+                            crew_id,
+                            rumor_id,
+                            rumor_index,
+                            payload_json,
+                            updated_sequence
+                        ) values (?, ?, ?, ?, ?)
+                        """,
+                        (
+                            crew_id,
+                            rumor["rumor_id"],
+                            rumor_index,
+                            json.dumps(
+                                rumor,
+                                sort_keys=True,
+                                separators=(",", ":"),
+                            ),
+                            last_sequence,
+                        ),
+                    )
             self._set_meta(connection, "schema_version", SCHEMA_VERSION)
             self._set_meta(connection, "last_sequence", str(last_sequence))
             self._set_meta(connection, "contract_count", str(len(board["contracts"])))
@@ -348,6 +377,7 @@ class SqliteProjectionStore:
                 "pending_decision_count",
                 str(len(pending_decisions)),
             )
+            self._set_meta(connection, "visible_rumor_count", str(rumor_count))
             self._set_meta(connection, "visible_event_count", str(len(visible_events)))
             self._set_meta(
                 connection,
@@ -392,6 +422,7 @@ class SqliteProjectionStore:
                 "chat_message_count": 0,
                 "action_count": 0,
                 "pending_decision_count": 0,
+                "visible_rumor_count": 0,
                 "schema_migration_count": 0,
                 "latest_schema_migration": None,
                 "visible_event_count": 0,
@@ -427,6 +458,9 @@ class SqliteProjectionStore:
                 ).fetchone()[0]
                 pending_decision_count = connection.execute(
                     "select count(*) from pending_decision_surface"
+                ).fetchone()[0]
+                visible_rumor_count = connection.execute(
+                    "select count(*) from visible_rumor_surface"
                 ).fetchone()[0]
                 visible_event_count = connection.execute(
                     "select count(*) from visible_event_surface"
@@ -467,6 +501,7 @@ class SqliteProjectionStore:
                 "chat_message_count": 0,
                 "action_count": 0,
                 "pending_decision_count": 0,
+                "visible_rumor_count": 0,
                 "schema_migration_count": 0,
                 "latest_schema_migration": None,
                 "visible_event_count": 0,
@@ -504,6 +539,9 @@ class SqliteProjectionStore:
             "action_count": int(meta.get("action_count", str(action_count))),
             "pending_decision_count": int(
                 meta.get("pending_decision_count", str(pending_decision_count))
+            ),
+            "visible_rumor_count": int(
+                meta.get("visible_rumor_count", str(visible_rumor_count))
             ),
             "schema_migration_count": int(schema_migration_count),
             "latest_schema_migration": (
@@ -725,6 +763,20 @@ class SqliteProjectionStore:
                     player_id,
                     json.dumps(sorted(crew_set), separators=(",", ":")),
                 ),
+            ).fetchall()
+        return [json.loads(row[0]) for row in rows]
+
+    def read_visible_rumors_for_crew(self, crew_id: str) -> list[dict[str, Any]]:
+        with sqlite3.connect(self.path) as connection:
+            self._ensure_schema(connection)
+            rows = connection.execute(
+                """
+                select payload_json
+                from visible_rumor_surface
+                where crew_id = ?
+                order by rumor_index, rumor_id
+                """,
+                (crew_id,),
             ).fetchall()
         return [json.loads(row[0]) for row in rows]
 
@@ -950,6 +1002,24 @@ class SqliteProjectionStore:
             on pending_decision_surface (player_id, crew_id, kind)
             """
         )
+        connection.execute(
+            """
+            create table if not exists visible_rumor_surface (
+                crew_id text not null,
+                rumor_id text not null,
+                rumor_index integer not null,
+                payload_json text not null,
+                updated_sequence integer not null,
+                primary key (crew_id, rumor_id)
+            )
+            """
+        )
+        connection.execute(
+            """
+            create index if not exists idx_visible_rumor_surface_crew
+            on visible_rumor_surface (crew_id, rumor_index)
+            """
+        )
 
     def _ensure_artifact_scoped_surface_schema(self, connection: sqlite3.Connection) -> None:
         existing_columns = {
@@ -1020,6 +1090,7 @@ def build_projection_snapshot(events: list[GameEvent]) -> dict[str, Any]:
         actions_by_crew=actions_by_crew,
         events=events,
     )
+    visible_rumors_by_crew = _visible_rumors_by_crew_from_events(events)
     chat_messages = [
         event
         for event in events
@@ -1039,6 +1110,7 @@ def build_projection_snapshot(events: list[GameEvent]) -> dict[str, Any]:
         "proof_dossiers": proof_dossiers,
         "actions_by_crew": actions_by_crew,
         "pending_decisions": pending_decisions,
+        "visible_rumors_by_crew": visible_rumors_by_crew,
         "chat_messages": chat_messages,
         "visible_events": visible_events,
         "last_sequence": events[-1].sequence if events else 0,

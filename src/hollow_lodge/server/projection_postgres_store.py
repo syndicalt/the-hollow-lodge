@@ -41,6 +41,7 @@ class PostgresProjectionStore:
         chat_messages = snapshot["chat_messages"]
         actions_by_crew = snapshot["actions_by_crew"]
         pending_decisions = snapshot["pending_decisions"]
+        visible_rumors_by_crew = snapshot["visible_rumors_by_crew"]
         visible_events = snapshot["visible_events"]
         last_sequence = snapshot["last_sequence"]
 
@@ -59,6 +60,7 @@ class PostgresProjectionStore:
                 "chat_message_surface",
                 "action_surface",
                 "pending_decision_surface",
+                "visible_rumor_surface",
             ):
                 connection.execute(f"delete from {table}")
 
@@ -309,6 +311,28 @@ class PostgresProjectionStore:
                         last_sequence,
                     ),
                 )
+            rumor_count = 0
+            for crew_id, rumors in visible_rumors_by_crew.items():
+                for rumor_index, rumor in enumerate(rumors):
+                    rumor_count += 1
+                    connection.execute(
+                        """
+                        insert into visible_rumor_surface (
+                            crew_id,
+                            rumor_id,
+                            rumor_index,
+                            payload_json,
+                            updated_sequence
+                        ) values (%s, %s, %s, %s::jsonb, %s)
+                        """,
+                        (
+                            crew_id,
+                            rumor["rumor_id"],
+                            rumor_index,
+                            _json_dumps(rumor),
+                            last_sequence,
+                        ),
+                    )
 
             self._set_meta(connection, "schema_version", SCHEMA_VERSION)
             self._set_meta(connection, "last_sequence", str(last_sequence))
@@ -324,6 +348,7 @@ class PostgresProjectionStore:
                 "pending_decision_count",
                 str(len(pending_decisions)),
             )
+            self._set_meta(connection, "visible_rumor_count", str(rumor_count))
             self._set_meta(connection, "visible_event_count", str(len(visible_events)))
             self._set_meta(
                 connection,
@@ -370,6 +395,9 @@ class PostgresProjectionStore:
                 pending_decision_count = connection.execute(
                     "select count(*) from pending_decision_surface"
                 ).fetchone()[0]
+                visible_rumor_count = connection.execute(
+                    "select count(*) from visible_rumor_surface"
+                ).fetchone()[0]
                 visible_event_count = connection.execute(
                     "select count(*) from visible_event_surface"
                 ).fetchone()[0]
@@ -410,6 +438,7 @@ class PostgresProjectionStore:
                 "chat_message_count": 0,
                 "action_count": 0,
                 "pending_decision_count": 0,
+                "visible_rumor_count": 0,
                 "schema_migration_count": 0,
                 "latest_schema_migration": None,
                 "visible_event_count": 0,
@@ -448,6 +477,9 @@ class PostgresProjectionStore:
             "action_count": int(meta.get("action_count", str(action_count))),
             "pending_decision_count": int(
                 meta.get("pending_decision_count", str(pending_decision_count))
+            ),
+            "visible_rumor_count": int(
+                meta.get("visible_rumor_count", str(visible_rumor_count))
             ),
             "schema_migration_count": int(schema_migration_count),
             "latest_schema_migration": (
@@ -657,6 +689,20 @@ class PostgresProjectionStore:
                 order by crew_id, decision_index
                 """,
                 (player_id, sorted(crew_set)),
+            ).fetchall()
+        return [_load_json(row[0]) for row in rows]
+
+    def read_visible_rumors_for_crew(self, crew_id: str) -> list[dict[str, Any]]:
+        with self._connect() as connection:
+            self._ensure_schema(connection)
+            rows = connection.execute(
+                """
+                select payload_json
+                from visible_rumor_surface
+                where crew_id = %s
+                order by rumor_index, rumor_id
+                """,
+                (crew_id,),
             ).fetchall()
         return [_load_json(row[0]) for row in rows]
 
@@ -900,6 +946,24 @@ class PostgresProjectionStore:
             """
             create index if not exists idx_pending_decision_surface_player
             on pending_decision_surface (player_id, crew_id, kind)
+            """
+        )
+        connection.execute(
+            """
+            create table if not exists visible_rumor_surface (
+                crew_id text not null,
+                rumor_id text not null,
+                rumor_index integer not null,
+                payload_json jsonb not null,
+                updated_sequence bigint not null,
+                primary key (crew_id, rumor_id)
+            )
+            """
+        )
+        connection.execute(
+            """
+            create index if not exists idx_visible_rumor_surface_crew
+            on visible_rumor_surface (crew_id, rumor_index)
             """
         )
 

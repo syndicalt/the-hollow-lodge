@@ -447,6 +447,181 @@ def test_projection_store_materializes_pending_decisions_without_private_deal_te
     assert "deal-propose" not in serialized_rows
 
 
+def test_projection_store_materializes_visible_rumors_without_private_sources(
+    tmp_path,
+):
+    client = TestClient(create_app(data_dir=tmp_path, invite_codes=["a", "b", "c"]))
+    ada = register(client, "a", "Ada")
+    bela = register(client, "b", "Bela")
+    caro = register(client, "c", "Caro")
+    gilt = create_crew(client, ada["token"], "crew-create-gilt", "The Gilt Knives")
+    moth = create_crew(client, bela["token"], "crew-create-moth", "The Moth Choir")
+    ash = create_crew(client, caro["token"], "crew-create-ash", "The Ash Keys")
+    proposed = client.post(
+        "/deals",
+        headers=command_auth(ada["token"], "deal-propose"),
+        json=proposed_deal_payload(gilt, moth),
+    )
+
+    assert proposed.status_code == 201
+
+    client.app.state.projection_store.rebuild(client.app.state.event_store.read())
+    rumors = client.app.state.projection_store.read_visible_rumors_for_crew(
+        ash["crew_id"]
+    )
+    diagnostics = client.app.state.projection_store.diagnostics()
+    with sqlite3.connect(tmp_path / "server-projections.sqlite3") as connection:
+        rows = connection.execute(
+            """
+            select crew_id, rumor_id, payload_json
+            from visible_rumor_surface
+            order by crew_id, rumor_id
+            """
+        ).fetchall()
+
+    assert rumors == [
+        {
+            "rumor_id": "rumor_deal_000001",
+            "source_type": "deal.proposed",
+            "source_id": proposed.json()["deal_id"],
+            "contract_id": "contract_false_finger",
+            "suspected_crew_ids": [gilt["crew_id"], moth["crew_id"]],
+            "summary": "A side arrangement is circulating around contract_false_finger.",
+            "pressure": "escrow_terms_detected",
+            "leak_vector": "soft_term_reference",
+        }
+    ]
+    assert rows == [
+        (
+            ash["crew_id"],
+            "rumor_deal_000001",
+            json.dumps(rumors[0], sort_keys=True, separators=(",", ":")),
+        )
+    ]
+    assert diagnostics["visible_rumor_count"] == 1
+    serialized_rows = str(rows)
+    assert "Do not cite us." not in serialized_rows
+    assert "artifact_ledger_rubric" not in serialized_rows
+    assert "artifact_chapel_debt_mark" not in serialized_rows
+    assert "deal-propose" not in serialized_rows
+    assert client.app.state.projection_store.read_visible_rumors_for_crew(
+        gilt["crew_id"]
+    ) == []
+
+
+def test_crew_board_embeds_projected_visible_rumors_when_enabled(
+    tmp_path,
+    monkeypatch,
+):
+    monkeypatch.setenv("HOLLOW_LODGE_RUMOR_PROJECTION_READS", "1")
+    client = TestClient(create_app(data_dir=tmp_path, invite_codes=["a", "b", "c"]))
+    ada = register(client, "a", "Ada")
+    bela = register(client, "b", "Bela")
+    caro = register(client, "c", "Caro")
+    gilt = create_crew(client, ada["token"], "crew-create-gilt", "The Gilt Knives")
+    moth = create_crew(client, bela["token"], "crew-create-moth", "The Moth Choir")
+    ash = create_crew(client, caro["token"], "crew-create-ash", "The Ash Keys")
+    proposed = client.post(
+        "/deals",
+        headers=command_auth(ada["token"], "deal-propose"),
+        json=proposed_deal_payload(gilt, moth),
+    )
+    original_read = client.app.state.projection_store.read_visible_rumors_for_crew
+    calls = {"count": 0}
+
+    def tracked_read_visible_rumors_for_crew(crew_id: str):
+        calls["count"] += 1
+        return original_read(crew_id)
+
+    client.app.state.projection_store.read_visible_rumors_for_crew = (
+        tracked_read_visible_rumors_for_crew
+    )
+    monkeypatch.setattr(
+        routes_crews,
+        "visible_rumors_for_crew",
+        lambda *args, **kwargs: (_ for _ in ()).throw(
+            AssertionError("crew board should use fresh rumor projection")
+        ),
+    )
+
+    response = client.get(
+        f"/crews/{ash['crew_id']}/board",
+        headers=auth(caro["token"]),
+    )
+
+    assert proposed.status_code == 201
+    assert response.status_code == 200
+    assert calls["count"] == 1
+    assert response.json()["rumors"] == [
+        {
+            "rumor_id": "rumor_deal_000001",
+            "source_type": "deal.proposed",
+            "source_id": proposed.json()["deal_id"],
+            "contract_id": "contract_false_finger",
+            "suspected_crew_ids": [gilt["crew_id"], moth["crew_id"]],
+            "summary": "A side arrangement is circulating around contract_false_finger.",
+            "pressure": "escrow_terms_detected",
+            "leak_vector": "soft_term_reference",
+        }
+    ]
+    assert "Do not cite us." not in str(response.json()["rumors"])
+    assert "artifact_ledger_rubric" not in str(response.json()["rumors"])
+    assert "artifact_chapel_debt_mark" not in str(response.json()["rumors"])
+
+
+def test_crew_board_visible_rumors_fall_back_when_projection_is_stale(
+    tmp_path,
+    monkeypatch,
+):
+    monkeypatch.setenv("HOLLOW_LODGE_RUMOR_PROJECTION_READS", "1")
+    client = TestClient(create_app(data_dir=tmp_path, invite_codes=["a"]))
+    ada = register(client, "a", "Ada")
+    crew = create_crew(client, ada["token"], "crew-create-gilt", "The Gilt Knives")
+    client.app.state.projection_store.rebuild(client.app.state.event_store.read())
+    rumor = {
+        "rumor_id": "rumor_out_of_band",
+        "source_type": "manual.test",
+        "source_id": "source_out_of_band",
+        "contract_id": "contract_false_finger",
+        "suspected_crew_ids": ["crew_shadow"],
+        "summary": "A late rumor reached the crew after projection refresh.",
+        "pressure": "late_signal",
+        "leak_vector": "manual",
+        "private_note": "must not appear",
+    }
+    client.app.state.event_store.append_command(
+        event_type="contract.rumor.leaked",
+        actor_id="server",
+        visibility=EventVisibility.crews([crew["crew_id"]]),
+        payload=rumor,
+        idempotency_key="out-of-band-rumor",
+    )
+
+    def fail_if_projection_read(crew_id: str):
+        raise AssertionError("stale rumor projection should not be used")
+
+    client.app.state.projection_store.read_visible_rumors_for_crew = (
+        fail_if_projection_read
+    )
+
+    response = client.get(f"/crews/{crew['crew_id']}/board", headers=auth(ada["token"]))
+
+    assert response.status_code == 200
+    assert response.json()["rumors"] == [
+        {
+            "rumor_id": "rumor_out_of_band",
+            "source_type": "manual.test",
+            "source_id": "source_out_of_band",
+            "contract_id": "contract_false_finger",
+            "suspected_crew_ids": ["crew_shadow"],
+            "summary": "A late rumor reached the crew after projection refresh.",
+            "pressure": "late_signal",
+            "leak_vector": "manual",
+        }
+    ]
+    assert "private_note" not in str(response.json()["rumors"])
+
+
 def test_inbox_and_crew_board_read_fresh_pending_decision_projection_when_enabled(
     tmp_path,
     monkeypatch,

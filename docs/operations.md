@@ -124,6 +124,9 @@ HOLLOW_LODGE_PROJECTION_READS=1
 Individual surface flags such as `HOLLOW_LODGE_CHAT_PROJECTION_READS=0` can
 override the global switch during a targeted rollback. `/diagnostics` reports
 the effective projection read configuration in `data.projection_reads`.
+Implemented surfaces include contract board, crew summary, visible artifacts,
+visible deals, proof dossiers, chat, visible events, pending decisions,
+current actions, and crew-board visible rumors.
 
 Projection storage and authoritative event storage are separate cutovers.
 Projection storage can use `DATABASE_URL` for Railway convenience; the

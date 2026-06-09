@@ -2282,6 +2282,30 @@ Expected verification:
 - `pytest tests/eventlog tests/e2e/test_projection_backend_smoke.py tests/client/test_cli_commands.py tests/server/test_app_config.py -q`
 - `pytest -q`
 
+### Slice 91: Visible Rumor Projection Reads
+
+Status: completed.
+
+Move crew-board visible rumor reads onto the projection database without
+widening leak visibility or moving rumor authority out of the Eventloom log.
+SQLite and Postgres projection stores now materialize safe
+`visible_rumor_surface` rows per crew using only the whitelisted rumor fields:
+rumor id, source summary fields, contract id, suspected crew ids, pressure,
+and leak vector. The projection omits raw chat bodies, private deal terms,
+artifact ids, idempotency keys, and non-whitelisted event payload fields.
+
+When `HOLLOW_LODGE_RUMOR_PROJECTION_READS=1`, `/crews/{crew_id}/board` reads
+visible rumors from the projection only when the projection is available and
+has zero lag. Stale or unavailable projections fall back to the existing
+event-log visibility replay path. This advances the projection schema to
+version `6`.
+
+Expected verification:
+
+- `pytest tests/server/test_projection_store.py::test_projection_store_materializes_visible_rumors_without_private_sources tests/server/test_projection_store.py::test_crew_board_embeds_projected_visible_rumors_when_enabled tests/server/test_projection_store.py::test_crew_board_visible_rumors_fall_back_when_projection_is_stale -q`
+- `pytest tests/server/test_projection_store.py tests/server/test_crew_routes.py tests/server/test_chat_routes.py tests/server/test_deal_routes.py tests/server/test_app_config.py tests/e2e/test_projection_backend_smoke.py tests/client/test_cli_commands.py -q`
+- `pytest -q`
+
 ## Completion Standard
 
 Each slice must:
