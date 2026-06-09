@@ -332,9 +332,17 @@ class DealService:
                 ],
                 "summary": f"A side arrangement is circulating around {deal['contract_id']}.",
                 "pressure": "escrow_terms_detected",
+                "leak_vector": self._deal_rumor_leak_vector(deal),
             },
             idempotency_key=f"{idempotency_key}.rumor",
         )
+
+    def _deal_rumor_leak_vector(self, deal: dict) -> str:
+        if deal.get("soft_terms"):
+            return "soft_term_reference"
+        if deal.get("offered_artifact_ids") or deal.get("requested_artifact_ids"):
+            return "escrow_artifact_swap"
+        return "side_arrangement"
 
     def _deal_by_id(self, deal_id: str) -> dict:
         for row in deal_rows_from_events(self._event_store.read()):

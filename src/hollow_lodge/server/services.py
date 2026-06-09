@@ -2645,6 +2645,14 @@ class ActionService:
                     "but not enough to expose the private source."
                 ),
             )
+        if pressure == "escrow_terms_detected" and leak_vector == "soft_term_reference":
+            return (
+                "credible_soft_term_signal",
+                (
+                    "The investigation found a credible soft-term signal, but "
+                    "not enough to expose the private source."
+                ),
+            )
         if pressure == "artifact_reference_detected":
             return (
                 "credible_artifact_signal",

@@ -126,6 +126,7 @@ def test_deal_proposal_leaks_partial_rumor_to_bystander_crew_without_deal_terms(
         "suspected_crew_ids": [gilt["crew_id"], moth["crew_id"]],
         "summary": "A side arrangement is circulating around contract_false_finger.",
         "pressure": "escrow_terms_detected",
+        "leak_vector": "soft_term_reference",
     }
     assert "artifact_ledger_rubric" not in str(rumor_events)
     assert "artifact_chapel_debt_mark" not in str(rumor_events)
@@ -187,6 +188,7 @@ def test_deal_rumor_becomes_pending_decision_for_bystander_crew(tmp_path):
         "source_type": "deal.proposed",
         "source_id": proposed.json()["deal_id"],
         "pressure": "escrow_terms_detected",
+        "leak_vector": "soft_term_reference",
         "action": "review_rumor",
     }
     assert proposed.status_code == 201
@@ -197,6 +199,52 @@ def test_deal_rumor_becomes_pending_decision_for_bystander_crew(tmp_path):
     assert "artifact_ledger_rubric" not in str(board.json()["pending_decisions"])
     assert "artifact_chapel_debt_mark" not in str(board.json()["pending_decisions"])
     assert "Do not cite us." not in str(board.json()["pending_decisions"])
+
+
+def test_deal_rumor_without_soft_terms_uses_artifact_swap_leak_vector(tmp_path):
+    app = create_app(data_dir=tmp_path, invite_codes=["a", "b", "c"])
+    client = TestClient(app)
+    ada = register(client, "a", "Ada")
+    bela = register(client, "b", "Bela")
+    caro = register(client, "c", "Caro")
+    gilt = create_crew(client, ada["token"], "Gilt Knives", "crew-gilt")
+    moth = create_crew(client, bela["token"], "Moth Lanterns", "crew-moth")
+    ash = create_crew(client, caro["token"], "Ash Keys", "crew-ash")
+    app.state.artifact_service.grant_artifact_access(
+        artifact_id="artifact_chapel_debt_mark",
+        actor_id="server",
+        player_ids=[],
+        crew_ids=[moth["crew_id"]],
+        reason="test setup",
+        idempotency_key="grant-chapel",
+    )
+
+    proposed = client.post(
+        "/deals",
+        headers=command_auth(ada["token"], "deal-propose-no-soft-terms"),
+        json={
+            **proposed_deal_payload(gilt, moth),
+            "soft_terms": [],
+        },
+    )
+    board = client.get(f"/crews/{ash['crew_id']}/board", headers=auth(caro["token"]))
+
+    assert proposed.status_code == 201
+    rumors = board.json()["rumors"]
+    assert rumors == [
+        {
+            "rumor_id": "rumor_deal_000001",
+            "source_type": "deal.proposed",
+            "source_id": proposed.json()["deal_id"],
+            "contract_id": "contract_false_finger",
+            "suspected_crew_ids": [gilt["crew_id"], moth["crew_id"]],
+            "summary": "A side arrangement is circulating around contract_false_finger.",
+            "pressure": "escrow_terms_detected",
+            "leak_vector": "escrow_artifact_swap",
+        }
+    ]
+    assert "artifact_ledger_rubric" not in str(rumors)
+    assert "artifact_chapel_debt_mark" not in str(rumors)
 
 
 def test_persisted_deals_render_after_restart_before_deals_route(tmp_path):

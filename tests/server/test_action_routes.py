@@ -998,6 +998,7 @@ def test_deal_rumor_investigation_preserves_contract_id_without_terms(tmp_path):
             "source_id": proposed.json()["deal_id"],
             "contract_id": "contract_false_finger",
             "pressure": "escrow_terms_detected",
+            "leak_vector": "soft_term_reference",
             "mode": "investigate",
             "outcome": "investigation_started",
             "heat_delta": 0,
@@ -1014,10 +1015,11 @@ def test_deal_rumor_investigation_preserves_contract_id_without_terms(tmp_path):
             "source_id": proposed.json()["deal_id"],
             "contract_id": "contract_false_finger",
             "pressure": "escrow_terms_detected",
-            "assessment": "credible_arrangement_signal",
+            "leak_vector": "soft_term_reference",
+            "assessment": "credible_soft_term_signal",
             "confidence": "medium",
             "summary": (
-                "The investigation found a credible arrangement signal, but "
+                "The investigation found a credible soft-term signal, but "
                 "not enough to expose the private source."
             ),
         }

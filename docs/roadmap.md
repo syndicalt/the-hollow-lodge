@@ -375,6 +375,12 @@ Status:
   safe enum, and body-only mentions now verify as a distinct
   `credible_artifact_mention_signal` without exposing message text, artifact
   IDs, artifact titles, player IDs, or participant-only chat contents.
+- Fourteenth social-pressure slice completed: deal-originated rumor leaks now
+  carry the same bounded `leak_vector` shape. Escrow deals with soft terms
+  surface only `soft_term_reference`, bare artifact swaps surface
+  `escrow_artifact_swap`, and soft-term references verify as a distinct
+  `credible_soft_term_signal` without exposing artifact IDs, soft-term text,
+  player IDs, acceptance state, or participant-only deal details.
 - Escrowed deal acceptance remains participant-scoped and server-enforced.
 - Deferred: additional rumor verification sources and deeper long-term
   consequences from repeated credible signal follow-through.
@@ -997,6 +1003,27 @@ Expected verification:
 
 - `pytest tests/server/test_chat_routes.py::test_crew_to_crew_artifact_chat_leaks_redacted_rumor_to_bystander_crew tests/server/test_chat_routes.py::test_crew_to_crew_body_artifact_reference_leaks_redacted_rumor tests/server/test_chat_routes.py::test_visible_chat_rumor_becomes_pending_decision_for_bystander_crew tests/server/test_action_routes.py::test_investigating_body_mention_rumor_records_distinct_safe_verification -q`
 - `pytest tests/server/test_chat_routes.py tests/server/test_action_routes.py tests/server/test_crew_routes.py tests/client/test_render_packets.py -q`
+- `pytest -q`
+
+### Slice 37: Deal Rumor Leak Vector Verification
+
+Status: completed.
+
+Apply the safe verification-source pattern to deal-originated rumors.
+Redacted `contract.rumor.leaked` events from proposed deals now include a
+bounded `leak_vector`: `soft_term_reference` when an escrow deal includes soft
+terms, `escrow_artifact_swap` for bare artifact swaps, and `side_arrangement`
+as a defensive fallback. The enum flows through visible rumor projections,
+pending decisions, rumor response outcomes, verification events, and existing
+Codex render packet shaping. Soft-term references now verify as
+`credible_soft_term_signal` with a safe summary, while artifact IDs, artifact
+titles, soft-term text, player IDs, deal acceptance state, and participant-only
+deal details remain outside bystander and activity surfaces.
+
+Expected verification:
+
+- `pytest tests/server/test_deal_routes.py::test_deal_proposal_leaks_partial_rumor_to_bystander_crew_without_deal_terms tests/server/test_deal_routes.py::test_deal_rumor_becomes_pending_decision_for_bystander_crew tests/server/test_deal_routes.py::test_deal_rumor_without_soft_terms_uses_artifact_swap_leak_vector tests/server/test_action_routes.py::test_deal_rumor_investigation_preserves_contract_id_without_terms -q`
+- `pytest tests/server/test_deal_routes.py tests/server/test_action_routes.py tests/server/test_crew_routes.py tests/client/test_render_packets.py -q`
 - `pytest -q`
 
 ## Completion Standard
