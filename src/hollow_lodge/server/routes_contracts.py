@@ -130,7 +130,12 @@ def inbox(
     player: Player = Depends(current_player),
 ):
     board = _board_for_player_with_unlocks(request, player.player_id)
-    payload = inbox_from_board(player_id=player.player_id, board=board)
+    events = read_authoritative_events(request)
+    payload = inbox_from_board(
+        player_id=player.player_id,
+        board=board,
+        events=events,
+    )
     payload["active_contracts"] = unlocked_actionable_contracts(
         payload["active_contracts"]
     )
@@ -146,7 +151,6 @@ def inbox(
     if projected_decisions is not None:
         payload["pending_decisions"] = projected_decisions
     else:
-        events = read_authoritative_events(request)
         deals_by_crew = {
             crew_id: _deals_for_crew(request, player.player_id, crew_id)
             for crew_id in crew_ids

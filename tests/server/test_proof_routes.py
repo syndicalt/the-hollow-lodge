@@ -58,6 +58,54 @@ def test_recipient_sees_only_surface_provenance_until_check_is_spent(tmp_path):
     assert checked.json()["provenance_flags"] == ["copied-hand", "ink-after-binding"]
 
 
+def test_transferred_fragment_surfaces_in_recipient_inbox_without_flags(tmp_path):
+    client = TestClient(create_app(data_dir=tmp_path, invite_codes=["a", "b", "c"]))
+    ada = register(client, "a", "Ada")
+    grace = register(client, "b", "Grace")
+    linus = register(client, "c", "Linus")
+
+    transfer = client.post(
+        "/proofs/fragments/fragment_starter_ledger/transfer",
+        headers=command_auth(ada["token"], "proof-transfer-1"),
+        json={"recipient_player_id": grace["player_id"]},
+    )
+    copy_id = transfer.json()["fragment_id"]
+    recipient_inbox = client.get("/inbox", headers=auth(grace["token"]))
+    sender_inbox = client.get("/inbox", headers=auth(ada["token"]))
+    unrelated_inbox = client.get("/inbox", headers=auth(linus["token"]))
+
+    assert recipient_inbox.status_code == 200
+    assert recipient_inbox.json()["incoming_proof_fragments"] == [
+        {
+            "fragment_id": copy_id,
+            "summary": "A red ledger rubric names three prior owners.",
+        }
+    ]
+    assert sender_inbox.json()["incoming_proof_fragments"] == []
+    assert unrelated_inbox.json()["incoming_proof_fragments"] == []
+    serialized_fragments = str(recipient_inbox.json()["incoming_proof_fragments"])
+    assert "copied-hand" not in serialized_fragments
+    assert "ink-after-binding" not in serialized_fragments
+    assert "source_fragment_id" not in serialized_fragments
+    assert "proof.fragment.transferred.internal" not in serialized_fragments
+
+    checked = client.post(
+        f"/proofs/fragments/{copy_id}/check/provenance",
+        headers=command_auth(grace["token"], "proof-check-1"),
+    )
+    checked_inbox = client.get("/inbox", headers=auth(grace["token"]))
+
+    assert checked.status_code == 201
+    assert checked_inbox.json()["incoming_proof_fragments"] == [
+        {
+            "fragment_id": copy_id,
+            "summary": "A red ledger rubric names three prior owners.",
+        }
+    ]
+    assert "copied-hand" not in str(checked_inbox.json()["incoming_proof_fragments"])
+    assert "ink-after-binding" not in str(checked_inbox.json()["incoming_proof_fragments"])
+
+
 def test_untargeted_player_cannot_fetch_or_check_starter_fragment(tmp_path):
     client = TestClient(create_app(data_dir=tmp_path, invite_codes=["a", "b"]))
     ada = register(client, "a", "Ada")

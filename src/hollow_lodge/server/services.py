@@ -942,7 +942,11 @@ class ContractService:
         return contract_board_from_events(self._event_store.read())
 
     def inbox_for_player(self, player_id: str):
-        return inbox_from_board(player_id=player_id, board=self.board_for_player(player_id))
+        return inbox_from_board(
+            player_id=player_id,
+            board=self.board_for_player(player_id),
+            events=self._event_store.read(),
+        )
 
     def activate_contract_seed(
         self,

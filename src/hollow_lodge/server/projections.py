@@ -48,7 +48,12 @@ def contract_board_from_events(events: list[GameEvent]) -> dict[str, Any]:
     }
 
 
-def inbox_from_board(*, player_id: str, board: dict[str, Any]) -> dict[str, Any]:
+def inbox_from_board(
+    *,
+    player_id: str,
+    board: dict[str, Any],
+    events: list[GameEvent] | None = None,
+) -> dict[str, Any]:
     return {
         "player_id": player_id,
         "active_contracts": [
@@ -56,8 +61,36 @@ def inbox_from_board(*, player_id: str, board: dict[str, Any]) -> dict[str, Any]
             for contract in board["contracts"]
             if contract.get("lifecycle_status", "active") != "archived"
         ],
-        "incoming_proof_fragments": [],
+        "incoming_proof_fragments": incoming_proof_fragments_from_events(
+            player_id=player_id,
+            events=events or [],
+        ),
     }
+
+
+def incoming_proof_fragments_from_events(
+    *,
+    player_id: str,
+    events: list[GameEvent],
+) -> list[dict[str, Any]]:
+    fragments: dict[str, dict[str, Any]] = {}
+    for event in events:
+        if event.type != "proof.fragment.transferred":
+            continue
+        if event.payload.get("recipient_player_id") != player_id:
+            continue
+        surface = event.payload.get("surface", {})
+        fragment_id = surface.get("fragment_id")
+        if not fragment_id:
+            continue
+        fragments[str(fragment_id)] = {
+            "fragment_id": str(fragment_id),
+            "summary": str(surface.get("content_summary", "")),
+        }
+    return [
+        fragments[fragment_id]
+        for fragment_id in sorted(fragments)
+    ]
 
 
 def crew_summaries_from_events(events: list[GameEvent]) -> dict[str, dict[str, Any]]:

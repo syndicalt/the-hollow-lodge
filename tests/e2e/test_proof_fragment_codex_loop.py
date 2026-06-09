@@ -50,6 +50,22 @@ def test_codex_proof_fragment_transfer_check_and_dossier_loop(tmp_path):
     assert "copied-hand" not in str(result["transferred"])
     assert "ink-after-binding" not in str(result["transferred"])
 
+    assert result["grace_inbox"]["agent_context"]["incoming_proof_fragments"] == [
+        {
+            "fragment_id": copied_fragment_id,
+            "summary": "A red ledger rubric names three prior owners.",
+        }
+    ]
+    assert result["grace_inbox"]["agent_context"]["urgent_items"][-1] == {
+        "kind": "proof_fragment",
+        "fragment_id": copied_fragment_id,
+    }
+    assert f"- {copied_fragment_id}: A red ledger rubric names three prior owners." in (
+        result["grace_inbox"]["player_markdown"]
+    )
+    assert "copied-hand" not in str(result["grace_inbox"])
+    assert "ink-after-binding" not in str(result["grace_inbox"])
+
     before = result["fragment_before_check"]
     assert before["surface"] == "proof_fragment"
     assert before["agent_context"]["fragment"] == {

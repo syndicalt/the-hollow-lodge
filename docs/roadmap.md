@@ -4400,6 +4400,33 @@ Expected verification:
 - `pytest tests/e2e/test_proof_fragment_codex_loop.py tests/server/test_proof_routes.py tests/client/test_codex_session.py tests/client/test_render_packets.py tests/test_mcp_server.py -q`
 - `pytest -q`
 
+### Slice 182: Incoming Proof Fragment Inbox Surface
+
+Status: completed.
+
+Close the remaining live-inbox gap in the proof-fragment loop. Transferred
+proof fragments now appear in the recipient player's inbox and Codex
+`what-now` priority context as urgent proof-fragment items. The inbox projection
+derives this from visible `proof.fragment.transferred` events where the player
+is the recipient, maps the safe `surface.content_summary` into the inbox
+summary, and excludes source fragment ids, internal transfer events,
+provenance flags, auth material, idempotency keys, hashes, and raw event
+envelopes.
+
+The server proof verifies that the recipient sees the copied fragment, the
+sender and an unrelated player do not, and the inbox stays provenance-safe even
+after the recipient spends a provenance check. The e2e proof extends the Codex
+fragment loop so Grace's inbox shows Ada's transferred fragment before the
+check/dossier work continues.
+
+Expected verification:
+
+- `pytest tests/server/test_proof_routes.py::test_transferred_fragment_surfaces_in_recipient_inbox_without_flags -q`
+- `pytest tests/e2e/test_proof_fragment_codex_loop.py -q`
+- `pytest tests/e2e/test_proof_fragment_codex_loop.py tests/server/test_proof_routes.py tests/client/test_render_packets.py tests/client/test_codex_session.py tests/test_mcp_server.py -q`
+- `pytest tests/server/test_projection_store.py tests/server/test_contract_seed.py -q`
+- `pytest -q`
+
 ## Completion Standard
 
 Each slice must:
