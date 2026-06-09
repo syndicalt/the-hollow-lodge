@@ -3504,6 +3504,29 @@ Expected verification:
 - `pytest tests/client/test_cli_commands.py tests/client/test_installer_script.py tests/client/test_codex_mcp_config.py tests/client/test_local_log.py -q`
 - `pytest -q`
 
+### Slice 142: Doctor Codex Inbox Render Validation
+
+Status: completed.
+
+Harden the final installed-client leg of the clean-machine proof gate by making
+`hollow-lodge doctor` construct a Codex inbox render packet through
+`CodexGameSession`, using the saved config and the configured local perspective
+log. This proves the client can move beyond HTTP reachability into the same
+session sync, inbox fetch, and render-packet construction path used by the MCP
+`render_inbox` surface.
+
+The render smoke is read-only from the server's perspective and reports only
+bounded packet metadata, such as `ok surface=inbox` or `failed`. It does not
+print player markdown, agent context, contract titles, event bodies, bearer
+tokens, server error text, unexpected player ids, or other gameplay payload
+details.
+
+Expected verification:
+
+- `pytest tests/client/test_cli_commands.py::test_doctor_reports_registered_player_and_mcp_without_secret_material tests/client/test_cli_commands.py::test_doctor_reports_pending_onboarding_without_contact tests/client/test_cli_commands.py::test_doctor_reports_unconfigured_install_and_unreachable_server tests/client/test_cli_commands.py::test_doctor_reports_failed_saved_auth_without_leaking_error tests/client/test_cli_commands.py::test_doctor_reports_saved_auth_player_mismatch_without_leaking_token tests/client/test_cli_commands.py::test_doctor_reports_failed_inbox_without_leaking_error_or_payload tests/client/test_cli_commands.py::test_doctor_reports_inbox_player_mismatch_without_leaking_returned_player tests/client/test_cli_commands.py::test_doctor_reports_failed_event_sync_without_leaking_event_payload -q`
+- `pytest tests/client/test_cli_commands.py tests/client/test_installer_script.py tests/client/test_codex_mcp_config.py tests/client/test_local_log.py tests/client/test_codex_session.py -q`
+- `pytest -q`
+
 ## Completion Standard
 
 Each slice must:

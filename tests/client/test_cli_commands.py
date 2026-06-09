@@ -879,11 +879,13 @@ def test_doctor_reports_registered_player_and_mcp_without_secret_material(
     assert "auth: ok player_0001" in result.output
     assert "inbox: ok active_contracts=1" in result.output
     assert "event sync: ok synced=1 max_sequence=7" in result.output
+    assert "codex inbox render: ok surface=inbox" in result.output
     assert f"mcp: registered {codex_config}" in result.output
     assert "mcp config command: ok hollow-lodge-mcp" in result.output
     assert "mcp command: available hollow-lodge-mcp" in result.output
     assert "secret-token" not in result.output
     assert "No public claims until lock." not in result.output
+    assert "The Saint's False Finger" not in result.output
     assert created_clients[0].calls == [("health", {})]
     assert created_clients[1].token == "secret-token"
     assert created_clients[1].calls == [("me", {})]
@@ -891,6 +893,8 @@ def test_doctor_reports_registered_player_and_mcp_without_secret_material(
     assert created_clients[2].calls == [("inbox", {})]
     assert created_clients[3].token == "secret-token"
     assert created_clients[3].calls == [("visible_events", {})]
+    assert created_clients[4].token == "secret-token"
+    assert created_clients[4].calls == [("visible_events", {}), ("inbox", {})]
     assert "No public claims until lock." in local_log_path.read_text(encoding="utf-8")
 
 
@@ -936,6 +940,7 @@ def test_doctor_reports_pending_onboarding_without_contact(tmp_path, monkeypatch
     assert "auth:" not in result.output
     assert "inbox:" not in result.output
     assert "event sync:" not in result.output
+    assert "codex inbox render:" not in result.output
     assert f"mcp: missing {codex_config}" in result.output
     assert "mcp config command: missing" in result.output
     assert "mcp command: missing hollow-lodge-mcp" in result.output
@@ -977,6 +982,7 @@ def test_doctor_reports_unconfigured_install_and_unreachable_server(tmp_path, mo
     assert "auth:" not in result.output
     assert "inbox:" not in result.output
     assert "event sync:" not in result.output
+    assert "codex inbox render:" not in result.output
     assert "mcp: missing" in result.output
     assert "mcp config command: missing" in result.output
     assert "mcp command: missing hollow-lodge-mcp" in result.output
@@ -1064,6 +1070,7 @@ def test_doctor_reports_failed_saved_auth_without_leaking_error(tmp_path, monkey
     assert "auth: failed" in result.output
     assert "inbox: ok active_contracts=1" in result.output
     assert "event sync: ok synced=1 max_sequence=7" in result.output
+    assert "codex inbox render: ok surface=inbox" in result.output
     assert "secret-token" not in result.output
 
 
@@ -1109,6 +1116,7 @@ def test_doctor_reports_saved_auth_player_mismatch_without_leaking_token(tmp_pat
     assert "auth: mismatch" in result.output
     assert "inbox: ok active_contracts=1" in result.output
     assert "event sync: ok synced=1 max_sequence=7" in result.output
+    assert "codex inbox render: ok surface=inbox" in result.output
     assert "player_9999" not in result.output
     assert "secret-token" not in result.output
 
@@ -1154,6 +1162,7 @@ def test_doctor_reports_failed_inbox_without_leaking_error_or_payload(tmp_path, 
     assert "auth: ok player_0001" in result.output
     assert "inbox: failed" in result.output
     assert "event sync: ok synced=1 max_sequence=7" in result.output
+    assert "codex inbox render: failed" in result.output
     assert "secret-token" not in result.output
     assert "The Saint's False Finger" not in result.output
 
@@ -1202,6 +1211,7 @@ def test_doctor_reports_inbox_player_mismatch_without_leaking_returned_player(tm
     assert "auth: ok player_0001" in result.output
     assert "inbox: mismatch" in result.output
     assert "event sync: ok synced=1 max_sequence=7" in result.output
+    assert "codex inbox render: failed" in result.output
     assert "player_9999" not in result.output
     assert "The Saint's False Finger" not in result.output
 
@@ -1247,6 +1257,7 @@ def test_doctor_reports_failed_event_sync_without_leaking_event_payload(tmp_path
     assert "auth: ok player_0001" in result.output
     assert "inbox: ok active_contracts=1" in result.output
     assert "event sync: failed" in result.output
+    assert "codex inbox render: failed" in result.output
     assert "secret-token" not in result.output
     assert "No public claims until lock." not in result.output
 

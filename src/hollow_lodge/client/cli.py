@@ -36,6 +36,7 @@ from hollow_lodge.client.config import (
     save_config,
     save_onboarding_config,
 )
+from hollow_lodge.client.codex_session import CodexGameSession
 from hollow_lodge.client.handler import normalize_action_draft
 from hollow_lodge.client.local_log import LocalEventLog
 from hollow_lodge.client.paths import (
@@ -235,6 +236,10 @@ def doctor(
         typer.echo(f"auth: {_player_auth_status(registered_config)}")
         typer.echo(f"inbox: {_player_inbox_status(registered_config)}")
         typer.echo(f"event sync: {_player_event_sync_status(registered_config, local_log)}")
+        typer.echo(
+            f"codex inbox render: "
+            f"{_codex_inbox_render_status(registered_config, config, local_log)}"
+        )
     elif pending_config is not None:
         typer.echo(
             f"player: pending {pending_config.request_id} "
@@ -1526,6 +1531,25 @@ def _player_event_sync_status(config: ClientConfig, local_log_path: Path) -> str
     except Exception:
         return "failed"
     return f"ok synced={synced} max_sequence={max_sequence}"
+
+
+def _codex_inbox_render_status(
+    config: ClientConfig,
+    config_path: Path,
+    local_log_path: Path,
+) -> str:
+    try:
+        packet = CodexGameSession(
+            config_path=config_path,
+            local_log_path=local_log_path,
+            api=_api_from_config(config),
+        ).render_inbox()
+    except Exception:
+        return "failed"
+
+    if packet.surface != "inbox":
+        return "unexpected"
+    return "ok surface=inbox"
 
 
 def _command_status(command: str) -> str:
