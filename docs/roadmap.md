@@ -1607,6 +1607,30 @@ Expected verification:
 - `pytest tests/client/test_render_packets.py tests/client/test_codex_session.py tests/test_mcp_server.py tests/e2e/test_full_game_loop_with_escrow.py tests/e2e/test_codex_render_surfaces.py tests/server/test_chat_routes.py -q`
 - `pytest -q`
 
+### Slice 64: Proof Dossier Projection Reads
+
+Status: completed.
+
+Move the current proof dossier read model onto the projection database without
+moving dossier authority out of the event-log service path. SQLite and
+Postgres projection stores now materialize one safe current `proof_dossier`
+payload per crew, including claim, evidence ids, member contributions, artifact
+citations, Packet Lead, and Packet Lead vote/replacement history while
+excluding idempotency keys and command metadata. When
+`HOLLOW_LODGE_PROOF_DOSSIER_PROJECTION_READS=1`, standalone dossier reads,
+crew-board dossier blocks, and inbox pending-decision inputs use the projected
+dossier only if the projection is available and has zero lag. Stale, missing,
+or unreadable projection state falls back to the existing `ProofService`
+replay path. Dossier framing, contribution, citation, and Packet Lead vote
+mutations refresh the projection best-effort after the authoritative event-log
+write succeeds.
+
+Expected verification:
+
+- `pytest tests/server/test_projection_store.py::test_projection_store_materializes_current_proof_dossiers_without_command_metadata tests/server/test_projection_store.py::test_dossier_route_reads_fresh_projection_when_enabled tests/server/test_projection_store.py::test_embedded_dossier_surfaces_read_fresh_projection_when_enabled tests/server/test_projection_store.py::test_dossier_route_falls_back_when_projected_dossier_is_stale -q`
+- `pytest tests/server/test_projection_store.py tests/server/test_proof_routes.py tests/server/test_packet_lead.py tests/server/test_crew_routes.py tests/server/test_contract_seed.py tests/client/test_render_packets.py tests/client/test_codex_session.py tests/test_mcp_server.py -q`
+- `pytest -q`
+
 ## Completion Standard
 
 Each slice must:

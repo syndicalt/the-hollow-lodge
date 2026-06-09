@@ -8,6 +8,7 @@ from typing import Any
 
 from hollow_lodge.domain.deals import deal_rows_from_events
 from hollow_lodge.domain.events import GameEvent
+from hollow_lodge.domain.proofs import ProofDossier
 from hollow_lodge.server.projections import (
     apply_contract_unlock_status,
     artifact_visibility_from_events,
@@ -35,6 +36,7 @@ class SqliteProjectionStore:
         artifact_visibility = snapshot["artifact_visibility"]
         deals = snapshot["deals"]
         crew_legacies = snapshot["crew_legacies"]
+        proof_dossiers = snapshot["proof_dossiers"]
         visible_events = snapshot["visible_events"]
         last_sequence = snapshot["last_sequence"]
         with sqlite3.connect(self.path) as connection:
@@ -47,6 +49,7 @@ class SqliteProjectionStore:
             connection.execute("delete from deal_surface")
             connection.execute("delete from visible_event_surface")
             connection.execute("delete from crew_legacy")
+            connection.execute("delete from proof_dossier")
             for contract in board["contracts"]:
                 connection.execute(
                     """
@@ -189,6 +192,23 @@ class SqliteProjectionStore:
                         last_sequence,
                     ),
                 )
+            for crew_id, dossier in proof_dossiers.items():
+                connection.execute(
+                    """
+                    insert into proof_dossier (
+                        crew_id,
+                        packet_lead_player_id,
+                        payload_json,
+                        updated_sequence
+                    ) values (?, ?, ?, ?)
+                    """,
+                    (
+                        crew_id,
+                        dossier["packet_lead_player_id"],
+                        json.dumps(dossier, sort_keys=True, separators=(",", ":")),
+                        last_sequence,
+                    ),
+                )
             for event in visible_events:
                 payload = event.model_dump(mode="json")
                 connection.execute(
@@ -221,6 +241,7 @@ class SqliteProjectionStore:
             self._set_meta(connection, "crew_count", str(len(crew_summaries)))
             self._set_meta(connection, "deal_count", str(len(deals)))
             self._set_meta(connection, "crew_legacy_count", str(len(crew_legacies)))
+            self._set_meta(connection, "proof_dossier_count", str(len(proof_dossiers)))
             self._set_meta(connection, "visible_event_count", str(len(visible_events)))
             self._set_meta(
                 connection,
@@ -261,6 +282,7 @@ class SqliteProjectionStore:
                 "crew_count": 0,
                 "deal_count": 0,
                 "crew_legacy_count": 0,
+                "proof_dossier_count": 0,
                 "visible_event_count": 0,
                 "public_artifact_count": 0,
                 "scoped_artifact_count": 0,
@@ -282,6 +304,9 @@ class SqliteProjectionStore:
                 ).fetchone()[0]
                 crew_legacy_count = connection.execute(
                     "select count(*) from crew_legacy"
+                ).fetchone()[0]
+                proof_dossier_count = connection.execute(
+                    "select count(*) from proof_dossier"
                 ).fetchone()[0]
                 visible_event_count = connection.execute(
                     "select count(*) from visible_event_surface"
@@ -307,6 +332,7 @@ class SqliteProjectionStore:
                 "crew_count": 0,
                 "deal_count": 0,
                 "crew_legacy_count": 0,
+                "proof_dossier_count": 0,
                 "visible_event_count": 0,
                 "public_artifact_count": 0,
                 "scoped_artifact_count": 0,
@@ -332,6 +358,9 @@ class SqliteProjectionStore:
             "deal_count": int(meta.get("deal_count", str(deal_count))),
             "crew_legacy_count": int(
                 meta.get("crew_legacy_count", str(crew_legacy_count))
+            ),
+            "proof_dossier_count": int(
+                meta.get("proof_dossier_count", str(proof_dossier_count))
             ),
             "visible_event_count": int(
                 meta.get("visible_event_count", str(visible_event_count))
@@ -374,6 +403,17 @@ class SqliteProjectionStore:
             self._ensure_schema(connection)
             row = connection.execute(
                 "select payload_json from crew_legacy where crew_id = ?",
+                (crew_id,),
+            ).fetchone()
+        if row is None:
+            raise KeyError(crew_id)
+        return json.loads(row[0])
+
+    def read_proof_dossier(self, crew_id: str) -> dict[str, Any]:
+        with sqlite3.connect(self.path) as connection:
+            self._ensure_schema(connection)
+            row = connection.execute(
+                "select payload_json from proof_dossier where crew_id = ?",
                 (crew_id,),
             ).fetchone()
         if row is None:
@@ -531,6 +571,22 @@ class SqliteProjectionStore:
         )
         connection.execute(
             """
+            create table if not exists proof_dossier (
+                crew_id text primary key,
+                packet_lead_player_id text not null,
+                payload_json text not null,
+                updated_sequence integer not null
+            )
+            """
+        )
+        connection.execute(
+            """
+            create index if not exists idx_proof_dossier_packet_lead
+            on proof_dossier (packet_lead_player_id)
+            """
+        )
+        connection.execute(
+            """
             create table if not exists artifact_surface (
                 artifact_id text primary key,
                 contract_id text not null,
@@ -653,6 +709,7 @@ def build_projection_snapshot(events: list[GameEvent]) -> dict[str, Any]:
         deals=deals,
         events=events,
     )
+    proof_dossiers = proof_dossiers_from_events(events)
     visible_events = [
         event
         for event in events
@@ -664,6 +721,7 @@ def build_projection_snapshot(events: list[GameEvent]) -> dict[str, Any]:
         "artifact_visibility": artifact_visibility,
         "deals": deals,
         "crew_legacies": crew_legacies,
+        "proof_dossiers": proof_dossiers,
         "visible_events": visible_events,
         "last_sequence": events[-1].sequence if events else 0,
     }
@@ -678,6 +736,65 @@ def _event_is_player_projectable(event: GameEvent) -> bool:
         entry.kind in {"public", "player", "crew"}
         for entry in event.visibility.entries
     )
+
+
+def proof_dossiers_from_events(events: list[GameEvent]) -> dict[str, dict[str, Any]]:
+    current: dict[str, ProofDossier] = {}
+    current_leads: dict[str, str] = {}
+    votes: dict[str, list[dict[str, Any]]] = {}
+    replacements: dict[str, list[dict[str, Any]]] = {}
+
+    for event in events:
+        if event.type == "crew.created":
+            crew_id = event.payload["crew_id"]
+            if crew_id not in current:
+                lead = event.payload["owner_id"]
+                current[crew_id] = ProofDossier.empty(
+                    dossier_id=f"dossier_{crew_id}",
+                    crew_id=crew_id,
+                    packet_lead_player_id=lead,
+                )
+                current_leads[crew_id] = lead
+        elif event.type in {
+            "proof.dossier.framing.updated",
+            "proof.dossier.contribution.added",
+            "artifact.dossier.cited",
+            "proof.packet_lead.replaced",
+        }:
+            dossier = ProofDossier.model_validate(event.payload["dossier"])
+            current[dossier.crew_id] = dossier
+            if dossier.crew_id not in current_leads:
+                current_leads[dossier.crew_id] = dossier.packet_lead_player_id
+            if event.type == "proof.packet_lead.replaced":
+                previous = current_leads.get(dossier.crew_id)
+                next_lead = dossier.packet_lead_player_id
+                replacements.setdefault(dossier.crew_id, []).append(
+                    {
+                        "sequence": event.sequence,
+                        "previous_packet_lead_player_id": previous,
+                        "packet_lead_player_id": next_lead,
+                    }
+                )
+                current_leads[dossier.crew_id] = next_lead
+        elif event.type == "proof.packet_lead.vote.cast":
+            crew_id = event.payload["crew_id"]
+            votes.setdefault(crew_id, []).append(
+                {
+                    "sequence": event.sequence,
+                    "voter_player_id": event.payload["voter_player_id"],
+                    "candidate_player_id": event.payload["candidate_player_id"],
+                }
+            )
+
+    shaped: dict[str, dict[str, Any]] = {}
+    for crew_id, dossier in sorted(current.items()):
+        payload = dossier.model_dump(mode="json")
+        if votes.get(crew_id):
+            payload["packet_lead_votes"] = votes[crew_id]
+        if replacements.get(crew_id):
+            payload["packet_lead_replacements"] = replacements[crew_id]
+        shaped[crew_id] = payload
+    return shaped
 
 
 def _crew_legacies_from_projection_inputs(

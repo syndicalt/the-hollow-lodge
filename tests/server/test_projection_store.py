@@ -42,6 +42,15 @@ def create_crew(client: TestClient, token: str, key: str, name: str) -> dict:
     return response.json()
 
 
+def join_crew(client: TestClient, token: str, crew: dict, key: str) -> None:
+    response = client.post(
+        f"/crews/{crew['crew_id']}/join",
+        headers=command_auth(token, key),
+        json={"join_code": crew["join_code"]},
+    )
+    assert response.status_code == 200
+
+
 def proposed_deal_payload(gilt: dict, moth: dict) -> dict:
     return {
         "contract_id": "contract_false_finger",
@@ -72,6 +81,160 @@ def set_claim(client: TestClient, player: dict, crew: dict, key: str, claim: str
     )
     assert response.status_code == 200
     return response.json()
+
+
+def test_projection_store_materializes_current_proof_dossiers_without_command_metadata(
+    tmp_path,
+):
+    client = TestClient(create_app(data_dir=tmp_path, invite_codes=["a", "b"]))
+    ada = register(client, "a", "Ada")
+    grace = register(client, "b", "Grace")
+    crew = create_crew(client, ada["token"], "crew-create-gilt", "The Gilt Knives")
+    join_crew(client, grace["token"], crew, "crew-join-grace")
+    set_claim(
+        client,
+        ada,
+        crew,
+        "dossier-frame-1",
+        "The finger is an engineered fraud.",
+    )
+    contribution = client.post(
+        f"/proofs/dossiers/{crew['crew_id']}/contributions",
+        headers=command_auth(grace["token"], "dossier-note-grace"),
+        json={
+            "note": "The provenance chain names the wrong chapel clerk.",
+            "evidence_ids": ["fragment_starter_ledger"],
+        },
+    )
+    vote = client.post(
+        f"/proofs/dossiers/{crew['crew_id']}/packet-lead/votes",
+        headers=command_auth(grace["token"], "packet-vote-grace"),
+        json={"candidate_player_id": grace["player_id"]},
+    )
+
+    assert contribution.status_code == 201
+    assert vote.status_code == 200
+
+    client.app.state.projection_store.rebuild(client.app.state.event_store.read())
+    dossier = client.app.state.projection_store.read_proof_dossier(crew["crew_id"])
+
+    assert dossier["claim"] == "The finger is an engineered fraud."
+    assert dossier["packet_lead_player_id"] == ada["player_id"]
+    assert dossier["member_contributions"] == [
+        {
+            "player_id": grace["player_id"],
+            "note": "The provenance chain names the wrong chapel clerk.",
+            "evidence_ids": ["fragment_starter_ledger"],
+        }
+    ]
+    assert len(dossier["packet_lead_votes"]) == 1
+    assert dossier["packet_lead_votes"][0]["sequence"] > 0
+    assert dossier["packet_lead_votes"][0]["voter_player_id"] == grace["player_id"]
+    assert dossier["packet_lead_votes"][0]["candidate_player_id"] == grace["player_id"]
+    assert "dossier-note-grace" not in str(dossier)
+    assert "packet-vote-grace" not in str(dossier)
+
+
+def test_dossier_route_reads_fresh_projection_when_enabled(tmp_path, monkeypatch):
+    monkeypatch.setenv("HOLLOW_LODGE_PROOF_DOSSIER_PROJECTION_READS", "1")
+    client = TestClient(create_app(data_dir=tmp_path, invite_codes=["a"]))
+    ada = register(client, "a", "Ada")
+    crew = create_crew(client, ada["token"], "crew-create-gilt", "The Gilt Knives")
+    set_claim(
+        client,
+        ada,
+        crew,
+        "dossier-frame-1",
+        "The finger is an engineered fraud.",
+    )
+    original_read = client.app.state.projection_store.read_proof_dossier
+    calls = {"count": 0}
+
+    def tracked_read_proof_dossier(crew_id: str):
+        calls["count"] += 1
+        return original_read(crew_id)
+
+    client.app.state.projection_store.read_proof_dossier = tracked_read_proof_dossier
+
+    response = client.get(
+        f"/proofs/dossiers/{crew['crew_id']}",
+        headers=auth(ada["token"]),
+    )
+
+    assert response.status_code == 200
+    assert calls["count"] == 1
+    assert response.json()["claim"] == "The finger is an engineered fraud."
+
+
+def test_embedded_dossier_surfaces_read_fresh_projection_when_enabled(
+    tmp_path,
+    monkeypatch,
+):
+    monkeypatch.setenv("HOLLOW_LODGE_PROOF_DOSSIER_PROJECTION_READS", "1")
+    client = TestClient(create_app(data_dir=tmp_path, invite_codes=["a"]))
+    ada = register(client, "a", "Ada")
+    crew = create_crew(client, ada["token"], "crew-create-gilt", "The Gilt Knives")
+    set_claim(
+        client,
+        ada,
+        crew,
+        "dossier-frame-1",
+        "The finger is an engineered fraud.",
+    )
+    original_read = client.app.state.projection_store.read_proof_dossier
+    calls = {"count": 0}
+
+    def tracked_read_proof_dossier(crew_id: str):
+        calls["count"] += 1
+        return original_read(crew_id)
+
+    client.app.state.projection_store.read_proof_dossier = tracked_read_proof_dossier
+
+    crew_board = client.get(
+        f"/crews/{crew['crew_id']}/board",
+        headers=auth(ada["token"]),
+    )
+    inbox = client.get("/inbox", headers=auth(ada["token"]))
+
+    assert crew_board.status_code == 200
+    assert inbox.status_code == 200
+    assert calls["count"] >= 2
+    assert crew_board.json()["dossier"]["claim"] == "The finger is an engineered fraud."
+    assert any(
+        decision["kind"] == "dossier_need"
+        for decision in inbox.json()["pending_decisions"]
+    )
+
+
+def test_dossier_route_falls_back_when_projected_dossier_is_stale(
+    tmp_path,
+    monkeypatch,
+):
+    monkeypatch.setenv("HOLLOW_LODGE_PROOF_DOSSIER_PROJECTION_READS", "1")
+    client = TestClient(create_app(data_dir=tmp_path, invite_codes=["a"]))
+    ada = register(client, "a", "Ada")
+    crew = create_crew(client, ada["token"], "crew-create-gilt", "The Gilt Knives")
+    client.app.state.projection_store.rebuild(client.app.state.event_store.read())
+    client.app.state.event_store.append_command(
+        event_type="contract.note.published",
+        actor_id="server",
+        visibility=EventVisibility.public(),
+        payload={"note": "projection stale marker"},
+        idempotency_key="projection-stale-marker",
+    )
+
+    def fail_if_projection_read(crew_id: str):
+        raise AssertionError("stale proof dossier projection should not be used")
+
+    client.app.state.projection_store.read_proof_dossier = fail_if_projection_read
+
+    response = client.get(
+        f"/proofs/dossiers/{crew['crew_id']}",
+        headers=auth(ada["token"]),
+    )
+
+    assert response.status_code == 200
+    assert response.json()["dossier_id"] == f"dossier_{crew['crew_id']}"
 
 
 def test_contract_board_route_reads_fresh_projection_when_enabled(tmp_path, monkeypatch):

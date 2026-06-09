@@ -27,6 +27,7 @@ class PostgresProjectionStore:
         artifact_visibility = snapshot["artifact_visibility"]
         deals = snapshot["deals"]
         crew_legacies = snapshot["crew_legacies"]
+        proof_dossiers = snapshot["proof_dossiers"]
         visible_events = snapshot["visible_events"]
         last_sequence = snapshot["last_sequence"]
 
@@ -41,6 +42,7 @@ class PostgresProjectionStore:
                 "deal_surface",
                 "visible_event_surface",
                 "crew_legacy",
+                "proof_dossier",
             ):
                 connection.execute(f"delete from {table}")
 
@@ -180,6 +182,23 @@ class PostgresProjectionStore:
                         last_sequence,
                     ),
                 )
+            for crew_id, dossier in proof_dossiers.items():
+                connection.execute(
+                    """
+                    insert into proof_dossier (
+                        crew_id,
+                        packet_lead_player_id,
+                        payload_json,
+                        updated_sequence
+                    ) values (%s, %s, %s::jsonb, %s)
+                    """,
+                    (
+                        crew_id,
+                        dossier["packet_lead_player_id"],
+                        _json_dumps(dossier),
+                        last_sequence,
+                    ),
+                )
             for event in visible_events:
                 payload = event.model_dump(mode="json")
                 connection.execute(
@@ -209,6 +228,7 @@ class PostgresProjectionStore:
             self._set_meta(connection, "crew_count", str(len(crew_summaries)))
             self._set_meta(connection, "deal_count", str(len(deals)))
             self._set_meta(connection, "crew_legacy_count", str(len(crew_legacies)))
+            self._set_meta(connection, "proof_dossier_count", str(len(proof_dossiers)))
             self._set_meta(connection, "visible_event_count", str(len(visible_events)))
             self._set_meta(
                 connection,
@@ -243,6 +263,9 @@ class PostgresProjectionStore:
                 crew_legacy_count = connection.execute(
                     "select count(*) from crew_legacy"
                 ).fetchone()[0]
+                proof_dossier_count = connection.execute(
+                    "select count(*) from proof_dossier"
+                ).fetchone()[0]
                 visible_event_count = connection.execute(
                     "select count(*) from visible_event_surface"
                 ).fetchone()[0]
@@ -267,6 +290,7 @@ class PostgresProjectionStore:
                 "crew_count": 0,
                 "deal_count": 0,
                 "crew_legacy_count": 0,
+                "proof_dossier_count": 0,
                 "visible_event_count": 0,
                 "public_artifact_count": 0,
                 "scoped_artifact_count": 0,
@@ -292,6 +316,9 @@ class PostgresProjectionStore:
             "deal_count": int(meta.get("deal_count", str(deal_count))),
             "crew_legacy_count": int(
                 meta.get("crew_legacy_count", str(crew_legacy_count))
+            ),
+            "proof_dossier_count": int(
+                meta.get("proof_dossier_count", str(proof_dossier_count))
             ),
             "visible_event_count": int(
                 meta.get("visible_event_count", str(visible_event_count))
@@ -334,6 +361,17 @@ class PostgresProjectionStore:
             self._ensure_schema(connection)
             row = connection.execute(
                 "select payload_json from crew_legacy where crew_id = %s",
+                (crew_id,),
+            ).fetchone()
+        if row is None:
+            raise KeyError(crew_id)
+        return _load_json(row[0])
+
+    def read_proof_dossier(self, crew_id: str) -> dict[str, Any]:
+        with self._connect() as connection:
+            self._ensure_schema(connection)
+            row = connection.execute(
+                "select payload_json from proof_dossier where crew_id = %s",
                 (crew_id,),
             ).fetchone()
         if row is None:
@@ -489,6 +527,22 @@ class PostgresProjectionStore:
                 payload_json jsonb not null,
                 updated_sequence bigint not null
             )
+            """
+        )
+        connection.execute(
+            """
+            create table if not exists proof_dossier (
+                crew_id text primary key,
+                packet_lead_player_id text not null,
+                payload_json jsonb not null,
+                updated_sequence bigint not null
+            )
+            """
+        )
+        connection.execute(
+            """
+            create index if not exists idx_proof_dossier_packet_lead
+            on proof_dossier (packet_lead_player_id)
             """
         )
         connection.execute(

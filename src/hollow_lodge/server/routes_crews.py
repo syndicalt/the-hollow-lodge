@@ -12,6 +12,7 @@ from hollow_lodge.server.auth import current_player
 from hollow_lodge.server.pending_decisions import pending_decisions_for_player
 from hollow_lodge.server.projected_artifacts import projected_visible_artifacts
 from hollow_lodge.server.projected_deals import projected_visible_deals
+from hollow_lodge.server.projected_dossiers import projected_proof_dossier
 from hollow_lodge.server.projected_legacy import projected_crew_legacy
 from hollow_lodge.server.runtime_services import ensure_deal_service
 from hollow_lodge.server.rumors import visible_rumors_for_crew
@@ -115,10 +116,7 @@ def crew_board(
         deals_by_crew={crew_id: deals},
     )
     active_contracts = unlocked_actionable_contracts(contracts)
-    dossier = _proof_service(request).dossier_for_crew(
-        crew_id=crew_id,
-        player_id=player.player_id,
-    )
+    dossier = _dossier_for_crew(request, player_id=player.player_id, crew_id=crew_id)
     shaped_contracts = [
         _crew_board_contract(contract)
         for contract in active_contracts
@@ -176,6 +174,16 @@ def _crew_summary(request: Request, crew_id: str) -> dict:
     if projected is not None:
         return projected
     return request.app.state.crew_service.summary(crew_id)
+
+
+def _dossier_for_crew(request: Request, *, player_id: str, crew_id: str) -> dict:
+    projected = projected_proof_dossier(request, crew_id)
+    if projected is not None:
+        return projected
+    return _proof_service(request).dossier_for_crew(
+        crew_id=crew_id,
+        player_id=player_id,
+    )
 
 
 def _projected_crew_summary(request: Request, crew_id: str) -> dict | None:

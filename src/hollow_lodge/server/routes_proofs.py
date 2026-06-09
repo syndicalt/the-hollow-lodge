@@ -1,15 +1,19 @@
 from __future__ import annotations
 
+import logging
+
 from pydantic import BaseModel, Field
 from fastapi import APIRouter, Depends, Header, HTTPException, Request, status
 
 from hollow_lodge.domain.identity import Player
 from hollow_lodge.server.artifact_service import ArtifactService
 from hollow_lodge.server.auth import current_player
+from hollow_lodge.server.projected_dossiers import projected_proof_dossier
 from hollow_lodge.server.services import ProofService
 
 
 router = APIRouter(prefix="/proofs", tags=["proofs"])
+logger = logging.getLogger(__name__)
 
 
 class TransferProofRequest(BaseModel):
@@ -107,6 +111,14 @@ def get_dossier(
     player: Player = Depends(current_player),
 ):
     try:
+        if not request.app.state.crew_service.is_member(
+            crew_id=crew_id,
+            player_id=player.player_id,
+        ):
+            raise PermissionError("not a crew member")
+        projected = projected_proof_dossier(request, crew_id)
+        if projected is not None:
+            return projected
         return _proof_service(request).dossier_for_crew(
             crew_id=crew_id,
             player_id=player.player_id,
@@ -124,12 +136,14 @@ def update_dossier_framing(
     player: Player = Depends(current_player),
 ):
     try:
-        return _proof_service(request).update_dossier_framing(
+        result = _proof_service(request).update_dossier_framing(
             crew_id=crew_id,
             player_id=player.player_id,
             updates=payload.model_dump(exclude_unset=True),
             idempotency_key=idempotency_key,
         )
+        _refresh_projection_store(request)
+        return result
     except PermissionError as exc:
         raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail=str(exc)) from exc
     except ValueError as exc:
@@ -145,13 +159,15 @@ def add_dossier_contribution(
     player: Player = Depends(current_player),
 ):
     try:
-        return _proof_service(request).add_dossier_contribution(
+        result = _proof_service(request).add_dossier_contribution(
             crew_id=crew_id,
             player_id=player.player_id,
             note=payload.note,
             evidence_ids=payload.evidence_ids,
             idempotency_key=idempotency_key,
         )
+        _refresh_projection_store(request)
+        return result
     except PermissionError as exc:
         raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="not a crew member") from exc
     except ValueError as exc:
@@ -167,7 +183,7 @@ def cite_artifact_in_dossier(
     player: Player = Depends(current_player),
 ):
     try:
-        return _proof_service(request).cite_artifact_in_dossier(
+        result = _proof_service(request).cite_artifact_in_dossier(
             crew_id=crew_id,
             player_id=player.player_id,
             artifact_id=payload.artifact_id,
@@ -175,6 +191,8 @@ def cite_artifact_in_dossier(
             quote=payload.quote,
             idempotency_key=idempotency_key,
         )
+        _refresh_projection_store(request)
+        return result
     except PermissionError as exc:
         raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="not a crew member") from exc
     except KeyError as exc:
@@ -192,16 +210,28 @@ def vote_packet_lead(
     player: Player = Depends(current_player),
 ):
     try:
-        return _proof_service(request).vote_packet_lead(
+        result = _proof_service(request).vote_packet_lead(
             crew_id=crew_id,
             voter_player_id=player.player_id,
             candidate_player_id=payload.candidate_player_id,
             idempotency_key=idempotency_key,
         )
+        _refresh_projection_store(request)
+        return result
     except PermissionError as exc:
         raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="not a crew member") from exc
     except ValueError as exc:
         raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail=str(exc)) from exc
+
+
+def _refresh_projection_store(request: Request) -> None:
+    if hasattr(request.app.state, "projection_store"):
+        try:
+            request.app.state.projection_store.rebuild(
+                request.app.state.event_store.read()
+            )
+        except Exception:
+            logger.exception("failed to refresh proof dossier projection")
 
 
 def _proof_service(request: Request) -> ProofService:

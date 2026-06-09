@@ -15,6 +15,7 @@ from hollow_lodge.server.contract_seed import ContractSeed, load_contract_seed_f
 from hollow_lodge.server.pending_decisions import pending_decisions_for_player
 from hollow_lodge.server.projected_artifacts import projected_visible_artifacts
 from hollow_lodge.server.projected_deals import projected_visible_deals
+from hollow_lodge.server.projected_dossiers import projected_proof_dossier
 from hollow_lodge.server.projections import (
     apply_contract_unlock_status,
     crew_legacy_from_contracts,
@@ -144,9 +145,10 @@ def inbox(
             for crew_id in crew_ids
         },
         dossiers={
-            crew_id: _proof_service(request).dossier_for_crew(
-                crew_id=crew_id,
+            crew_id: _dossier_for_crew(
+                request,
                 player_id=player.player_id,
+                crew_id=crew_id,
             )
             for crew_id in crew_ids
         },
@@ -275,6 +277,16 @@ def _deals_for_crew(request: Request, player_id: str, crew_id: str) -> list[dict
         for deal in _deals_for_player(request, player_id)
         if crew_id in {deal.get("proposer_crew_id"), deal.get("recipient_crew_id")}
     ]
+
+
+def _dossier_for_crew(request: Request, *, player_id: str, crew_id: str) -> dict:
+    projected = projected_proof_dossier(request, crew_id)
+    if projected is not None:
+        return projected
+    return _proof_service(request).dossier_for_crew(
+        crew_id=crew_id,
+        player_id=player_id,
+    )
 
 
 def _parse_contract_seed(seed: Any) -> ContractSeed:
