@@ -8,6 +8,7 @@ from fastapi.testclient import TestClient
 from hollow_lodge.server.app import create_app
 from hollow_lodge.server.projection_config import (
     PROJECTION_READ_SURFACE_ENVS,
+    projection_read_diagnostics,
     projection_read_enabled,
 )
 from hollow_lodge.server.projection_store import SCHEMA_VERSION
@@ -179,6 +180,8 @@ def test_diagnostics_reports_safe_operational_status(tmp_path, monkeypatch):
     assert body["data"]["event_log"]["last_event_hash"] is None
     assert len(body["data"]["event_log"]["event_hash_chain_sha256"]) == 64
     assert body["data"]["storage_guards"] == {
+        "production_postgres": False,
+        "production_postgres_env": "HOLLOW_LODGE_PRODUCTION_POSTGRES",
         "require_postgres_event_log": False,
         "require_postgres_projection": False,
         "require_postgres_operational": False,
@@ -742,6 +745,85 @@ def test_require_postgres_operational_rejects_invalid_flag_value(
     assert "HOLLOW_LODGE_REQUIRE_POSTGRES_OPERATIONAL must be one of" in str(
         exc_info.value
     )
+
+
+def test_production_postgres_preset_requires_all_database_urls(tmp_path, monkeypatch):
+    from hollow_lodge.eventlog.config import event_store_from_env
+    from hollow_lodge.server.identity_replay_store import identity_replay_store_from_env
+    from hollow_lodge.server.projection_config import projection_store_from_env
+
+    monkeypatch.setenv("HOLLOW_LODGE_PRODUCTION_POSTGRES", "1")
+    monkeypatch.delenv("HOLLOW_LODGE_EVENT_DATABASE_URL", raising=False)
+    monkeypatch.delenv("HOLLOW_LODGE_PROJECTION_DATABASE_URL", raising=False)
+    monkeypatch.delenv("DATABASE_URL", raising=False)
+    monkeypatch.delenv("HOLLOW_LODGE_OPERATIONAL_DATABASE_URL", raising=False)
+
+    with pytest.raises(RuntimeError) as event_exc:
+        event_store_from_env(tmp_path)
+    with pytest.raises(RuntimeError) as projection_exc:
+        projection_store_from_env(tmp_path)
+    with pytest.raises(RuntimeError) as operational_exc:
+        identity_replay_store_from_env(tmp_path)
+
+    assert "HOLLOW_LODGE_EVENT_DATABASE_URL=postgresql://..." in str(event_exc.value)
+    assert "HOLLOW_LODGE_PROJECTION_DATABASE_URL=postgresql://..." in str(
+        projection_exc.value
+    )
+    assert "HOLLOW_LODGE_OPERATIONAL_DATABASE_URL=postgresql://..." in str(
+        operational_exc.value
+    )
+
+
+def test_production_postgres_preset_enables_storage_guards_and_projection_reads(
+    monkeypatch,
+):
+    from hollow_lodge.eventlog.config import event_store_guard_diagnostics
+    from hollow_lodge.server.identity_replay_store import (
+        identity_replay_store_guard_diagnostics,
+    )
+    from hollow_lodge.server.projection_config import projection_guard_diagnostics
+
+    monkeypatch.setenv("HOLLOW_LODGE_PRODUCTION_POSTGRES", "yes")
+    monkeypatch.delenv("HOLLOW_LODGE_REQUIRE_POSTGRES_EVENT_LOG", raising=False)
+    monkeypatch.delenv("HOLLOW_LODGE_REQUIRE_POSTGRES_PROJECTION", raising=False)
+    monkeypatch.delenv("HOLLOW_LODGE_REQUIRE_POSTGRES_OPERATIONAL", raising=False)
+    monkeypatch.delenv("HOLLOW_LODGE_PROJECTION_READS", raising=False)
+
+    assert event_store_guard_diagnostics()["require_postgres_event_log"] is True
+    assert projection_guard_diagnostics()["require_postgres_projection"] is True
+    assert (
+        identity_replay_store_guard_diagnostics()["require_postgres_operational"]
+        is True
+    )
+    reads = projection_read_diagnostics()
+    assert reads["global_enabled"] is True
+    assert reads["surfaces"]
+    assert all(reads["surfaces"].values())
+
+
+def test_production_postgres_preset_allows_targeted_projection_read_override(
+    monkeypatch,
+):
+    monkeypatch.setenv("HOLLOW_LODGE_PRODUCTION_POSTGRES", "1")
+    monkeypatch.delenv("HOLLOW_LODGE_PROJECTION_READS", raising=False)
+    monkeypatch.setenv("HOLLOW_LODGE_CHAT_PROJECTION_READS", "0")
+
+    reads = projection_read_diagnostics()
+
+    assert reads["global_enabled"] is True
+    assert reads["surfaces"]["chat"] is False
+    assert reads["surfaces"]["contract_board"] is True
+
+
+def test_production_postgres_preset_rejects_invalid_flag_value(monkeypatch):
+    from hollow_lodge.server.production_postgres import production_postgres_enabled
+
+    monkeypatch.setenv("HOLLOW_LODGE_PRODUCTION_POSTGRES", "sometimes")
+
+    with pytest.raises(RuntimeError) as exc_info:
+        production_postgres_enabled()
+
+    assert "HOLLOW_LODGE_PRODUCTION_POSTGRES must be one of" in str(exc_info.value)
 
 
 def test_global_projection_read_flag_enables_all_surfaces(tmp_path, monkeypatch):

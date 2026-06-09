@@ -3275,6 +3275,30 @@ Expected verification:
 - `pytest tests/e2e/test_full_game_loop_with_escrow.py tests/client/test_codex_session.py tests/client/test_render_packets.py tests/test_mcp_server.py -q`
 - `pytest -q`
 
+### Slice 131: Production Postgres Server Preset
+
+Status: completed.
+
+Add a server-side production storage preset for hosted multiplayer operation.
+`HOLLOW_LODGE_PRODUCTION_POSTGRES=1` now composes the existing production
+database invariants: explicit Postgres authoritative event storage, Postgres
+projection storage, Postgres operational replay storage, and projection reads
+enabled by default for all implemented surfaces. Local development remains
+unchanged unless the preset or individual guard variables are set.
+
+The preset is visible in `/diagnostics.data.storage_guards` and the Codex
+backend status packet as `production_postgres`, while the existing individual
+guard diagnostics remain available for first-party backend smoke checks.
+Surface-specific projection read env vars can still disable one read surface
+during a targeted rollback; the production smoke continues to fail until all
+required read surfaces are enabled again.
+
+Expected verification:
+
+- `pytest tests/server/test_app_config.py::test_production_postgres_preset_requires_all_database_urls tests/server/test_app_config.py::test_production_postgres_preset_enables_storage_guards_and_projection_reads tests/server/test_app_config.py::test_production_postgres_preset_allows_targeted_projection_read_override tests/server/test_app_config.py::test_production_postgres_preset_rejects_invalid_flag_value tests/server/test_app_config.py::test_diagnostics_reports_safe_operational_status tests/client/test_render_packets.py::test_backend_status_packet_renders_safe_database_and_oracle_posture -q`
+- `pytest tests/server/test_app_config.py tests/client/test_render_packets.py tests/e2e/test_projection_backend_smoke.py -q`
+- `pytest -q`
+
 ## Completion Standard
 
 Each slice must:

@@ -6,6 +6,7 @@ from urllib.parse import urlparse
 
 from hollow_lodge.eventlog.jsonl_store import JsonlEventStore
 from hollow_lodge.eventlog.postgres_store import PostgresEventStore
+from hollow_lodge.server.production_postgres import production_postgres_enabled
 
 
 EVENT_DATABASE_URL_ENV = "HOLLOW_LODGE_EVENT_DATABASE_URL"
@@ -14,7 +15,9 @@ REQUIRE_POSTGRES_EVENT_LOG_ENV = "HOLLOW_LODGE_REQUIRE_POSTGRES_EVENT_LOG"
 
 def event_store_from_env(root: Path) -> JsonlEventStore | PostgresEventStore:
     database_url = os.environ.get(EVENT_DATABASE_URL_ENV, "").strip()
-    require_postgres = _env_flag(REQUIRE_POSTGRES_EVENT_LOG_ENV)
+    require_postgres = (
+        _env_flag(REQUIRE_POSTGRES_EVENT_LOG_ENV) or production_postgres_enabled()
+    )
     if not database_url:
         if require_postgres:
             raise RuntimeError(
@@ -43,7 +46,10 @@ def event_store_from_env(root: Path) -> JsonlEventStore | PostgresEventStore:
 
 def event_store_guard_diagnostics() -> dict[str, object]:
     return {
-        "require_postgres_event_log": _env_flag(REQUIRE_POSTGRES_EVENT_LOG_ENV),
+        "require_postgres_event_log": (
+            _env_flag(REQUIRE_POSTGRES_EVENT_LOG_ENV)
+            or production_postgres_enabled()
+        ),
     }
 
 

@@ -19,6 +19,10 @@ from hollow_lodge.server.projection_config import (
     projection_read_diagnostics,
     projection_store_from_env,
 )
+from hollow_lodge.server.production_postgres import (
+    PRODUCTION_POSTGRES_ENV,
+    production_postgres_enabled,
+)
 from hollow_lodge.server.routes_actions import router as actions_router
 from hollow_lodge.server.routes_artifacts import router as artifacts_router
 from hollow_lodge.server.routes_chat import router as chat_router
@@ -188,6 +192,8 @@ def create_app(
                 "projection_reads": projection_read_diagnostics(),
                 "projection_refresh": projection_refresh_diagnostics(app.state),
                 "storage_guards": {
+                    "production_postgres": production_postgres_enabled(),
+                    "production_postgres_env": PRODUCTION_POSTGRES_ENV,
                     **event_store_guard_diagnostics(),
                     **projection_guard_diagnostics(),
                     **identity_replay_store_guard_diagnostics(),

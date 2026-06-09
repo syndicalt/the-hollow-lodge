@@ -13,7 +13,8 @@ Current server storage state, verified on 2026-06-09:
 - projection database: Railway Postgres
 - projection reads: enabled for all implemented surfaces
 - startup guards: Postgres event-log guard and Postgres projection guard
-  enabled
+  enabled; the production Postgres preset is available for the combined
+  event-log, projection, and operational replay invariant
 - maintenance diagnostics: deployed; read-only mode is currently disabled
 - migration backup manifest:
   `backups/hollow-lodge-events-2026-06-09-frozen.manifest.json`
@@ -401,10 +402,30 @@ hollow-lodge admin backend-smoke \
   --require-projection-refresh-ok
 ```
 
-After the Postgres smoke passes, set `HOLLOW_LODGE_REQUIRE_POSTGRES_PROJECTION=1`
-on the server service and redeploy once more. This turns the cutover from a
-best-effort configuration into a startup invariant.
-Verify that both production storage guards are enforced:
+After the Postgres smoke passes, prefer the server-side production preset:
+
+```sh
+railway variable set --service hollow-lodge-server HOLLOW_LODGE_PRODUCTION_POSTGRES=1
+```
+
+This preset composes the hosted storage posture into one startup invariant. It
+requires explicit Postgres authoritative event storage, Postgres projection
+storage, and Postgres operational replay storage; it also enables projection
+reads for all implemented surfaces unless a surface-specific rollback flag is
+set. `/diagnostics.data.storage_guards.production_postgres=true` confirms the
+preset is active, while the individual guard diagnostics remain visible for
+compatibility with existing smoke checks.
+
+The equivalent explicit individual variables are:
+
+```sh
+HOLLOW_LODGE_REQUIRE_POSTGRES_EVENT_LOG=1
+HOLLOW_LODGE_REQUIRE_POSTGRES_PROJECTION=1
+HOLLOW_LODGE_REQUIRE_POSTGRES_OPERATIONAL=1
+HOLLOW_LODGE_PROJECTION_READS=1
+```
+
+Verify that the full production storage posture is enforced:
 
 ```sh
 hollow-lodge admin backend-smoke \

@@ -6,6 +6,7 @@ from urllib.parse import unquote, urlparse, urlunparse
 
 from hollow_lodge.server.projection_postgres_store import PostgresProjectionStore
 from hollow_lodge.server.projection_store import SqliteProjectionStore
+from hollow_lodge.server.production_postgres import production_postgres_enabled
 
 
 PROJECTION_DATABASE_URL_ENV = "HOLLOW_LODGE_PROJECTION_DATABASE_URL"
@@ -32,7 +33,9 @@ PROJECTION_READ_SURFACE_ENVS = {
 
 def projection_store_from_env(root: Path) -> SqliteProjectionStore | PostgresProjectionStore:
     database_url, database_url_env = _projection_database_url_from_env()
-    require_postgres = _env_flag(REQUIRE_POSTGRES_PROJECTION_ENV)
+    require_postgres = (
+        _env_flag(REQUIRE_POSTGRES_PROJECTION_ENV) or production_postgres_enabled()
+    )
     if not database_url:
         if require_postgres:
             raise RuntimeError(
@@ -78,12 +81,15 @@ def _projection_database_url_from_env() -> tuple[str, str | None]:
 def projection_read_enabled(surface_env: str) -> bool:
     if os.environ.get(surface_env) is not None:
         return _env_flag(surface_env)
+    if production_postgres_enabled():
+        return True
     return _env_flag(PROJECTION_READS_ENV)
 
 
 def projection_read_diagnostics() -> dict[str, object]:
     return {
-        "global_enabled": _env_flag(PROJECTION_READS_ENV),
+        "global_enabled": _env_flag(PROJECTION_READS_ENV)
+        or production_postgres_enabled(),
         "surfaces": {
             surface: projection_read_enabled(env_name)
             for surface, env_name in PROJECTION_READ_SURFACE_ENVS.items()
@@ -93,7 +99,10 @@ def projection_read_diagnostics() -> dict[str, object]:
 
 def projection_guard_diagnostics() -> dict[str, object]:
     return {
-        "require_postgres_projection": _env_flag(REQUIRE_POSTGRES_PROJECTION_ENV),
+        "require_postgres_projection": (
+            _env_flag(REQUIRE_POSTGRES_PROJECTION_ENV)
+            or production_postgres_enabled()
+        ),
     }
 
 

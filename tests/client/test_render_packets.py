@@ -318,6 +318,8 @@ def test_backend_status_packet_renders_safe_database_and_oracle_posture():
                     "last_failure": {"message": "password=secret"},
                 },
                 "storage_guards": {
+                    "production_postgres": True,
+                    "production_postgres_env": "HOLLOW_LODGE_PRODUCTION_POSTGRES",
                     "require_postgres_event_log": True,
                     "require_postgres_projection": True,
                     "require_postgres_operational": True,
@@ -342,6 +344,7 @@ def test_backend_status_packet_renders_safe_database_and_oracle_posture():
     assert "- projection: postgres (available; lag 0)" in packet.player_markdown
     assert "- operational replay: postgres" in packet.player_markdown
     assert "event on; projection on; operational on" in packet.player_markdown
+    assert "- production postgres preset: on" in packet.player_markdown
     assert "openai" in packet.player_markdown
     assert "secret" not in packet.player_markdown
     assert "postgresql://" not in packet.player_markdown
@@ -409,6 +412,8 @@ def test_backend_readiness_packet_renders_safe_pass_summary():
                     "last_failure": {"message": "password=secret"},
                 },
                 "storage_guards": {
+                    "production_postgres": True,
+                    "production_postgres_env": "HOLLOW_LODGE_PRODUCTION_POSTGRES",
                     "require_postgres_event_log": True,
                     "require_postgres_projection": True,
                     "require_postgres_operational": True,

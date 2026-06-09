@@ -289,6 +289,8 @@ def _shape_backend_status(diagnostics: dict[str, Any]) -> dict[str, Any]:
         "storage_guards": _shape_backend_section(
             data.get("storage_guards"),
             (
+                "production_postgres",
+                "production_postgres_env",
                 "require_postgres_event_log",
                 "require_postgres_projection",
                 "require_postgres_operational",
@@ -339,6 +341,8 @@ def _shape_backend_readiness_result(result: dict[str, Any] | None) -> dict[str, 
         "storage_guards": _shape_backend_section(
             result.get("storage_guards"),
             (
+                "production_postgres",
+                "production_postgres_env",
                 "require_postgres_event_log",
                 "require_postgres_projection",
                 "require_postgres_operational",
@@ -1376,6 +1380,9 @@ def build_backend_status_packet(diagnostics: dict[str, Any]) -> RenderPacket:
     operational_guard = _render_guard_value(
         storage_guards.get("require_postgres_operational")
     )
+    production_preset = _render_guard_value(
+        storage_guards.get("production_postgres")
+    )
     lines = [
         "Backend Status",
         "",
@@ -1398,6 +1405,7 @@ def build_backend_status_packet(diagnostics: dict[str, Any]) -> RenderPacket:
             f"event {event_guard}; projection {projection_guard}; "
             f"operational {operational_guard}"
         ),
+        f"- production postgres preset: {production_preset}",
         "",
         "Runtime:",
         f"- oracle: {_backend_value(status, 'oracle', 'provider')}",

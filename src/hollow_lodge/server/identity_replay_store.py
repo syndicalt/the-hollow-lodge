@@ -7,6 +7,8 @@ from pathlib import Path
 from typing import Protocol
 from urllib.parse import unquote, urlparse, urlunparse
 
+from hollow_lodge.server.production_postgres import production_postgres_enabled
+
 
 REGISTRATION_REPLAY_SCOPE = "registration"
 INVITE_REPLAY_SCOPE = "invite"
@@ -485,7 +487,9 @@ class PostgresIdentityReplayStore:
 
 def identity_replay_store_from_env(root: Path) -> IdentityReplayStore:
     database_url = os.environ.get(IDENTITY_REPLAY_DATABASE_URL_ENV, "").strip()
-    require_postgres = _env_flag(REQUIRE_POSTGRES_OPERATIONAL_ENV)
+    require_postgres = (
+        _env_flag(REQUIRE_POSTGRES_OPERATIONAL_ENV) or production_postgres_enabled()
+    )
     if not database_url:
         if require_postgres:
             raise RuntimeError(
@@ -520,7 +524,10 @@ def identity_replay_store_from_env(root: Path) -> IdentityReplayStore:
 
 def identity_replay_store_guard_diagnostics() -> dict[str, object]:
     return {
-        "require_postgres_operational": _env_flag(REQUIRE_POSTGRES_OPERATIONAL_ENV),
+        "require_postgres_operational": (
+            _env_flag(REQUIRE_POSTGRES_OPERATIONAL_ENV)
+            or production_postgres_enabled()
+        ),
     }
 
 
