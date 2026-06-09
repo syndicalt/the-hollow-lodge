@@ -186,7 +186,7 @@ def test_action_edit_and_cancel_commands_call_server_routes_with_confirm(tmp_pat
         ),
     )
 
-    edited = runner.invoke(
+    edit_preview = runner.invoke(
         cli.app,
         [
             "action",
@@ -197,11 +197,28 @@ def test_action_edit_and_cancel_commands_call_server_routes_with_confirm(tmp_pat
             str(config_path),
         ],
     )
+    edited = runner.invoke(
+        cli.app,
+        [
+            "action",
+            "edit",
+            "action_000001",
+            "Inspect the ledger under candlelight.",
+            "--confirm",
+            "--config",
+            str(config_path),
+        ],
+    )
     canceled = runner.invoke(
         cli.app,
         ["action", "cancel", "action_000001", "--confirm", "--config", str(config_path)],
     )
 
+    assert edit_preview.exit_code == 0
+    assert "Preview: edit_action" in edit_preview.output
+    assert "No server mutation was submitted." in edit_preview.output
+    assert "- action_id: action_000001" in edit_preview.output
+    assert "- intent: Inspect the ledger under candlelight." in edit_preview.output
     assert edited.exit_code == 0
     assert "action_000001 submitted" in edited.output
     assert canceled.exit_code == 0
@@ -257,4 +274,35 @@ def test_action_cancel_without_confirm_does_not_call_server(tmp_path, monkeypatc
     assert result.exit_code == 0
     assert "no server mutation occurred" in result.output
     assert "--confirm" in result.output
+    assert created_clients == []
+
+
+def test_action_edit_rejects_blank_intent_before_server_call(tmp_path, monkeypatch):
+    runner = CliRunner()
+    created_clients: list[FakeApi] = []
+
+    def fake_client(**kwargs):
+        client = FakeApi(**kwargs)
+        created_clients.append(client)
+        return client
+
+    monkeypatch.setattr(cli, "HollowLodgeApi", fake_client)
+    config_path = tmp_path / "config.json"
+    save_config(
+        config_path,
+        ClientConfig(
+            server_url="http://testserver",
+            player_id="player_0001",
+            token="token",
+            active_crew_id="crew_0001",
+        ),
+    )
+
+    result = runner.invoke(
+        cli.app,
+        ["action", "edit", "action_000001", "   ", "--confirm", "--config", str(config_path)],
+    )
+
+    assert result.exit_code != 0
+    assert "replacement action intent is required" in result.output
     assert created_clients == []

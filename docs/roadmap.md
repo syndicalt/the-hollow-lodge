@@ -3918,6 +3918,27 @@ Expected verification:
 - `pytest tests/client/test_cli_commands.py tests/client/test_codex_session.py tests/client/test_render_packets.py tests/test_mcp_server.py tests/server/test_packet_lead.py -q`
 - `pytest -q`
 
+### Slice 161: CLI Action Edit Confirmation Guard
+
+Status: completed.
+
+Bring `hollow-lodge action edit` under the same preview/confirm contract as
+Codex session action editing. The command now renders a no-mutation
+`edit_action` preview by default, showing the submitted action id and trimmed
+replacement intent, and only sends the edit to the server when rerun with
+`--confirm`.
+
+This protects already-submitted phase actions from accidental shell edits while
+keeping the confirmed path compatible with the existing action edit API and
+idempotency behavior. Blank replacement intents are rejected before any server
+client is created, matching the Codex session boundary.
+
+Expected verification:
+
+- `pytest tests/client/test_action_cli.py::test_action_edit_and_cancel_commands_call_server_routes_with_confirm -q`
+- `pytest tests/client/test_action_cli.py tests/client/test_cli_commands.py tests/client/test_codex_session.py tests/client/test_render_packets.py tests/test_mcp_server.py tests/server/test_action_routes.py -q`
+- `pytest -q`
+
 ## Completion Standard
 
 Each slice must:

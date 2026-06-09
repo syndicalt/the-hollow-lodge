@@ -1302,12 +1302,24 @@ def act(
 def action_edit(
     action_id: str = typer.Argument(..., help="Submitted action id."),
     intent: str = typer.Argument(..., help="Replacement action intent."),
+    confirm: bool = typer.Option(False, "--confirm", help="Edit the action on the server."),
     config: Path = typer.Option(DEFAULT_CONFIG_PATH, "--config", help="Local config path."),
 ) -> None:
     """Edit a submitted action before phase lock."""
+    replacement_intent = intent.strip()
+    if not replacement_intent:
+        raise typer.BadParameter("replacement action intent is required")
+    if not confirm:
+        packet = build_mutation_result_packet(
+            operation="edit_action",
+            confirmed=False,
+            preview_fields={"action_id": action_id, "intent": replacement_intent},
+        )
+        _echo_packet(packet, as_json=False)
+        return
     response = _api_from_config(load_config(config)).edit_action(
         action_id=action_id,
-        intent=intent,
+        intent=replacement_intent,
         idempotency_key=new_command_key("action-edit"),
     )
     typer.echo(f"{response['action_id']} {response['status']}")
