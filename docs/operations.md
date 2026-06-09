@@ -556,6 +556,22 @@ available; gameplay and admin mutation commands return HTTP 503 with a
 `HOLLOW_LODGE_EVENT_DATABASE_URL` cutover, backend smoke with the backup
 manifest, and Postgres event-log guard verification have all passed.
 
+Use the backend smoke gate before exporting:
+
+```sh
+hollow-lodge admin backend-smoke \
+  --server https://server.thehollowlodge.com \
+  --expected-backend postgres \
+  --expected-event-backend jsonl \
+  --require-projection-reads \
+  --require-current-projection-read-surfaces \
+  --require-current-projection-schema \
+  --require-sequence-alignment \
+  --require-projection-refresh-ok \
+  --require-postgres-projection-guard \
+  --require-maintenance-read-only
+```
+
 Then import into an empty Postgres event-log database:
 
 ```sh

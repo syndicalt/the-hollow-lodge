@@ -2873,6 +2873,28 @@ Expected verification:
 - `pytest tests/server/test_app_config.py tests/server/test_identity_routes.py tests/client/test_cli_commands.py -q`
 - `pytest -q`
 
+### Slice 114: Maintenance Freeze Smoke Gate
+
+Status: completed.
+
+Make the final event-log migration freeze verifiable from the same hosted
+backend smoke used for storage cutovers. `hollow-lodge admin backend-smoke` and
+`scripts/smoke_projection_backend.py` now accept
+`--require-maintenance-read-only`, which fails unless
+`/diagnostics.data.maintenance.read_only=true`.
+
+This catches two dangerous operator mistakes before the authoritative JSONL
+export: deploying an older server that does not expose maintenance diagnostics,
+or forgetting to enable `HOLLOW_LODGE_MAINTENANCE_READ_ONLY=1` before taking
+the final backup and manifest. The check is additive and does not change
+normal production or local development smoke commands.
+
+Expected verification:
+
+- `pytest tests/e2e/test_projection_backend_smoke.py::test_backend_smoke_accepts_required_maintenance_read_only tests/e2e/test_projection_backend_smoke.py::test_backend_smoke_rejects_disabled_required_maintenance_read_only tests/e2e/test_projection_backend_smoke.py::test_backend_smoke_rejects_missing_required_maintenance_diagnostics tests/client/test_cli_commands.py::test_admin_backend_smoke_command_accepts_required_maintenance_read_only tests/client/test_cli_commands.py::test_admin_backend_smoke_command_rejects_missing_required_maintenance -q`
+- `pytest tests/e2e/test_projection_backend_smoke.py tests/client/test_cli_commands.py tests/server/test_app_config.py -q`
+- `pytest -q`
+
 ## Completion Standard
 
 Each slice must:

@@ -1659,6 +1659,66 @@ def test_admin_backend_smoke_command_reports_safe_backend_status(monkeypatch):
     assert created_clients[0].calls == [("health", {}), ("diagnostics", {})]
 
 
+def test_admin_backend_smoke_command_accepts_required_maintenance_read_only(
+    monkeypatch,
+):
+    class MaintenanceApi(FakeApi):
+        def diagnostics(self):
+            payload = super().diagnostics()
+            payload["data"]["maintenance"] = {
+                "read_only": True,
+                "env": "HOLLOW_LODGE_MAINTENANCE_READ_ONLY",
+            }
+            return payload
+
+    monkeypatch.setattr(cli, "HollowLodgeApi", MaintenanceApi)
+    runner = CliRunner()
+
+    result = runner.invoke(
+        cli.app,
+        [
+            "admin",
+            "backend-smoke",
+            "--server",
+            "http://testserver",
+            "--expected-backend",
+            "postgres",
+            "--expected-event-backend",
+            "jsonl",
+            "--require-maintenance-read-only",
+        ],
+    )
+
+    assert result.exit_code == 0
+    assert "backend readiness ok: event=jsonl" in result.output
+
+
+def test_admin_backend_smoke_command_rejects_missing_required_maintenance(
+    monkeypatch,
+):
+    monkeypatch.setattr(cli, "HollowLodgeApi", FakeApi)
+    runner = CliRunner()
+
+    result = runner.invoke(
+        cli.app,
+        [
+            "admin",
+            "backend-smoke",
+            "--server",
+            "http://testserver",
+            "--expected-backend",
+            "postgres",
+            "--expected-event-backend",
+            "jsonl",
+            "--require-maintenance-read-only",
+        ],
+    )
+
+    assert result.exit_code != 0
+    assert "diagnostics response did not include data.maintenance" in result.output
+    assert "maintenance read-only mode is not enabled" in result.output
+
+
 def test_admin_backend_smoke_command_accepts_production_postgres_preset(monkeypatch):
     class ProductionPostgresApi(FakeApi):
         def diagnostics(self):

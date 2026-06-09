@@ -200,8 +200,109 @@ def test_run_smoke_production_postgres_preset_forwards_required_checks(monkeypat
             "require_postgres_event_log_guard": True,
             "require_postgres_projection_guard": True,
             "require_projection_refresh_ok": True,
+            "require_maintenance_read_only": False,
         }
     ]
+
+
+def test_backend_smoke_accepts_required_maintenance_read_only():
+    smoke = _load_smoke_module()
+
+    result = smoke.validate_backend_diagnostics(
+        {
+            "data": {
+                "event_log": {
+                    "backend": "jsonl",
+                    "status": "available",
+                    "event_count": 23,
+                },
+                "projection_db": {
+                    "backend": "postgres",
+                    "status": "available",
+                    "lag": 0,
+                },
+                "maintenance": {
+                    "read_only": True,
+                    "env": "HOLLOW_LODGE_MAINTENANCE_READ_ONLY",
+                },
+            }
+        },
+        expected_backend="postgres",
+        expected_event_backend="jsonl",
+        require_maintenance_read_only=True,
+    )
+
+    assert result["maintenance"] == {
+        "read_only": True,
+        "env": "HOLLOW_LODGE_MAINTENANCE_READ_ONLY",
+    }
+
+
+def test_backend_smoke_rejects_disabled_required_maintenance_read_only():
+    smoke = _load_smoke_module()
+
+    try:
+        smoke.validate_backend_diagnostics(
+            {
+                "data": {
+                    "event_log": {
+                        "backend": "jsonl",
+                        "status": "available",
+                        "event_count": 23,
+                    },
+                    "projection_db": {
+                        "backend": "postgres",
+                        "status": "available",
+                        "lag": 0,
+                    },
+                    "maintenance": {
+                        "read_only": False,
+                        "env": "HOLLOW_LODGE_MAINTENANCE_READ_ONLY",
+                    },
+                }
+            },
+            expected_backend="postgres",
+            expected_event_backend="jsonl",
+            require_maintenance_read_only=True,
+        )
+    except RuntimeError as exc:
+        message = str(exc)
+    else:
+        raise AssertionError("disabled maintenance mode should fail readiness smoke")
+
+    assert "maintenance read-only mode is not enabled" in message
+
+
+def test_backend_smoke_rejects_missing_required_maintenance_diagnostics():
+    smoke = _load_smoke_module()
+
+    try:
+        smoke.validate_backend_diagnostics(
+            {
+                "data": {
+                    "event_log": {
+                        "backend": "jsonl",
+                        "status": "available",
+                        "event_count": 23,
+                    },
+                    "projection_db": {
+                        "backend": "postgres",
+                        "status": "available",
+                        "lag": 0,
+                    },
+                }
+            },
+            expected_backend="postgres",
+            expected_event_backend="jsonl",
+            require_maintenance_read_only=True,
+        )
+    except RuntimeError as exc:
+        message = str(exc)
+    else:
+        raise AssertionError("missing maintenance diagnostics should fail")
+
+    assert "diagnostics response did not include data.maintenance" in message
+    assert "maintenance read-only mode is not enabled" in message
 
 
 def test_backend_smoke_rejects_failed_projection_refresh():

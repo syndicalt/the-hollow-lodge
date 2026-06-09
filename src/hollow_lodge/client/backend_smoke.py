@@ -35,6 +35,7 @@ def resolve_backend_smoke_options(
     require_postgres_event_log_guard: bool = False,
     require_postgres_projection_guard: bool = False,
     require_projection_refresh_ok: bool = False,
+    require_maintenance_read_only: bool = False,
 ) -> dict[str, Any]:
     if production_postgres:
         if expected_backend not in {None, "postgres"}:
@@ -57,6 +58,7 @@ def resolve_backend_smoke_options(
             "require_postgres_event_log_guard": True,
             "require_postgres_projection_guard": True,
             "require_projection_refresh_ok": True,
+            "require_maintenance_read_only": require_maintenance_read_only,
         }
 
     if expected_backend is None:
@@ -75,6 +77,7 @@ def resolve_backend_smoke_options(
         "require_postgres_event_log_guard": require_postgres_event_log_guard,
         "require_postgres_projection_guard": require_postgres_projection_guard,
         "require_projection_refresh_ok": require_projection_refresh_ok,
+        "require_maintenance_read_only": require_maintenance_read_only,
     }
 
 
@@ -91,6 +94,7 @@ def run_backend_smoke(
     require_postgres_event_log_guard: bool = False,
     require_postgres_projection_guard: bool = False,
     require_projection_refresh_ok: bool = False,
+    require_maintenance_read_only: bool = False,
 ) -> dict[str, Any]:
     manifest = (
         load_event_log_manifest(event_log_manifest)
@@ -120,6 +124,7 @@ def run_backend_smoke(
             require_postgres_event_log_guard=require_postgres_event_log_guard,
             require_postgres_projection_guard=require_postgres_projection_guard,
             require_projection_refresh_ok=require_projection_refresh_ok,
+            require_maintenance_read_only=require_maintenance_read_only,
         )
 
 
@@ -136,6 +141,7 @@ def validate_backend_diagnostics(
     require_postgres_event_log_guard: bool = False,
     require_postgres_projection_guard: bool = False,
     require_projection_refresh_ok: bool = False,
+    require_maintenance_read_only: bool = False,
 ) -> dict[str, Any]:
     data = diagnostics.get("data", {})
     if not isinstance(data, dict):
@@ -182,6 +188,16 @@ def validate_backend_diagnostics(
             )
     elif not isinstance(projection_refresh, dict):
         projection_refresh = None
+
+    maintenance = data.get("maintenance")
+    if require_maintenance_read_only:
+        if not isinstance(maintenance, dict):
+            errors.append("diagnostics response did not include data.maintenance")
+            maintenance = {}
+        if maintenance.get("read_only") is not True:
+            errors.append("maintenance read-only mode is not enabled")
+    elif not isinstance(maintenance, dict):
+        maintenance = None
 
     event_backend = event_log.get("backend")
     if expected_event_backend is not None and event_backend != expected_event_backend:
@@ -387,6 +403,7 @@ def validate_backend_diagnostics(
         "projection_read_surfaces": projection_read_surfaces,
         "storage_guards": storage_guards,
         "projection_refresh": projection_refresh,
+        "maintenance": maintenance,
     }
 
 
@@ -402,6 +419,7 @@ def validate_projection_diagnostics(
     require_postgres_event_log_guard: bool = False,
     require_postgres_projection_guard: bool = False,
     require_projection_refresh_ok: bool = False,
+    require_maintenance_read_only: bool = False,
 ) -> dict[str, Any]:
     if not isinstance(diagnostics.get("data"), dict):
         diagnostics = {"data": {"event_log": {"backend": None, "status": "not_created"}}}
@@ -424,6 +442,7 @@ def validate_projection_diagnostics(
         require_postgres_event_log_guard=require_postgres_event_log_guard,
         require_postgres_projection_guard=require_postgres_projection_guard,
         require_projection_refresh_ok=require_projection_refresh_ok,
+        require_maintenance_read_only=require_maintenance_read_only,
     )
     projection = result["projection"]
     return {
@@ -439,6 +458,7 @@ def validate_projection_diagnostics(
         "projection_read_surfaces": result["projection_read_surfaces"],
         "storage_guards": result["storage_guards"],
         "projection_refresh": result["projection_refresh"],
+        "maintenance": result["maintenance"],
     }
 
 
