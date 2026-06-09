@@ -1,6 +1,8 @@
 import importlib.util
 from pathlib import Path
 
+from hollow_lodge.server.contract_seed import load_contract_seed_file
+
 
 def _load_run_smokes():
     script_path = (
@@ -14,6 +16,49 @@ def _load_run_smokes():
     module = importlib.util.module_from_spec(spec)
     spec.loader.exec_module(module)
     return module.run_smokes
+
+
+def _load_smoke_module():
+    script_path = (
+        Path(__file__).resolve().parents[2]
+        / "scripts"
+        / "smoke_shipped_contracts.py"
+    )
+    spec = importlib.util.spec_from_file_location("smoke_shipped_contracts", script_path)
+    assert spec is not None
+    assert spec.loader is not None
+    module = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(module)
+    return module
+
+
+def test_contract_seed_fixtures_are_registered_for_shipped_smokes():
+    module = _load_smoke_module()
+    repository_root = Path(__file__).resolve().parents[2]
+    fixture_paths = {
+        str(path)
+        for path in sorted(
+            (repository_root / "tests" / "fixtures").glob(
+                "*_contract.json"
+            )
+        )
+    }
+    registered_paths = {
+        str((repository_root / scenario["seed"]).resolve())
+        for scenario in module.SHIPPED_CONTRACT_SMOKES
+        if scenario["seed"] is not None
+    }
+
+    assert registered_paths == fixture_paths
+
+    for scenario in module.SHIPPED_CONTRACT_SMOKES:
+        seed_path = scenario["seed"]
+        if seed_path is None:
+            continue
+        seed = repository_root / seed_path
+        assert seed.exists()
+        loaded = load_contract_seed_file(seed)
+        assert loaded.contract.contract_id == scenario["contract_id"]
 
 
 def test_all_shipped_contracts_have_playthrough_smokes(tmp_path):

@@ -4752,6 +4752,30 @@ Expected verification:
 - `pytest tests/client/test_cli_commands.py::test_onboard_with_invite_registers_and_saves_local_config tests/client/test_cli_commands.py::test_codex_install_mcp_previews_until_confirmed tests/client/test_cli_commands.py::test_doctor_strict_passes_for_registered_ready_install tests/client/test_cli_commands.py::test_what_now_command_renders_codex_landing_surface tests/client/test_installer_script.py tests/client/test_codex_mcp_config.py tests/client/test_codex_session.py::test_codex_session_renders_what_now_landing_surface -q`
 - `pytest -q`
 
+### Slice 196: Shipped Contract Smoke Registry Guard
+
+Status: completed.
+
+Harden the Milestone 4 release discipline so the shipped-contract smoke
+registry cannot silently drift. The shipped-contract e2e now scans
+`tests/fixtures/*_contract.json` and verifies that every data-defined contract
+fixture is registered in `scripts/smoke_shipped_contracts.py`, and that every
+registered seed file exists and declares the same contract id as its smoke
+scenario.
+
+This turns the roadmap's deferred process rule into an automated guard: future
+contract seed fixtures must be added to the smoke registry before the content
+pipeline proof gate can pass. The existing smoke still plays every registered
+contract through activation, action submission, phase resolution, Codex-safe
+contract/artifact rendering, and hidden-truth leak checks.
+
+Expected verification:
+
+- `pytest tests/e2e/test_shipped_contract_smokes.py -q`
+- `pytest tests/server/test_projection_store.py::test_projection_store_allows_same_scoped_artifact_for_multiple_crews tests/e2e/test_shipped_contract_smokes.py::test_contract_seed_fixtures_are_registered_for_shipped_smokes tests/e2e/test_shipped_contract_smokes.py::test_all_shipped_contracts_have_playthrough_smokes -q`
+- `pytest tests/e2e/test_shipped_contract_smokes.py tests/e2e/test_contract_content_pipeline.py tests/e2e/test_codex_render_surfaces.py tests/server/test_contract_seed.py tests/server/test_contract_seed_pipeline.py -q`
+- `pytest -q`
+
 ## Completion Standard
 
 Each slice must:
