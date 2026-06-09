@@ -60,15 +60,20 @@ def test_codex_render_surfaces_show_player_and_agent_state(tmp_path, monkeypatch
         local_log_path=local_log_path,
     )
 
+    what_now = session.render_what_now()
     inbox = session.render_inbox()
     contracts = session.render_contract_board()
     crew_board = session.render_crew_board()
     artifacts = session.render_artifacts()
 
+    assert what_now.surface == "what_now"
     assert inbox.surface == "inbox"
     assert contracts.surface == "contract_board"
     assert crew_board.surface == "crew_board"
     assert artifacts.surface == "artifact_graph"
+    assert "What Now: Ada" in what_now.player_markdown
+    assert what_now.agent_context["player"]["player_id"] == registered["player_id"]
+    assert what_now.agent_context["summary_counts"]["active_contracts"] == 2
     assert "Inbox: Ada" in inbox.player_markdown
     assert inbox.agent_context["player_id"] == registered["player_id"]
     assert inbox.agent_context["display_name"] == "Ada"

@@ -1467,6 +1467,25 @@ Expected verification:
 - `python scripts/smoke_projection_backend.py --server-url https://server.thehollowlodge.com --expected-backend sqlite`
 - `pytest -q`
 
+### Slice 57: Codex What-Now Landing Surface
+
+Status: completed.
+
+Add a read-only first-stop surface for players inside Codex. The client now
+aggregates profile, inbox, visible deals, active crew, and recent visible
+activity into a `what_now` render packet. The MCP server exposes
+`render_what_now`, giving the player and local agent one compact view of active
+contracts, pending decisions, incoming fragments, open deals, and recent
+visible events before drilling into the inbox, crew board, deal board, or
+activity log. The packet is explicitly non-mutating and shapes data through the
+same safe render helpers used by the underlying surfaces.
+
+Expected verification:
+
+- `pytest tests/client/test_render_packets.py::test_what_now_packet_aggregates_current_priorities_without_hidden_fields tests/client/test_codex_session.py::test_codex_session_renders_what_now_landing_surface tests/test_mcp_server.py::test_render_what_now_mcp_call_returns_text_and_structured_packet tests/e2e/test_codex_render_surfaces.py::test_codex_render_surfaces_show_player_and_agent_state -q`
+- `pytest tests/client/test_render_packets.py tests/client/test_codex_session.py tests/test_mcp_server.py tests/e2e/test_codex_render_surfaces.py -q`
+- `pytest -q`
+
 ## Completion Standard
 
 Each slice must:

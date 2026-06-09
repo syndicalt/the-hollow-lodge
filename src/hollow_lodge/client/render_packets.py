@@ -15,6 +15,7 @@ class RenderAction(BaseModel):
 class RenderPacket(BaseModel):
     surface: Literal[
         "inbox",
+        "what_now",
         "profile",
         "contract_board",
         "crew_board",
@@ -760,6 +761,145 @@ def build_activity_summary_packet(
             "Open a conversation thread",
             "Review inbox",
             "Open the contract board",
+        ],
+    )
+
+
+def build_what_now_packet(payload: dict[str, Any]) -> RenderPacket:
+    profile = payload.get("profile", {})
+    inbox = dict(payload.get("inbox", {}))
+    if profile.get("display_name"):
+        inbox.setdefault("display_name", profile["display_name"])
+    deals_payload = payload.get("deals", {})
+    events = payload.get("events", [])
+    active_crew_id = payload.get("active_crew_id")
+
+    display_name = (
+        inbox.get("display_name")
+        or profile.get("display_name")
+        or inbox["player_id"]
+    )
+    active_contracts = inbox.get("active_contracts", [])
+    pending_decisions = [
+        _shape_pending_decision(decision)
+        for decision in inbox.get("pending_decisions", [])
+    ]
+    fragments = inbox.get("incoming_proof_fragments", [])
+    visible_artifacts = inbox.get("visible_artifacts", [])
+    visible_deals = deals_payload.get("deals", [])
+    open_deals = [
+        deal
+        for deal in visible_deals
+        if deal.get("status") not in {"fulfilled", "declined", "canceled", "expired"}
+    ]
+    visible_events = sorted(events, key=lambda event: int(event["sequence"]))
+    recent_events = visible_events[-3:]
+
+    lines = [
+        f"What Now: {display_name}",
+        f"Player ID: {inbox['player_id']}",
+    ]
+    if active_crew_id:
+        lines.append(f"Active crew: {active_crew_id}")
+    lines.extend(
+        [
+            "",
+            "Snapshot:",
+            f"- active contracts: {len(active_contracts)}",
+            f"- pending decisions: {len(pending_decisions)}",
+            f"- incoming fragments: {len(fragments)}",
+            f"- visible artifacts: {len(visible_artifacts)}",
+            f"- open deals: {len(open_deals)}",
+            f"- recent visible events: {len(recent_events)}",
+            "",
+            "Priority:",
+        ]
+    )
+    if pending_decisions:
+        for decision in pending_decisions[:3]:
+            lines.append(
+                f"- decision: {decision['label']} - {decision['description']}"
+            )
+    elif fragments:
+        for fragment in fragments[:3]:
+            lines.append(
+                f"- fragment: {fragment['fragment_id']} - {fragment['summary']}"
+            )
+    elif open_deals:
+        for deal in open_deals[:3]:
+            lines.append(
+                f"- deal: {deal['deal_id']} {deal['status']} from "
+                f"{deal['proposer_crew_id']} to {deal['recipient_crew_id']}"
+            )
+    elif active_contracts:
+        for contract in active_contracts[:3]:
+            lines.append(
+                f"- contract: {contract['title']} ({contract['phase']['name']})"
+            )
+    else:
+        lines.append("- no urgent visible items")
+
+    lines.append("")
+    lines.append("Recent activity:")
+    if recent_events:
+        lines.extend(f"- {_render_activity_event(event)}" for event in recent_events)
+    else:
+        lines.append("- none")
+
+    agent_context = {
+        "player": {
+            "player_id": inbox["player_id"],
+            "display_name": display_name,
+            "active_crew_id": active_crew_id,
+            "crews": [
+                _shape_profile_crew(crew)
+                for crew in profile.get("crews", [])
+            ],
+        },
+        "summary_counts": {
+            "active_contracts": len(active_contracts),
+            "pending_decisions": len(pending_decisions),
+            "incoming_fragments": len(fragments),
+            "visible_artifacts": len(visible_artifacts),
+            "visible_deals": len(visible_deals),
+            "open_deals": len(open_deals),
+            "visible_events": len(visible_events),
+        },
+        "active_contracts": [
+            _shape_contract(contract)
+            for contract in active_contracts
+        ],
+        "pending_decisions": pending_decisions,
+        "incoming_proof_fragments": [
+            _shape_proof_fragment(fragment)
+            for fragment in fragments
+        ],
+        "visible_artifacts": [
+            _shape_artifact(artifact)
+            for artifact in visible_artifacts
+        ],
+        "open_deals": [_shape_deal(deal) for deal in open_deals],
+        "recent_events": [
+            _shape_activity_event(event)
+            for event in recent_events
+        ],
+        "mutation": False,
+    }
+    return RenderPacket(
+        surface="what_now",
+        player_markdown="\n".join(lines),
+        agent_context=agent_context,
+        suggested_prompts=[
+            "Open inbox",
+            "Review crew board",
+            "Review visible deals",
+            "Review recent activity",
+        ],
+        actions=[
+            RenderAction(label="Open inbox", intent="render_inbox"),
+            RenderAction(label="Review crew board", intent="render_crew_board"),
+            RenderAction(label="Review visible deals", intent="render_deals"),
+            RenderAction(label="Review recent activity", intent="render_activity"),
         ],
     )
 

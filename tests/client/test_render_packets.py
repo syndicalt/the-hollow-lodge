@@ -6,6 +6,7 @@ from hollow_lodge.client.render_packets import (
     build_dossier_packet,
     build_inbox_packet,
     build_profile_packet,
+    build_what_now_packet,
 )
 
 
@@ -101,6 +102,116 @@ def test_profile_packet_renders_persistent_identity_and_crew_memberships_without
     assert packet.suggested_prompts == [
         "Open inbox",
         "Review crew board",
+        "Review recent activity",
+    ]
+
+
+def test_what_now_packet_aggregates_current_priorities_without_hidden_fields():
+    packet = build_what_now_packet(
+        {
+            "profile": {
+                "player_id": "player_0001",
+                "display_name": "Ada",
+                "crews": [
+                    {
+                        "crew_id": "crew_0001",
+                        "name": "The Gilt Knives",
+                        "member_count": 3,
+                        "ready_for_full_contracts": True,
+                        "join_code": "hidden-join",
+                    }
+                ],
+            },
+            "inbox": {
+                **INBOX,
+                "pending_decisions": [
+                    {
+                        "kind": "packet_lead_vote",
+                        "label": "Packet Lead vote",
+                        "description": "Choose who compiles the proof dossier.",
+                        "crew_id": "crew_0001",
+                        "server_notes": "hidden",
+                    }
+                ],
+                "incoming_proof_fragments": [
+                    {
+                        "fragment_id": "fragment_0001",
+                        "summary": "A chipped reliquary seal.",
+                        "private_source": "hidden witness",
+                    }
+                ],
+            },
+            "deals": {
+                "deals": [
+                    {
+                        "deal_id": "deal_000001",
+                        "contract_id": "contract_false_finger",
+                        "proposer_crew_id": "crew_0002",
+                        "recipient_crew_id": "crew_0001",
+                        "status": "proposed",
+                        "offered_artifact_ids": ["artifact_ledger_rubric"],
+                        "requested_artifact_ids": ["artifact_lot_card"],
+                        "soft_terms": ["Do not cite us."],
+                    }
+                ]
+            },
+            "events": [
+                {
+                    "sequence": 1,
+                    "type": "chat.message.created",
+                    "payload": {
+                        "message_id": "msg_1",
+                        "sender_player_id": "player_0002",
+                        "sender_crew_id": "crew_0002",
+                        "recipient_crew_id": "crew_0001",
+                        "body": "The bell moved.",
+                        "server_only_note": "hidden",
+                    },
+                }
+            ],
+            "active_crew_id": "crew_0001",
+        }
+    )
+
+    assert packet.surface == "what_now"
+    assert "What Now: Ada" in packet.player_markdown
+    assert "active contracts: 1" in packet.player_markdown
+    assert "pending decisions: 1" in packet.player_markdown
+    assert "open deals: 1" in packet.player_markdown
+    assert (
+        "- decision: Packet Lead vote - Choose who compiles the proof dossier."
+        in packet.player_markdown
+    )
+    assert "1 chat player_0002: The bell moved." in packet.player_markdown
+    assert "hidden" not in packet.player_markdown
+    assert packet.agent_context["mutation"] is False
+    assert packet.agent_context["player"] == {
+        "player_id": "player_0001",
+        "display_name": "Ada",
+        "active_crew_id": "crew_0001",
+        "crews": [
+            {
+                "crew_id": "crew_0001",
+                "name": "The Gilt Knives",
+                "member_count": 3,
+                "ready_for_full_contracts": True,
+            }
+        ],
+    }
+    assert packet.agent_context["summary_counts"] == {
+        "active_contracts": 1,
+        "pending_decisions": 1,
+        "incoming_fragments": 1,
+        "visible_artifacts": 1,
+        "visible_deals": 1,
+        "open_deals": 1,
+        "visible_events": 1,
+    }
+    assert "hidden" not in str(packet.agent_context)
+    assert packet.suggested_prompts == [
+        "Open inbox",
+        "Review crew board",
+        "Review visible deals",
         "Review recent activity",
     ]
 

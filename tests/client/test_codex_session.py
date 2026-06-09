@@ -435,7 +435,11 @@ def test_codex_session_syncs_before_rendering_inbox(tmp_path):
         ClientConfig(server_url="http://testserver", player_id="player_0001", token="token"),
     )
     fake_api = FakeApi()
-    session = CodexGameSession(config_path=config_path, local_log_path=log_path, api=fake_api)
+    session = CodexGameSession(
+        config_path=config_path,
+        local_log_path=log_path,
+        api=fake_api,
+    )
 
     packet = session.render_inbox()
 
@@ -468,6 +472,33 @@ def test_codex_session_refreshes_missing_display_name(tmp_path):
     assert load_config(config_path).display_name == "corelumen"
     assert "Inbox: corelumen" in packet.player_markdown
     assert packet.agent_context["player_id"] == "player_0001"
+
+
+def test_codex_session_renders_what_now_landing_surface(tmp_path):
+    config_path = tmp_path / "config.json"
+    log_path = tmp_path / "local.jsonl"
+    fake_api = FakeApi()
+    save_config(
+        config_path,
+        ClientConfig(
+            server_url="http://testserver",
+            player_id="player_0001",
+            token="token",
+            display_name="corelumen",
+            active_crew_id="crew_0001",
+        ),
+    )
+    session = CodexGameSession(config_path=config_path, local_log_path=log_path, api=fake_api)
+
+    packet = session.render_what_now()
+
+    assert fake_api.calls == ["visible_events", "profile", "inbox", "deals"]
+    assert packet.surface == "what_now"
+    assert "What Now: corelumen" in packet.player_markdown
+    assert packet.agent_context["player"]["active_crew_id"] == "crew_0001"
+    assert packet.agent_context["summary_counts"]["open_deals"] == 1
+    assert packet.agent_context["recent_events"][0]["message"]["message_id"] == "msg_1"
+    assert "hidden" not in packet.player_markdown
 
 
 def test_codex_session_renders_profile(tmp_path):
