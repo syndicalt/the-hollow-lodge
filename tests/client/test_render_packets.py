@@ -1425,6 +1425,7 @@ def test_activity_summary_packet_shapes_visible_events_without_server_only_field
                     "suspected_crew_ids": ["crew_0001", "crew_0002"],
                     "summary": "A private artifact discussion is echoing between crews.",
                     "pressure": "artifact_reference_detected",
+                    "leak_vector": "artifact_attachment",
                     "offered_artifact_ids": ["artifact_ledger_rubric"],
                     "soft_terms": ["Do not cite us."],
                 },
@@ -1442,6 +1443,7 @@ def test_activity_summary_packet_shapes_visible_events_without_server_only_field
                     "source_id": "msg_000001",
                     "contract_id": "contract_saints_false_finger",
                     "pressure": "artifact_reference_detected",
+                    "leak_vector": "artifact_attachment",
                     "mode": "contain",
                     "outcome": "containment_started",
                     "heat_delta": 1,
@@ -1465,6 +1467,7 @@ def test_activity_summary_packet_shapes_visible_events_without_server_only_field
                     "source_id": "msg_000001",
                     "contract_id": "contract_saints_false_finger",
                     "pressure": "artifact_reference_detected",
+                    "leak_vector": "artifact_attachment",
                     "assessment": "credible_artifact_signal",
                     "confidence": "medium",
                     "summary": (
@@ -1601,6 +1604,7 @@ def test_activity_summary_packet_shapes_visible_events_without_server_only_field
                     "suspected_crew_ids": ["crew_0001", "crew_0002"],
                     "summary": "A private artifact discussion is echoing between crews.",
                     "pressure": "artifact_reference_detected",
+                    "leak_vector": "artifact_attachment",
                 },
             },
             {
@@ -1614,6 +1618,7 @@ def test_activity_summary_packet_shapes_visible_events_without_server_only_field
                     "source_id": "msg_000001",
                     "contract_id": "contract_saints_false_finger",
                     "pressure": "artifact_reference_detected",
+                    "leak_vector": "artifact_attachment",
                     "mode": "contain",
                     "outcome": "containment_started",
                     "heat_delta": 1,
@@ -1632,6 +1637,7 @@ def test_activity_summary_packet_shapes_visible_events_without_server_only_field
                     "source_id": "msg_000001",
                     "contract_id": "contract_saints_false_finger",
                     "pressure": "artifact_reference_detected",
+                    "leak_vector": "artifact_attachment",
                     "assessment": "credible_artifact_signal",
                     "confidence": "medium",
                     "summary": (

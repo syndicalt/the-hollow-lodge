@@ -387,6 +387,7 @@ def test_rumor_action_appends_sanitized_crew_visible_response_outcome(tmp_path):
         "source_type": "chat.message.created",
         "source_id": "msg_000001",
         "pressure": "artifact_reference_detected",
+        "leak_vector": "artifact_attachment",
         "mode": "investigate",
         "outcome": "investigation_started",
         "heat_delta": 0,
@@ -457,6 +458,7 @@ def test_investigating_rumor_appends_sanitized_verification_result(tmp_path):
         "source_type": "chat.message.created",
         "source_id": "msg_000001",
         "pressure": "artifact_reference_detected",
+        "leak_vector": "artifact_attachment",
         "assessment": "credible_artifact_signal",
         "confidence": "medium",
         "summary": (
@@ -470,6 +472,77 @@ def test_investigating_rumor_appends_sanitized_verification_result(tmp_path):
     assert gilt["crew_id"] not in verification_text
     assert moth["crew_id"] not in verification_text
     assert all(event["type"] != "contract.rumor.verified" for event in ada_events)
+
+
+def test_investigating_body_mention_rumor_records_distinct_safe_verification(tmp_path):
+    client = TestClient(create_app(data_dir=tmp_path, invite_codes=["a", "b", "c"]))
+    ada = register(client, "a", "Ada")
+    grace = register(client, "b", "Grace")
+    linus = register(client, "c", "Linus")
+    gilt = create_crew(client, ada["token"])
+    moth = client.post(
+        "/crews",
+        headers=command_auth(grace["token"], "crew-create-moth"),
+        json={"name": "The Moth Choir"},
+    ).json()
+    ash = client.post(
+        "/crews",
+        headers=command_auth(linus["token"], "crew-create-ash"),
+        json={"name": "The Ash Keys"},
+    ).json()
+    sent = client.post(
+        "/chat/crew-to-crew",
+        headers=command_auth(ada["token"], "chat-gilt-moth-body-ledger"),
+        json={
+            "sender_crew_id": gilt["crew_id"],
+            "recipient_crew_id": moth["crew_id"],
+            "body": "The Red Ledger Rubric is enough leverage. Do not attach it.",
+        },
+    )
+
+    submitted = client.post(
+        "/actions",
+        headers=command_auth(linus["token"], "action-investigate-body-rumor"),
+        json={
+            "crew_id": ash["crew_id"],
+            "intent": "Ask a night clerk whether the artifact name is being used as leverage.",
+            "confirmed": True,
+            "rumor_id": "rumor_msg_000001",
+        },
+    )
+    linus_events = client.get("/events", headers=auth(linus["token"])).json()["events"]
+
+    assert sent.status_code == 201
+    assert submitted.status_code == 201
+    verifications = [
+        event["payload"]
+        for event in linus_events
+        if event["type"] == "contract.rumor.verified"
+    ]
+    assert verifications == [
+        {
+            "schema_version": 1,
+            "rumor_id": "rumor_msg_000001",
+            "action_id": submitted.json()["action_id"],
+            "crew_id": ash["crew_id"],
+            "source_type": "chat.message.created",
+            "source_id": "msg_000001",
+            "pressure": "artifact_reference_detected",
+            "leak_vector": "artifact_name_mention",
+            "assessment": "credible_artifact_mention_signal",
+            "confidence": "medium",
+            "summary": (
+                "The investigation found a credible artifact-name signal, but "
+                "not enough to expose the private source."
+            ),
+        }
+    ]
+    verification_text = str(verifications)
+    assert "Red Ledger Rubric" not in verification_text
+    assert "enough leverage" not in verification_text
+    assert "artifact_ledger_rubric" not in verification_text
+    assert gilt["crew_id"] not in verification_text
+    assert moth["crew_id"] not in verification_text
 
 
 def test_rumor_action_can_start_containment_with_visible_heat_cost(tmp_path):
@@ -528,6 +601,7 @@ def test_rumor_action_can_start_containment_with_visible_heat_cost(tmp_path):
             "source_type": "chat.message.created",
             "source_id": "msg_000001",
             "pressure": "artifact_reference_detected",
+            "leak_vector": "artifact_attachment",
             "mode": "contain",
             "outcome": "containment_started",
             "heat_delta": 1,

@@ -86,22 +86,23 @@ def pending_decisions_for_player(
         for rumor in rumors_by_crew.get(crew_id, []):
             if rumor["rumor_id"] in answered_rumor_ids:
                 continue
-            decisions.append(
-                {
-                    "kind": "rumor_response",
-                    "label": "Rumor needs response",
-                    "description": (
-                        f"Rumor {rumor['rumor_id']} suggests {rumor['pressure']}. "
-                        "Decide whether to verify, ignore, or answer with a crew action."
-                    ),
-                    "crew_id": crew_id,
-                    "rumor_id": rumor["rumor_id"],
-                    "source_type": rumor["source_type"],
-                    "source_id": rumor["source_id"],
-                    "pressure": rumor["pressure"],
-                    "action": "review_rumor",
-                }
-            )
+            decision = {
+                "kind": "rumor_response",
+                "label": "Rumor needs response",
+                "description": (
+                    f"Rumor {rumor['rumor_id']} suggests {rumor['pressure']}. "
+                    "Decide whether to verify, ignore, or answer with a crew action."
+                ),
+                "crew_id": crew_id,
+                "rumor_id": rumor["rumor_id"],
+                "source_type": rumor["source_type"],
+                "source_id": rumor["source_id"],
+                "pressure": rumor["pressure"],
+                "action": "review_rumor",
+            }
+            if rumor.get("leak_vector"):
+                decision["leak_vector"] = rumor["leak_vector"]
+            decisions.append(decision)
 
         dossier = dossiers.get(crew_id, {})
         for contract in unresolved_contracts:

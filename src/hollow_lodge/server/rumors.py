@@ -15,6 +15,7 @@ SAFE_RUMOR_FIELDS = (
     "suspected_crew_ids",
     "summary",
     "pressure",
+    "leak_vector",
 )
 
 

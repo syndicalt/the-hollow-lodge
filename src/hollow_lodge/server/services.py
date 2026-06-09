@@ -816,7 +816,8 @@ class ChatService:
     ) -> None:
         if message.kind != "crew_to_crew":
             return
-        if not message.artifact_ids and not self._body_mentions_visible_artifact(message):
+        leak_vector = self._chat_artifact_leak_vector(message)
+        if leak_vector is None:
             return
         participant_crew_ids = {
             message.sender_crew_id,
@@ -844,9 +845,17 @@ class ChatService:
                 ],
                 "summary": "A private artifact discussion is echoing between crews.",
                 "pressure": "artifact_reference_detected",
+                "leak_vector": leak_vector,
             },
             idempotency_key=f"{idempotency_key}.rumor",
         )
+
+    def _chat_artifact_leak_vector(self, message: ChatMessage) -> str | None:
+        if message.artifact_ids:
+            return "artifact_attachment"
+        if self._body_mentions_visible_artifact(message):
+            return "artifact_name_mention"
+        return None
 
     def _body_mentions_visible_artifact(self, message: ChatMessage) -> bool:
         if self._artifact_service is None:
@@ -2541,6 +2550,8 @@ class ActionService:
             "heat_delta": heat_delta,
             "summary": summary,
         }
+        if "leak_vector" in rumor:
+            payload["leak_vector"] = rumor["leak_vector"]
         if "contract_id" in rumor:
             payload["contract_id"] = rumor["contract_id"]
         self._event_store.append_command(
@@ -2608,6 +2619,8 @@ class ActionService:
             "confidence": "medium",
             "summary": summary,
         }
+        if "leak_vector" in rumor:
+            payload["leak_vector"] = rumor["leak_vector"]
         if "contract_id" in rumor:
             payload["contract_id"] = rumor["contract_id"]
         self._event_store.append_command(
@@ -2620,6 +2633,18 @@ class ActionService:
 
     def _rumor_verification_assessment(self, rumor: dict) -> tuple[str, str]:
         pressure = rumor.get("pressure")
+        leak_vector = rumor.get("leak_vector")
+        if (
+            pressure == "artifact_reference_detected"
+            and leak_vector == "artifact_name_mention"
+        ):
+            return (
+                "credible_artifact_mention_signal",
+                (
+                    "The investigation found a credible artifact-name signal, "
+                    "but not enough to expose the private source."
+                ),
+            )
         if pressure == "artifact_reference_detected":
             return (
                 "credible_artifact_signal",

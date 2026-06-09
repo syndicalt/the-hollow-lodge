@@ -368,8 +368,15 @@ Status:
   quieter-approach modifier, exploitation keeps its leverage modifier, and
   integration creates a capped dossier-framing modifier, all from aggregate
   crew legacy counts rather than raw rumor sources.
+- Thirteenth social-pressure slice completed: chat-originated rumor leaks now
+  carry a bounded `leak_vector` that distinguishes explicit artifact
+  attachments from body-only artifact-name mentions. Rumor decisions,
+  responses, verification events, and Codex activity packets can preserve that
+  safe enum, and body-only mentions now verify as a distinct
+  `credible_artifact_mention_signal` without exposing message text, artifact
+  IDs, artifact titles, player IDs, or participant-only chat contents.
 - Escrowed deal acceptance remains participant-scoped and server-enforced.
-- Deferred: richer rumor verification sources and deeper long-term
+- Deferred: additional rumor verification sources and deeper long-term
   consequences from repeated credible signal follow-through.
 
 Likely files:
@@ -969,6 +976,27 @@ Expected verification:
 
 - `pytest tests/server/test_crew_legacy_projection.py::test_contain_and_integrate_rumor_escalations_create_capped_future_modifiers tests/server/test_crew_legacy_projection.py::test_rumor_escalations_create_safe_future_modifiers_without_raw_sources tests/client/test_render_packets.py::test_crew_board_packet_renders_legacy_and_future_modifiers_without_hidden_fields tests/server/test_crew_routes.py::test_crew_board_projects_rumor_escalation_legacy_and_future_modifier tests/server/test_crew_routes.py::test_crew_board_projects_integrated_rumor_escalation_modifier -q`
 - `pytest tests/server/test_crew_legacy_projection.py tests/server/test_crew_routes.py tests/server/test_action_routes.py tests/client/test_render_packets.py -q`
+- `pytest -q`
+
+### Slice 36: Chat Rumor Leak Vector Verification
+
+Status: completed.
+
+Enrich chat-originated rumor verification without exposing the private chat.
+Redacted `contract.rumor.leaked` events from crew-to-crew chat now include a
+bounded `leak_vector`: `artifact_attachment` when a message attached an
+artifact reference, and `artifact_name_mention` when the body merely named a
+visible artifact. The enum is carried through visible rumor projections,
+pending decisions, rumor response outcomes, verification events, and Codex
+activity packet shaping. Body-only artifact-name mentions now verify as
+`credible_artifact_mention_signal` with a safe summary, while message bodies,
+artifact IDs, artifact titles, player IDs, and participant-only chat contents
+remain outside bystander and activity surfaces.
+
+Expected verification:
+
+- `pytest tests/server/test_chat_routes.py::test_crew_to_crew_artifact_chat_leaks_redacted_rumor_to_bystander_crew tests/server/test_chat_routes.py::test_crew_to_crew_body_artifact_reference_leaks_redacted_rumor tests/server/test_chat_routes.py::test_visible_chat_rumor_becomes_pending_decision_for_bystander_crew tests/server/test_action_routes.py::test_investigating_body_mention_rumor_records_distinct_safe_verification -q`
+- `pytest tests/server/test_chat_routes.py tests/server/test_action_routes.py tests/server/test_crew_routes.py tests/client/test_render_packets.py -q`
 - `pytest -q`
 
 ## Completion Standard

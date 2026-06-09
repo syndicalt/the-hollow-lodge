@@ -384,6 +384,7 @@ def _shape_pending_decision(decision: dict[str, Any]) -> dict[str, Any]:
             "source_type",
             "source_id",
             "pressure",
+            "leak_vector",
             "candidate_player_id",
             "missing_need",
             "action",
@@ -450,6 +451,7 @@ def _shape_rumor(payload: dict[str, Any]) -> dict[str, Any]:
             "suspected_crew_ids",
             "summary",
             "pressure",
+            "leak_vector",
         )
         if key in payload
     }
@@ -466,6 +468,7 @@ def _shape_rumor_response(payload: dict[str, Any]) -> dict[str, Any]:
             "source_id",
             "contract_id",
             "pressure",
+            "leak_vector",
             "mode",
             "outcome",
             "heat_delta",
@@ -487,6 +490,7 @@ def _shape_rumor_verification(payload: dict[str, Any]) -> dict[str, Any]:
             "source_id",
             "contract_id",
             "pressure",
+            "leak_vector",
             "assessment",
             "confidence",
             "summary",

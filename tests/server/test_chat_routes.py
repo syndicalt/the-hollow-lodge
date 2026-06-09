@@ -142,6 +142,7 @@ def test_crew_to_crew_artifact_chat_leaks_redacted_rumor_to_bystander_crew(tmp_p
         "suspected_crew_ids": [gilt, moth],
         "summary": "A private artifact discussion is echoing between crews.",
         "pressure": "artifact_reference_detected",
+        "leak_vector": "artifact_attachment",
     }
     assert "artifact_ledger_rubric" not in str(rumor_events)
     assert "The ledger proves our leverage" not in str(rumor_events)
@@ -190,6 +191,7 @@ def test_crew_to_crew_body_artifact_reference_leaks_redacted_rumor(tmp_path):
         "suspected_crew_ids": [gilt, moth],
         "summary": "A private artifact discussion is echoing between crews.",
         "pressure": "artifact_reference_detected",
+        "leak_vector": "artifact_name_mention",
     }
     assert "Red Ledger Rubric" not in str(rumor_events)
     assert "enough leverage" not in str(rumor_events)
@@ -233,6 +235,7 @@ def test_visible_chat_rumor_becomes_pending_decision_for_bystander_crew(tmp_path
         "source_type": "chat.message.created",
         "source_id": sent.json()["message_id"],
         "pressure": "artifact_reference_detected",
+        "leak_vector": "artifact_attachment",
         "action": "review_rumor",
     }
     assert sent.status_code == 201
