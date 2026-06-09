@@ -1,5 +1,6 @@
 import json
 from pathlib import Path
+import shutil
 
 import typer
 
@@ -234,6 +235,7 @@ def doctor(
 
     mcp_status = "registered" if codex_mcp_server_registered(codex_config) else "missing"
     typer.echo(f"mcp: {mcp_status} {codex_config}")
+    typer.echo(f"mcp command: {_command_status('hollow-lodge-mcp')} hollow-lodge-mcp")
 
 
 @admin_app.command("invite-create")
@@ -1471,6 +1473,10 @@ def _server_health_status(server_url: str) -> str:
     if response == {"status": "ok"}:
         return "ok"
     return "unexpected"
+
+
+def _command_status(command: str) -> str:
+    return "available" if shutil.which(command) else "missing"
 
 
 def _target_crew_id(config: ClientConfig, crew_id: str | None) -> str:

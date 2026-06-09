@@ -3404,6 +3404,22 @@ Expected verification:
 - `pytest tests/client/test_render_packets.py tests/client/test_codex_session.py tests/test_mcp_server.py -q`
 - `pytest -q`
 
+### Slice 137: Doctor MCP Command Availability
+
+Status: completed.
+
+Harden the hosted onboarding proof gate by making `hollow-lodge doctor` verify
+both sides of Codex MCP readiness: the Codex config registration and whether
+the `hollow-lodge-mcp` executable is available on `PATH`. This catches a common
+install failure where the MCP block exists but Codex cannot launch the server
+command after a tool install or shell PATH change.
+
+Expected verification:
+
+- `pytest tests/client/test_cli_commands.py::test_doctor_reports_registered_player_and_mcp_without_secret_material tests/client/test_cli_commands.py::test_doctor_reports_pending_onboarding_without_contact tests/client/test_cli_commands.py::test_doctor_reports_unconfigured_install_and_unreachable_server -q`
+- `pytest tests/client/test_cli_commands.py tests/client/test_installer_script.py tests/client/test_codex_mcp_config.py -q`
+- `pytest -q`
+
 ## Completion Standard
 
 Each slice must:

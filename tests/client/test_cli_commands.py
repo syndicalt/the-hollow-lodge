@@ -833,6 +833,7 @@ def test_doctor_reports_registered_player_and_mcp_without_secret_material(
         return client
 
     monkeypatch.setattr(cli, "HollowLodgeApi", fake_client)
+    monkeypatch.setattr(cli.shutil, "which", lambda command: f"/bin/{command}")
     config_path = tmp_path / "config.json"
     onboarding_path = tmp_path / "onboarding.json"
     codex_config = tmp_path / "codex.toml"
@@ -869,6 +870,7 @@ def test_doctor_reports_registered_player_and_mcp_without_secret_material(
     assert "server: ok http://testserver" in result.output
     assert "player: registered player_0001 display=Ada active_crew=crew_0001" in result.output
     assert f"mcp: registered {codex_config}" in result.output
+    assert "mcp command: available hollow-lodge-mcp" in result.output
     assert "secret-token" not in result.output
     assert created_clients[0].calls == [("health", {})]
 
@@ -883,6 +885,7 @@ def test_doctor_reports_pending_onboarding_without_contact(tmp_path, monkeypatch
         return client
 
     monkeypatch.setattr(cli, "HollowLodgeApi", fake_client)
+    monkeypatch.setattr(cli.shutil, "which", lambda command: None)
     config_path = tmp_path / "missing-config.json"
     onboarding_path = tmp_path / "onboarding.json"
     codex_config = tmp_path / "codex.toml"
@@ -912,6 +915,7 @@ def test_doctor_reports_pending_onboarding_without_contact(tmp_path, monkeypatch
     assert "server: ok http://pending-server" in result.output
     assert "player: pending key_request_0001 status=pending display=Ada" in result.output
     assert f"mcp: missing {codex_config}" in result.output
+    assert "mcp command: missing hollow-lodge-mcp" in result.output
     assert "ada@example.com" not in result.output
     assert created_clients[0].calls == [("health", {})]
 
@@ -925,6 +929,7 @@ def test_doctor_reports_unconfigured_install_and_unreachable_server(tmp_path, mo
             raise RuntimeError("connection failed with secret-token")
 
     monkeypatch.setattr(cli, "HollowLodgeApi", FailingApi)
+    monkeypatch.setattr(cli.shutil, "which", lambda command: None)
 
     result = runner.invoke(
         cli.app,
@@ -945,6 +950,7 @@ def test_doctor_reports_unconfigured_install_and_unreachable_server(tmp_path, mo
     assert "server: unreachable http://downstream" in result.output
     assert "player: not configured" in result.output
     assert "mcp: missing" in result.output
+    assert "mcp command: missing hollow-lodge-mcp" in result.output
     assert "secret-token" not in result.output
 
 
