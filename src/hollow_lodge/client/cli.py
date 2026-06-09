@@ -866,9 +866,22 @@ def admin_contract_activate(
         envvar="HOLLOW_LODGE_ADMIN_TOKEN",
         help="Server admin token.",
     ),
+    confirm: bool = typer.Option(False, "--confirm", help="Activate the contract seed on the server."),
 ) -> None:
     """Activate a contract content seed on the authoritative server."""
     seed = json.loads(seed_file.read_text(encoding="utf-8"))
+    if not confirm:
+        contract_id = seed.get("contract", {}).get("contract_id", "unknown")
+        packet = build_mutation_result_packet(
+            operation="admin_contract_activate",
+            confirmed=False,
+            preview_fields={
+                "contract_id": contract_id,
+                "seed_file": str(seed_file),
+            },
+        )
+        _echo_packet(packet, as_json=False)
+        return
     response = HollowLodgeApi(server_url=server).activate_contract_seed(
         seed=seed,
         admin_token=admin_token,
@@ -891,8 +904,17 @@ def admin_contract_archive(
         envvar="HOLLOW_LODGE_ADMIN_TOKEN",
         help="Server admin token.",
     ),
+    confirm: bool = typer.Option(False, "--confirm", help="Archive the contract on the server."),
 ) -> None:
     """Archive a contract so it leaves active inbox and crew-board work queues."""
+    if not confirm:
+        packet = build_mutation_result_packet(
+            operation="admin_contract_archive",
+            confirmed=False,
+            preview_fields={"contract_id": contract_id},
+        )
+        _echo_packet(packet, as_json=False)
+        return
     response = HollowLodgeApi(server_url=server).archive_contract(
         contract_id=contract_id,
         admin_token=admin_token,

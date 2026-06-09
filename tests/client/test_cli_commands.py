@@ -3097,6 +3097,27 @@ def test_admin_contract_activate_command_reads_seed_file(tmp_path, monkeypatch):
     monkeypatch.setattr(cli, "HollowLodgeApi", fake_client)
     monkeypatch.setattr(cli, "new_command_key", lambda prefix: f"{prefix}-key")
 
+    preview = runner.invoke(
+        cli.app,
+        [
+            "admin",
+            "contract-activate",
+            "--server",
+            "http://testserver",
+            "--admin-token",
+            "admin-secret",
+            "--seed-file",
+            "tests/fixtures/ash_window_contract.json",
+        ],
+    )
+
+    assert preview.exit_code == 0
+    assert "Preview: admin_contract_activate" in preview.output
+    assert "No server mutation was submitted." in preview.output
+    assert "- contract_id: contract_ash_window" in preview.output
+    assert "- seed_file: tests/fixtures/ash_window_contract.json" in preview.output
+    assert created_clients == []
+
     result = runner.invoke(
         cli.app,
         [
@@ -3108,6 +3129,7 @@ def test_admin_contract_activate_command_reads_seed_file(tmp_path, monkeypatch):
             "admin-secret",
             "--seed-file",
             "tests/fixtures/ash_window_contract.json",
+            "--confirm",
         ],
     )
 
@@ -3132,6 +3154,25 @@ def test_admin_contract_archive_command_calls_server(tmp_path, monkeypatch):
     monkeypatch.setattr(cli, "HollowLodgeApi", fake_client)
     monkeypatch.setattr(cli, "new_command_key", lambda prefix: f"{prefix}-key")
 
+    preview = runner.invoke(
+        cli.app,
+        [
+            "admin",
+            "contract-archive",
+            "contract_ash_window",
+            "--server",
+            "http://testserver",
+            "--admin-token",
+            "admin-secret",
+        ],
+    )
+
+    assert preview.exit_code == 0
+    assert "Preview: admin_contract_archive" in preview.output
+    assert "No server mutation was submitted." in preview.output
+    assert "- contract_id: contract_ash_window" in preview.output
+    assert created_clients == []
+
     result = runner.invoke(
         cli.app,
         [
@@ -3142,6 +3183,7 @@ def test_admin_contract_archive_command_calls_server(tmp_path, monkeypatch):
             "http://testserver",
             "--admin-token",
             "admin-secret",
+            "--confirm",
         ],
     )
 

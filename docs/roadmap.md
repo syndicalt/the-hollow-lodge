@@ -4045,6 +4045,28 @@ Expected verification:
 - `pytest tests/client/test_cli_commands.py tests/client/test_config.py tests/client/test_codex_session.py tests/client/test_render_packets.py tests/server/test_crew_routes.py tests/server/test_identity_routes.py -q`
 - `pytest -q`
 
+### Slice 167: CLI Admin Contract Lifecycle Confirmation Guard
+
+Status: completed.
+
+Protect contract lifecycle operations from accidental operator submission.
+`hollow-lodge admin contract-activate` now reads the local seed and renders a
+no-mutation `admin_contract_activate` preview by default, showing the contract
+id and seed path without contacting the server. `hollow-lodge admin
+contract-archive` now renders a no-mutation `admin_contract_archive` preview
+by default, showing the target contract id. Both commands mutate the
+authoritative server only when rerun with `--confirm`.
+
+This keeps content operations aligned with the confirmation-oriented mutation
+policy while preserving existing confirmed admin token handling, seed payload
+loading, idempotency keys, and output.
+
+Expected verification:
+
+- `pytest tests/client/test_cli_commands.py::test_admin_contract_activate_command_reads_seed_file tests/client/test_cli_commands.py::test_admin_contract_archive_command_calls_server -q`
+- `pytest tests/client/test_cli_commands.py tests/client/test_api.py tests/server/test_contract_seed.py tests/server/test_contract_seed_pipeline.py tests/server/test_app_config.py -q`
+- `pytest -q`
+
 ## Completion Standard
 
 Each slice must:
