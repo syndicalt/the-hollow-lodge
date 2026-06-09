@@ -459,6 +459,11 @@ def admin_backend_smoke(
         "--require-current-projection-schema",
         help="Require projection diagnostics to match this package's schema version.",
     ),
+    require_sequence_alignment: bool = typer.Option(
+        False,
+        "--require-sequence-alignment",
+        help="Require event count and projection sequence diagnostics to agree.",
+    ),
 ) -> None:
     """Verify hosted event-log and projection backend readiness."""
     if expected_backend not in {"sqlite", "postgres"}:
@@ -478,6 +483,7 @@ def admin_backend_smoke(
             expected_event_backend=expected_event_backend,
             require_projection_reads=require_projection_reads,
             require_current_projection_schema=require_current_projection_schema,
+            require_sequence_alignment=require_sequence_alignment,
         )
     except RuntimeError as exc:
         typer.echo(f"Error: {exc}", err=True)
@@ -486,6 +492,7 @@ def admin_backend_smoke(
         "backend readiness ok: "
         f"event={result['event_log']['backend']} "
         f"event_status={result['event_log']['status']} "
+        f"events={result['event_log']['event_count']} "
         f"projection={result['projection']['backend']} "
         f"projection_status={result['projection']['status']} "
         f"projection_lag={result['projection']['lag']} "

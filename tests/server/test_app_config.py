@@ -55,6 +55,7 @@ def test_diagnostics_reports_safe_operational_status(tmp_path, monkeypatch):
     assert body["data"]["event_log"]["path"] == str(tmp_path / "server-events.jsonl")
     assert body["data"]["event_log"]["exists"] is False
     assert body["data"]["event_log"]["status"] == "not_created"
+    assert body["data"]["event_log"]["event_count"] == 0
     assert body["oracle"]["configured_provider"] == "openai"
     assert body["oracle"]["active_provider"] == "deterministic"
     assert body["oracle"]["ready"] is False
@@ -73,12 +74,12 @@ def test_diagnostics_reports_existing_event_log(tmp_path):
     response = client.get("/diagnostics")
 
     assert response.status_code == 200
-    assert response.json()["data"]["event_log"] == {
-        "backend": "jsonl",
-        "path": str(event_log),
-        "exists": True,
-        "status": "available",
-    }
+    event_log_diagnostics = response.json()["data"]["event_log"]
+    assert event_log_diagnostics["backend"] == "jsonl"
+    assert event_log_diagnostics["path"] == str(event_log)
+    assert event_log_diagnostics["exists"] is True
+    assert event_log_diagnostics["status"] == "available"
+    assert event_log_diagnostics["event_count"] > 0
 
 
 def test_projection_store_defaults_to_sqlite_backend(tmp_path):

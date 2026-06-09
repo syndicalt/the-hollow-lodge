@@ -119,6 +119,24 @@ def test_command_events_require_idempotency_keys(tmp_path):
         )
 
 
+def test_jsonl_event_store_diagnostics_include_event_count(tmp_path):
+    store = JsonlEventStore(tmp_path / "events.jsonl")
+
+    assert store.diagnostics()["event_count"] == 0
+    store.append(
+        event_type="contract.seeded",
+        actor_id="server",
+        visibility=EventVisibility.server_only(),
+        payload={"contract_id": "contract_false_finger"},
+    )
+
+    diagnostics = store.diagnostics()
+
+    assert diagnostics["backend"] == "jsonl"
+    assert diagnostics["status"] == "available"
+    assert diagnostics["event_count"] == 1
+
+
 def test_projection_can_rebuild_current_state_from_authoritative_events(tmp_path):
     store = JsonlEventStore(tmp_path / "events.jsonl")
     store.append(

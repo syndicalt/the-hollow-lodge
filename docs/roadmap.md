@@ -1992,6 +1992,26 @@ Expected verification:
 - `pytest tests/e2e/test_projection_backend_smoke.py tests/client/test_cli_commands.py tests/server/test_projection_store.py::test_projection_store_records_schema_migration_ledger -q`
 - `pytest -q`
 
+### Slice 80: Backend Sequence Alignment Gate
+
+Status: completed.
+
+Add an explicit sequence-consistency check to the hosted backend readiness
+smoke. `scripts/smoke_projection_backend.py` and
+`hollow-lodge admin backend-smoke` now accept `--require-sequence-alignment`,
+which requires event-log `event_count`, projection `last_sequence`,
+projection `authoritative_last_sequence`, and projection `lag` to agree. This
+guards database cutovers against internally inconsistent diagnostics where
+`lag` alone is zero but the projection has not actually caught up to the
+authoritative event stream. Successful readiness output now includes the
+event-log count.
+
+Expected verification:
+
+- `pytest tests/e2e/test_projection_backend_smoke.py tests/client/test_cli_commands.py::test_admin_backend_smoke_command_reports_safe_backend_status tests/client/test_cli_commands.py::test_admin_backend_smoke_command_rejects_sequence_mismatch -q`
+- `pytest tests/e2e/test_projection_backend_smoke.py tests/client/test_cli_commands.py tests/server/test_projection_store.py::test_projection_store_records_schema_migration_ledger -q`
+- `pytest -q`
+
 ## Completion Standard
 
 Each slice must:

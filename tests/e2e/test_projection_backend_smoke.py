@@ -92,9 +92,14 @@ def test_backend_smoke_accepts_event_and_projection_backends():
         expected_event_backend="postgres",
         require_projection_reads=True,
         require_current_projection_schema=True,
+        require_sequence_alignment=True,
     )
 
-    assert result["event_log"] == {"backend": "postgres", "status": "available"}
+    assert result["event_log"] == {
+        "backend": "postgres",
+        "status": "available",
+        "event_count": 23,
+    }
     assert result["projection"]["backend"] == "postgres"
     assert result["projection"]["lag"] == 0
     assert result["projection"]["schema_version"] == CURRENT_PROJECTION_SCHEMA_VERSION
@@ -317,3 +322,78 @@ def test_projection_backend_smoke_rejects_stale_projection_schema():
         f"{CURRENT_PROJECTION_SCHEMA_VERSION - 1}; "
         f"expected {CURRENT_PROJECTION_SCHEMA_VERSION}"
     ) in message
+
+
+def test_backend_smoke_rejects_sequence_alignment_mismatch():
+    smoke = _load_smoke_module()
+
+    try:
+        smoke.validate_backend_diagnostics(
+            {
+                "data": {
+                    "event_log": {
+                        "backend": "postgres",
+                        "database_url": "postgresql://event:***@host:5432/db",
+                        "status": "available",
+                        "event_count": 24,
+                    },
+                    "projection_db": {
+                        "backend": "postgres",
+                        "database_url": "postgresql://projection:***@host:5432/db",
+                        "status": "available",
+                        "lag": 0,
+                        "last_sequence": 22,
+                        "authoritative_last_sequence": 23,
+                    },
+                }
+            },
+            expected_backend="postgres",
+            expected_event_backend="postgres",
+            require_sequence_alignment=True,
+        )
+    except RuntimeError as exc:
+        message = str(exc)
+    else:
+        raise AssertionError("sequence alignment mismatch should fail the smoke")
+
+    assert (
+        "event log event_count 24 does not match projection "
+        "authoritative_last_sequence 23"
+    ) in message
+    assert (
+        "projection last_sequence 22 does not match "
+        "authoritative_last_sequence 23"
+    ) in message
+    assert "projection lag 0 does not match authoritative-last delta 1" in message
+
+
+def test_backend_smoke_rejects_missing_sequence_alignment_fields():
+    smoke = _load_smoke_module()
+
+    try:
+        smoke.validate_backend_diagnostics(
+            {
+                "data": {
+                    "event_log": {
+                        "backend": "jsonl",
+                        "status": "available",
+                    },
+                    "projection_db": {
+                        "backend": "sqlite",
+                        "status": "available",
+                        "lag": "not-a-number",
+                    },
+                }
+            },
+            expected_backend="sqlite",
+            require_sequence_alignment=True,
+        )
+    except RuntimeError as exc:
+        message = str(exc)
+    else:
+        raise AssertionError("missing sequence fields should fail the smoke")
+
+    assert "event log event_count is missing or invalid" in message
+    assert "projection last_sequence is missing or invalid" in message
+    assert "projection authoritative_last_sequence is missing or invalid" in message
+    assert "projection lag is missing or invalid" in message

@@ -41,6 +41,11 @@ def main() -> None:
         action="store_true",
         help="Require projection diagnostics to match this package's schema version.",
     )
+    parser.add_argument(
+        "--require-sequence-alignment",
+        action="store_true",
+        help="Require event count and projection sequence diagnostics to agree.",
+    )
     args = parser.parse_args()
 
     result = run_smoke(
@@ -49,11 +54,13 @@ def main() -> None:
         expected_event_backend=args.expected_event_backend,
         require_projection_reads=args.require_projection_reads,
         require_current_projection_schema=args.require_current_projection_schema,
+        require_sequence_alignment=args.require_sequence_alignment,
     )
     print(
         "backend readiness ok: "
         f"event={result['event_log']['backend']} "
         f"event_status={result['event_log']['status']} "
+        f"events={result['event_log']['event_count']} "
         f"projection={result['projection']['backend']} "
         f"projection_status={result['projection']['status']} "
         f"projection_lag={result['projection']['lag']} "
@@ -70,6 +77,7 @@ def run_smoke(
     expected_event_backend: str | None = None,
     require_projection_reads: bool = False,
     require_current_projection_schema: bool = False,
+    require_sequence_alignment: bool = False,
 ) -> dict[str, Any]:
     return run_backend_smoke(
         server_url=server_url,
@@ -77,6 +85,7 @@ def run_smoke(
         expected_event_backend=expected_event_backend,
         require_projection_reads=require_projection_reads,
         require_current_projection_schema=require_current_projection_schema,
+        require_sequence_alignment=require_sequence_alignment,
     )
 
 

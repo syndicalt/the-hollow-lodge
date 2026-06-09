@@ -101,7 +101,8 @@ python scripts/smoke_projection_backend.py \
   --server-url https://server.thehollowlodge.com \
   --expected-backend sqlite \
   --expected-event-backend jsonl \
-  --require-current-projection-schema
+  --require-current-projection-schema \
+  --require-sequence-alignment
 ```
 
 Installed clients can run the same readiness gate without checking out the
@@ -112,7 +113,8 @@ hollow-lodge admin backend-smoke \
   --server https://server.thehollowlodge.com \
   --expected-backend sqlite \
   --expected-event-backend jsonl \
-  --require-current-projection-schema
+  --require-current-projection-schema \
+  --require-sequence-alignment
 ```
 
 After configuring `HOLLOW_LODGE_PROJECTION_DATABASE_URL`, or attaching a
@@ -124,7 +126,8 @@ python scripts/smoke_projection_backend.py \
   --server-url https://server.thehollowlodge.com \
   --expected-backend postgres \
   --expected-event-backend jsonl \
-  --require-current-projection-schema
+  --require-current-projection-schema \
+  --require-sequence-alignment
 ```
 
 If you intentionally set `HOLLOW_LODGE_EVENT_DATABASE_URL`, verify both
@@ -135,7 +138,8 @@ python scripts/smoke_projection_backend.py \
   --server-url https://server.thehollowlodge.com \
   --expected-backend postgres \
   --expected-event-backend postgres \
-  --require-current-projection-schema
+  --require-current-projection-schema \
+  --require-sequence-alignment
 ```
 
 After the backend smoke passes, set `HOLLOW_LODGE_PROJECTION_READS=1` and verify
@@ -147,7 +151,8 @@ python scripts/smoke_projection_backend.py \
   --expected-backend postgres \
   --expected-event-backend jsonl \
   --require-projection-reads \
-  --require-current-projection-schema
+  --require-current-projection-schema \
+  --require-sequence-alignment
 ```
 
 The installed-client equivalent is:
@@ -158,7 +163,8 @@ hollow-lodge admin backend-smoke \
   --expected-backend postgres \
   --expected-event-backend jsonl \
   --require-projection-reads \
-  --require-current-projection-schema
+  --require-current-projection-schema \
+  --require-sequence-alignment
 ```
 
 After the Postgres smoke passes, set `HOLLOW_LODGE_REQUIRE_POSTGRES_PROJECTION=1`
@@ -171,7 +177,9 @@ The smoke fails if `/health` is not ok, the event-log backend does not match
 status is not `available`, projection lag is not zero, diagnostics expose an
 unredacted database URL password, `--require-current-projection-schema` is set
 and the projection schema version, latest migration, or migration count does
-not match the installed package, or `--require-projection-reads` is set and any
+not match the installed package, `--require-sequence-alignment` is set and the
+event count, projection last sequence, authoritative projection sequence, or
+projection lag do not agree, or `--require-projection-reads` is set and any
 projection read surface is disabled.
 
 Rollback is to remove `HOLLOW_LODGE_PROJECTION_DATABASE_URL` from the server
@@ -302,7 +310,8 @@ python scripts/smoke_projection_backend.py \
   --server-url https://server.thehollowlodge.com \
   --expected-backend postgres \
   --expected-event-backend postgres \
-  --require-current-projection-schema
+  --require-current-projection-schema \
+  --require-sequence-alignment
 ```
 
 Treat exports as sensitive operational data. They include server-visible events

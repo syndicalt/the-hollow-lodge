@@ -71,6 +71,7 @@ class FakeApi:
                 "event_log": {
                     "backend": "jsonl",
                     "status": "available",
+                    "event_count": 12,
                 },
                 "projection_db": {
                     "backend": "postgres",
@@ -1345,12 +1346,13 @@ def test_admin_backend_smoke_command_reports_safe_backend_status(monkeypatch):
             "jsonl",
             "--require-projection-reads",
             "--require-current-projection-schema",
+            "--require-sequence-alignment",
         ],
     )
 
     assert result.exit_code == 0
     assert (
-        "backend readiness ok: event=jsonl event_status=available "
+        "backend readiness ok: event=jsonl event_status=available events=12 "
         "projection=postgres projection_status=available projection_lag=0 "
         f"sequence=12 schema={CURRENT_PROJECTION_SCHEMA_VERSION} "
         f"migrations={CURRENT_PROJECTION_SCHEMA_MIGRATION_COUNT}"
@@ -1435,6 +1437,44 @@ def test_admin_backend_smoke_command_rejects_stale_projection_schema(monkeypatch
         f"{CURRENT_PROJECTION_SCHEMA_VERSION - 1}; "
         f"expected {CURRENT_PROJECTION_SCHEMA_VERSION}"
     ) in result.output
+
+
+def test_admin_backend_smoke_command_rejects_sequence_mismatch(monkeypatch):
+    class MisalignedSequenceApi(FakeApi):
+        def diagnostics(self):
+            payload = super().diagnostics()
+            payload["data"]["event_log"]["event_count"] = 13
+            payload["data"]["projection_db"]["last_sequence"] = 11
+            payload["data"]["projection_db"]["authoritative_last_sequence"] = 12
+            payload["data"]["projection_db"]["lag"] = 0
+            return payload
+
+    monkeypatch.setattr(cli, "HollowLodgeApi", MisalignedSequenceApi)
+    runner = CliRunner()
+
+    result = runner.invoke(
+        cli.app,
+        [
+            "admin",
+            "backend-smoke",
+            "--server",
+            "http://testserver",
+            "--expected-backend",
+            "postgres",
+            "--require-sequence-alignment",
+        ],
+    )
+
+    assert result.exit_code != 0
+    assert (
+        "event log event_count 13 does not match projection "
+        "authoritative_last_sequence 12"
+    ) in result.output
+    assert (
+        "projection last_sequence 11 does not match "
+        "authoritative_last_sequence 12"
+    ) in result.output
+    assert "projection lag 0 does not match authoritative-last delta 1" in result.output
 
 
 def test_admin_backend_smoke_command_rejects_unhealthy_server(monkeypatch):

@@ -23,6 +23,7 @@ def run_backend_smoke(
     expected_event_backend: str | None = None,
     require_projection_reads: bool = False,
     require_current_projection_schema: bool = False,
+    require_sequence_alignment: bool = False,
 ) -> dict[str, Any]:
     base_url = server_url.rstrip("/")
     with httpx.Client(base_url=base_url, timeout=10.0) as client:
@@ -39,6 +40,7 @@ def run_backend_smoke(
             expected_event_backend=expected_event_backend,
             require_projection_reads=require_projection_reads,
             require_current_projection_schema=require_current_projection_schema,
+            require_sequence_alignment=require_sequence_alignment,
         )
 
 
@@ -49,6 +51,7 @@ def validate_backend_diagnostics(
     expected_event_backend: str | None = None,
     require_projection_reads: bool = False,
     require_current_projection_schema: bool = False,
+    require_sequence_alignment: bool = False,
 ) -> dict[str, Any]:
     data = diagnostics.get("data", {})
     if not isinstance(data, dict):
@@ -71,6 +74,7 @@ def validate_backend_diagnostics(
     event_status = event_log.get("status")
     if event_status not in {"available", "not_created"}:
         errors.append(f"event log status is {event_status}")
+    event_count = _optional_int(event_log.get("event_count"))
 
     event_database_url = str(event_log.get("database_url", ""))
     if database_url_exposes_password(event_database_url):
@@ -81,7 +85,7 @@ def validate_backend_diagnostics(
         errors.append(f"expected projection backend {expected_backend}, got {backend}")
 
     status = projection.get("status")
-    lag = int(projection.get("lag", 0))
+    lag = _optional_int(projection.get("lag"))
     if status != "available":
         errors.append(f"projection status is {status}")
     if lag != 0:
@@ -90,6 +94,53 @@ def validate_backend_diagnostics(
     database_url = str(projection.get("database_url", ""))
     if database_url_exposes_password(database_url):
         errors.append("projection diagnostics expose an unredacted database URL password")
+
+    last_sequence = _optional_int(projection.get("last_sequence"))
+    authoritative_last_sequence = _optional_int(
+        projection.get("authoritative_last_sequence")
+    )
+    if require_sequence_alignment:
+        if event_count is None:
+            errors.append("event log event_count is missing or invalid")
+        if last_sequence is None:
+            errors.append("projection last_sequence is missing or invalid")
+        if authoritative_last_sequence is None:
+            errors.append(
+                "projection authoritative_last_sequence is missing or invalid"
+            )
+        if lag is None:
+            errors.append("projection lag is missing or invalid")
+        if (
+            event_count is not None
+            and authoritative_last_sequence is not None
+            and event_count != authoritative_last_sequence
+        ):
+            errors.append(
+                "event log event_count "
+                f"{event_count} does not match projection authoritative_last_sequence "
+                f"{authoritative_last_sequence}"
+            )
+        if (
+            last_sequence is not None
+            and authoritative_last_sequence is not None
+            and last_sequence != authoritative_last_sequence
+        ):
+            errors.append(
+                "projection last_sequence "
+                f"{last_sequence} does not match authoritative_last_sequence "
+                f"{authoritative_last_sequence}"
+            )
+        if (
+            lag is not None
+            and last_sequence is not None
+            and authoritative_last_sequence is not None
+            and lag != max(0, authoritative_last_sequence - last_sequence)
+        ):
+            errors.append(
+                "projection lag "
+                f"{lag} does not match authoritative-last delta "
+                f"{max(0, authoritative_last_sequence - last_sequence)}"
+            )
 
     schema_version = _optional_int(projection.get("schema_version"))
     schema_migration_count = _optional_int(projection.get("schema_migration_count"))
@@ -136,15 +187,14 @@ def validate_backend_diagnostics(
         "event_log": {
             "backend": event_backend,
             "status": event_status,
+            "event_count": event_count,
         },
         "projection": {
             "backend": backend,
             "status": status,
             "lag": lag,
-            "last_sequence": int(projection.get("last_sequence", 0)),
-            "authoritative_last_sequence": int(
-                projection.get("authoritative_last_sequence", 0)
-            ),
+            "last_sequence": last_sequence,
+            "authoritative_last_sequence": authoritative_last_sequence,
             "schema_version": schema_version,
             "schema_migration_count": schema_migration_count,
             "latest_schema_migration": latest_schema_migration,
@@ -159,6 +209,7 @@ def validate_projection_diagnostics(
     expected_backend: str,
     require_projection_reads: bool = False,
     require_current_projection_schema: bool = False,
+    require_sequence_alignment: bool = False,
 ) -> dict[str, Any]:
     if not isinstance(diagnostics.get("data"), dict):
         diagnostics = {"data": {"event_log": {"backend": None, "status": "not_created"}}}
@@ -175,6 +226,7 @@ def validate_projection_diagnostics(
         expected_backend=expected_backend,
         require_projection_reads=require_projection_reads,
         require_current_projection_schema=require_current_projection_schema,
+        require_sequence_alignment=require_sequence_alignment,
     )
     projection = result["projection"]
     return {
