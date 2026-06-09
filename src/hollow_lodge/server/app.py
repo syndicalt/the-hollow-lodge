@@ -10,6 +10,7 @@ from hollow_lodge import __version__
 from hollow_lodge.eventlog.jsonl_store import JsonlEventStore
 from hollow_lodge.server.artifact_service import ArtifactService
 from hollow_lodge.server.deal_service import DealService
+from hollow_lodge.server.projection_store import SqliteProjectionStore
 from hollow_lodge.server.routes_actions import router as actions_router
 from hollow_lodge.server.routes_artifacts import router as artifacts_router
 from hollow_lodge.server.routes_chat import router as chat_router
@@ -45,10 +46,14 @@ def create_app(
         version="0.1.0",
         summary="Authoritative server for The Hollow Lodge.",
     )
-    root = Path(data_dir) if data_dir is not None else Path(os.environ.get("HOLLOW_LODGE_DATA_DIR", ".hollow-lodge"))
+    configured_data_dir = os.environ.get("HOLLOW_LODGE_DATA_DIR")
+    storage_configured = data_dir is not None or configured_data_dir is not None
+    root = Path(data_dir) if data_dir is not None else Path(configured_data_dir or ".hollow-lodge")
     event_store = JsonlEventStore(root / "server-events.jsonl")
+    projection_store = SqliteProjectionStore(root / "server-projections.sqlite3")
     resolved_oracle = resolution_oracle if resolution_oracle is not None else resolution_oracle_from_env()
     app.state.event_store = event_store
+    app.state.projection_store = projection_store
     app.state.resolution_oracle = resolved_oracle
     identity_service = IdentityService(
         invite_codes=invite_codes or [],
@@ -93,6 +98,8 @@ def create_app(
             crew_service=crew_service,
             artifact_service=artifact_service,
         )
+    if storage_configured:
+        projection_store.rebuild(event_store.read())
 
     app.include_router(identity_router)
     app.include_router(crews_router)
@@ -118,6 +125,11 @@ def create_app(
             "data": {
                 "directory": str(root),
                 "event_log": _event_log_diagnostics(app.state.event_store.path),
+                "projection_db": app.state.projection_store.diagnostics(
+                    authoritative_last_sequence=_last_event_sequence(
+                        app.state.event_store.read()
+                    )
+                ),
             },
         }
 
@@ -140,6 +152,10 @@ def _event_log_diagnostics(path: Path) -> dict[str, Any]:
         "exists": exists,
         "status": status,
     }
+
+
+def _last_event_sequence(events: list[Any]) -> int:
+    return events[-1].sequence if events else 0
 
 
 app = create_app()

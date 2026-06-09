@@ -39,9 +39,9 @@ The next work should harden the actual game loop before expanding content.
 - Add content through data and contract seeds rather than hard-coded branches.
 - No reward hacking: tests must prove player-facing behavior or server
   invariants, not implementation trivia.
-- The append-only event log remains authoritative, but the read side is nearing
-  the point where JSONL scans should give way to database-backed projections for
-  contracts, crew legacy, artifacts, unlocks, and activity summaries.
+- The append-only event log remains authoritative. Database-backed projections
+  should become the read-side acceleration layer for contracts, crew legacy,
+  artifacts, unlocks, and activity summaries.
 
 ## Milestone 1: Playable Alpha Loop
 
@@ -290,8 +290,12 @@ Status:
   server-only phase-resolved follow-up seeds, letting a resolved chapter
   publish the next arc contract through normal lifecycle events without exposing
   hidden truth or authoring rules.
+- Projection database foundation completed: the server now maintains a SQLite
+  read-model store rebuilt from the authoritative event log, materializing the
+  public contract board without moving live gameplay reads yet. Diagnostics
+  report projection health and lag without mutating state.
 - Deferred: deeper death/legacy inheritance, additional long-term unlock paths,
-  and database-backed projection storage for heavier campaign reads.
+  and migrating heavier campaign reads onto the projection database.
 
 Likely files:
 
@@ -1071,6 +1075,27 @@ Expected verification:
 
 - `pytest tests/server/test_contract_seed_pipeline.py::test_contract_seed_accepts_phase_resolved_follow_up_contract_seed tests/server/test_contract_seed_pipeline.py::test_contract_seed_rejects_follow_up_for_unknown_phase tests/server/test_contract_seed.py::test_contract_activation_replay_rejects_different_follow_up_seed tests/server/test_phase_resolution.py::test_seeded_phase_resolution_publishes_follow_up_contract_without_hidden_leak -q`
 - `pytest tests/server/test_contract_seed_pipeline.py tests/server/test_contract_seed.py tests/server/test_phase_resolution.py tests/server/test_artifact_routes.py tests/e2e/test_contract_content_pipeline.py tests/client/test_render_packets.py -q`
+- `pytest -q`
+
+### Slice 40: SQLite Projection Store Foundation
+
+Status: completed.
+
+Start the database-backed read side without changing game authority. The JSONL
+event log remains the source of truth, while a new SQLite projection store can
+rebuild from the current event stream and materialize the public contract-board
+read model. Server diagnostics report the projection database path,
+availability, schema version, last applied event sequence, authoritative event
+sequence, lag, and contract count without mutating projection state. The first
+projection intentionally stores only player-safe contract-board payloads, so
+hidden truth and server-only seed internals stay out of the database read model.
+Live gameplay reads still use the existing projections until later slices move
+specific surfaces over with parity tests.
+
+Expected verification:
+
+- `pytest tests/server/test_projection_store.py -q`
+- `pytest tests/server/test_projection_store.py tests/server/test_app_config.py tests/server/test_contract_seed.py tests/server/test_phase_resolution.py tests/eventlog/test_jsonl_store.py -q`
 - `pytest -q`
 
 ## Completion Standard
