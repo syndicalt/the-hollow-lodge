@@ -4316,6 +4316,32 @@ Expected verification:
 - `pytest tests/e2e/test_tactical_noise_loop.py tests/server/test_action_routes.py tests/domain/test_scoring.py tests/server/test_phase_resolution.py tests/client/test_render_packets.py -q`
 - `pytest -q`
 
+### Slice 179: Actual MCP Play Loop Proof Gate
+
+Status: completed.
+
+Strengthen the "played inside Codex" proof by exercising the real
+`the-hollow-lodge` MCP tool boundary rather than calling `CodexGameSession`
+directly. A new e2e test builds a clean local server, writes a player config
+and local event log path, routes HTTP through a `TestClient`, and calls
+`mcp.call_tool` for the same tools a Codex session would use.
+
+The proof verifies that `render_what_now`, `submit_action` preview and confirm,
+`render_crew_board`, `phase_lock` preview and confirm, `render_contract_board`,
+and `render_activity` all return text plus structured packets at the public MCP
+boundary. It asserts the submitted action appears as a bounded
+`contract_action` pending decision, the phase-lock preview is read-only, the
+confirmed lock resolves the starter contract, and the final contract board and
+activity timeline expose the resolved standing without hidden truth, oracle
+audit metadata, provider details, hashes, auth material, idempotency keys, or
+raw event envelopes.
+
+Expected verification:
+
+- `pytest tests/e2e/test_mcp_codex_play_loop.py -q`
+- `pytest tests/e2e/test_mcp_codex_play_loop.py tests/test_mcp_server.py tests/client/test_codex_session.py tests/client/test_render_packets.py -q`
+- `pytest -q`
+
 ## Completion Standard
 
 Each slice must:
