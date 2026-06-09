@@ -29,6 +29,7 @@ class RenderPacket(BaseModel):
         "crew_activity",
         "conversations",
         "thread",
+        "backend_status",
         "mutation",
     ]
     player_markdown: str = Field(min_length=1)
@@ -234,6 +235,88 @@ def _shape_artifact(artifact: dict[str, Any]) -> dict[str, Any]:
         for key in ("artifact_id", "title", "kind", "public_summary")
         if key in artifact
     }
+
+
+def _shape_backend_section(section: Any, allowed_keys: tuple[str, ...]) -> dict[str, Any]:
+    if not isinstance(section, dict):
+        return {}
+    return {
+        key: section[key]
+        for key in allowed_keys
+        if key in section and key not in {"path", "database_url"}
+    }
+
+
+def _shape_backend_status(diagnostics: dict[str, Any]) -> dict[str, Any]:
+    data = diagnostics.get("data", {})
+    if not isinstance(data, dict):
+        data = {}
+    return {
+        "oracle": _shape_backend_section(
+            data.get("oracle"),
+            ("provider", "model", "timeout_seconds", "configured"),
+        ),
+        "event_log": _shape_backend_section(
+            data.get("event_log"),
+            (
+                "backend",
+                "status",
+                "event_count",
+                "last_sequence",
+                "event_hash_chain_sha256",
+                "database_url_env",
+            ),
+        ),
+        "projection_db": _shape_backend_section(
+            data.get("projection_db"),
+            (
+                "backend",
+                "status",
+                "lag",
+                "last_sequence",
+                "authoritative_last_sequence",
+                "schema_version",
+                "schema_migration_count",
+                "latest_schema_migration",
+                "database_url_env",
+            ),
+        ),
+        "projection_refresh": _shape_backend_section(
+            data.get("projection_refresh"),
+            ("status", "last_context", "last_success_sequence", "failure_count"),
+        ),
+        "storage_guards": _shape_backend_section(
+            data.get("storage_guards"),
+            (
+                "require_postgres_event_log",
+                "require_postgres_projection",
+                "require_postgres_operational",
+            ),
+        ),
+        "maintenance": _shape_backend_section(
+            data.get("maintenance"),
+            ("read_only", "env"),
+        ),
+        "identity_replay_store": _shape_backend_section(
+            data.get("identity_replay_store"),
+            ("backend", "database_url_env"),
+        ),
+    }
+
+
+def _backend_value(status: dict[str, Any], section: str, key: str, default: str = "unknown") -> Any:
+    value = status.get(section, {}).get(key)
+    if value is None:
+        return default
+    return value
+
+
+def _render_guard_value(enabled: Any) -> str:
+    if enabled is True:
+        return "on"
+    if enabled is False:
+        return "off"
+    return "unknown"
 
 
 def _shape_deal(deal: dict[str, Any]) -> dict[str, Any]:
@@ -1217,6 +1300,67 @@ def build_thread_packet(
         suggested_prompts=[
             "Reply using the CLI",
             "Review recent activity",
+        ],
+    )
+
+
+def build_backend_status_packet(diagnostics: dict[str, Any]) -> RenderPacket:
+    status = _shape_backend_status(diagnostics)
+    storage_guards = status["storage_guards"]
+    event_guard = _render_guard_value(
+        storage_guards.get("require_postgres_event_log")
+    )
+    projection_guard = _render_guard_value(
+        storage_guards.get("require_postgres_projection")
+    )
+    operational_guard = _render_guard_value(
+        storage_guards.get("require_postgres_operational")
+    )
+    lines = [
+        "Backend Status",
+        "",
+        "Storage:",
+        (
+            f"- event log: {_backend_value(status, 'event_log', 'backend')} "
+            f"({_backend_value(status, 'event_log', 'status')})"
+        ),
+        (
+            f"- projection: {_backend_value(status, 'projection_db', 'backend')} "
+            f"({_backend_value(status, 'projection_db', 'status')}; "
+            f"lag {_backend_value(status, 'projection_db', 'lag')})"
+        ),
+        (
+            "- operational replay: "
+            f"{_backend_value(status, 'identity_replay_store', 'backend')}"
+        ),
+        (
+            "- postgres guards: "
+            f"event {event_guard}; projection {projection_guard}; "
+            f"operational {operational_guard}"
+        ),
+        "",
+        "Runtime:",
+        f"- oracle: {_backend_value(status, 'oracle', 'provider')}",
+        (
+            "- projection refresh: "
+            f"{_backend_value(status, 'projection_refresh', 'status')}"
+        ),
+        (
+            "- maintenance read-only: "
+            f"{_backend_value(status, 'maintenance', 'read_only')}"
+        ),
+    ]
+    return RenderPacket(
+        surface="backend_status",
+        player_markdown="\n".join(lines),
+        agent_context={
+            "backend_status": status,
+            "mutation": False,
+        },
+        suggested_prompts=[
+            "Run production backend smoke",
+            "Review operational docs",
+            "Open activity delta",
         ],
     )
 

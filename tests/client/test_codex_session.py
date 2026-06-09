@@ -296,6 +296,41 @@ class FakeApi:
             ]
         }
 
+    def diagnostics(self):
+        self.calls.append("diagnostics")
+        return {
+            "status": "ok",
+            "data": {
+                "oracle": {"provider": "deterministic"},
+                "event_log": {
+                    "backend": "postgres",
+                    "status": "available",
+                    "event_count": 12,
+                    "last_sequence": 12,
+                },
+                "projection_db": {
+                    "backend": "postgres",
+                    "status": "available",
+                    "lag": 0,
+                    "last_sequence": 12,
+                    "authoritative_last_sequence": 12,
+                },
+                "projection_refresh": {
+                    "status": "ok",
+                    "last_context": "startup",
+                    "last_success_sequence": 12,
+                    "failure_count": 0,
+                },
+                "storage_guards": {
+                    "require_postgres_event_log": True,
+                    "require_postgres_projection": True,
+                    "require_postgres_operational": True,
+                },
+                "maintenance": {"read_only": False},
+                "identity_replay_store": {"backend": "postgres"},
+            },
+        }
+
     def submit_action(
         self,
         *,
@@ -710,6 +745,28 @@ def test_codex_session_renders_profile(tmp_path):
     assert "Profile: Ada" in packet.player_markdown
     assert packet.agent_context["crews"][0]["crew_id"] == "crew_0001"
     assert "join_code" not in str(packet.agent_context)
+
+
+def test_codex_session_renders_backend_status_without_event_sync(tmp_path):
+    config_path = tmp_path / "config.json"
+    log_path = tmp_path / "local.jsonl"
+    fake_api = FakeApi()
+    save_config(
+        config_path,
+        ClientConfig(server_url="http://testserver", player_id="player_0001", token="token"),
+    )
+    session = CodexGameSession(config_path=config_path, local_log_path=log_path, api=fake_api)
+
+    packet = session.render_backend_status()
+
+    assert fake_api.calls == ["diagnostics"]
+    assert packet.surface == "backend_status"
+    assert "- event log: postgres (available)" in packet.player_markdown
+    assert "event on; projection on; operational on" in packet.player_markdown
+    assert packet.agent_context["backend_status"]["identity_replay_store"] == {
+        "backend": "postgres"
+    }
+    assert not log_path.exists()
 
 
 def test_codex_session_uses_active_crew_for_crew_board(tmp_path):

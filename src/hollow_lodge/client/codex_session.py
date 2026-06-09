@@ -15,6 +15,7 @@ from hollow_lodge.client.render_packets import (
     RenderPacket,
     build_activity_delta_packet,
     build_activity_summary_packet,
+    build_backend_status_packet,
     build_conversations_packet,
     build_deal_acceptance_preview_packet,
     build_deals_packet,
@@ -147,6 +148,9 @@ class CodexGameSession:
     def render_conversations(self) -> RenderPacket:
         self.sync()
         return build_conversations_packet(self.api.visible_chat_events())
+
+    def render_backend_status(self) -> RenderPacket:
+        return build_backend_status_packet(self.api.diagnostics())
 
     def send_message(
         self,

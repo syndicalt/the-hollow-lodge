@@ -3115,6 +3115,28 @@ Expected verification:
 - `pytest tests/server/test_app_config.py tests/e2e/test_projection_backend_smoke.py tests/client/test_cli_commands.py -q`
 - `pytest -q`
 
+### Slice 124: Codex Backend Status Surface
+
+Status: completed.
+
+Make the production database and oracle posture visible from inside Codex, not
+only through shell smoke commands. `CodexGameSession.render_backend_status`
+fetches `/diagnostics` and shapes it into a read-only `backend_status`
+`RenderPacket`; the MCP `render_backend_status` tool exposes the same markdown
+and structured content to the player and local agent.
+
+The packet reports storage backends, projection lag, operational replay
+backend, Postgres startup guards, oracle provider, projection refresh status,
+and maintenance read-only posture. It deliberately excludes raw connection
+strings, filesystem paths, and failure payload details so operator-visible
+status does not leak deployment secrets into Codex transcripts.
+
+Expected verification:
+
+- `pytest tests/client/test_render_packets.py::test_backend_status_packet_renders_safe_database_and_oracle_posture tests/client/test_codex_session.py::test_codex_session_renders_backend_status_without_event_sync tests/test_mcp_server.py::test_render_backend_status_mcp_call_returns_text_and_structured_packet tests/test_mcp_server.py::test_public_mcp_tools_do_not_expose_local_path_overrides -q`
+- `pytest tests/client/test_render_packets.py tests/client/test_codex_session.py tests/test_mcp_server.py -q`
+- `pytest -q`
+
 ## Completion Standard
 
 Each slice must:

@@ -1,5 +1,6 @@
 from hollow_lodge.client import render_packets
 from hollow_lodge.client.render_packets import (
+    build_backend_status_packet,
     build_mutation_result_packet,
     build_contract_board_packet,
     build_crew_board_packet,
@@ -276,6 +277,87 @@ def test_what_now_packet_aggregates_current_priorities_without_hidden_fields():
         "Review visible deals",
         "Review recent activity",
     ]
+
+
+def test_backend_status_packet_renders_safe_database_and_oracle_posture():
+    packet = build_backend_status_packet(
+        {
+            "status": "ok",
+            "data": {
+                "oracle": {
+                    "provider": "openai",
+                    "model": "gpt-4.1-mini",
+                    "api_key": "hidden",
+                },
+                "event_log": {
+                    "backend": "postgres",
+                    "status": "available",
+                    "event_count": 42,
+                    "last_sequence": 42,
+                    "database_url": "postgresql://user:secret@host:5432/hollow_lodge",
+                    "path": "/data/server-events.jsonl",
+                    "database_url_env": "HOLLOW_LODGE_EVENT_DATABASE_URL",
+                },
+                "projection_db": {
+                    "backend": "postgres",
+                    "status": "available",
+                    "lag": 0,
+                    "last_sequence": 42,
+                    "authoritative_last_sequence": 42,
+                    "schema_version": 7,
+                    "database_url": "postgresql://user:secret@host:5432/hollow_lodge",
+                    "path": "/data/projections.sqlite3",
+                    "database_url_env": "HOLLOW_LODGE_PROJECTION_DATABASE_URL",
+                },
+                "projection_refresh": {
+                    "status": "ok",
+                    "last_context": "startup",
+                    "last_success_sequence": 42,
+                    "last_failure": {"message": "password=secret"},
+                },
+                "storage_guards": {
+                    "require_postgres_event_log": True,
+                    "require_postgres_projection": True,
+                    "require_postgres_operational": True,
+                },
+                "maintenance": {
+                    "read_only": False,
+                    "env": "HOLLOW_LODGE_MAINTENANCE_READ_ONLY",
+                },
+                "identity_replay_store": {
+                    "backend": "postgres",
+                    "database_url": "postgresql://user:secret@host:5432/hollow_lodge",
+                    "path": "/data/replays.json",
+                    "database_url_env": "HOLLOW_LODGE_OPERATIONAL_DATABASE_URL",
+                },
+            },
+        }
+    )
+
+    assert packet.surface == "backend_status"
+    assert "Backend Status" in packet.player_markdown
+    assert "- event log: postgres (available)" in packet.player_markdown
+    assert "- projection: postgres (available; lag 0)" in packet.player_markdown
+    assert "- operational replay: postgres" in packet.player_markdown
+    assert "event on; projection on; operational on" in packet.player_markdown
+    assert "openai" in packet.player_markdown
+    assert "secret" not in packet.player_markdown
+    assert "postgresql://" not in packet.player_markdown
+    assert "/data/" not in packet.player_markdown
+    assert "secret" not in str(packet.agent_context)
+    assert "postgresql://" not in str(packet.agent_context)
+    assert "/data/" not in str(packet.agent_context)
+    assert packet.agent_context["backend_status"]["event_log"] == {
+        "backend": "postgres",
+        "status": "available",
+        "event_count": 42,
+        "last_sequence": 42,
+        "database_url_env": "HOLLOW_LODGE_EVENT_DATABASE_URL",
+    }
+    assert packet.agent_context["backend_status"]["identity_replay_store"] == {
+        "backend": "postgres",
+        "database_url_env": "HOLLOW_LODGE_OPERATIONAL_DATABASE_URL",
+    }
 
 
 def test_contract_board_packet_renders_archived_lifecycle_status():

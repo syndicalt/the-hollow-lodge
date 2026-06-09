@@ -126,6 +126,11 @@ def render_thread(conversation_id: str) -> CallToolResult:
 
 
 @mcp.tool()
+def render_backend_status() -> CallToolResult:
+    return packet_response(_session().render_backend_status())
+
+
+@mcp.tool()
 def send_message(
     scope: str,
     body: str,

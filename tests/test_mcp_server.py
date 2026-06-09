@@ -116,6 +116,34 @@ def test_render_deals_mcp_call_returns_text_and_structured_packet(monkeypatch):
     assert result.structuredContent["agent_context"]["deals"][0]["deal_id"] == "deal_000001"
 
 
+def test_render_backend_status_mcp_call_returns_text_and_structured_packet(monkeypatch):
+    packet = RenderPacket(
+        surface="backend_status",
+        player_markdown="Backend Status\n\nStorage:\n- event log: postgres (available)",
+        agent_context={
+            "backend_status": {"event_log": {"backend": "postgres"}},
+            "mutation": False,
+        },
+    )
+
+    class StubSession:
+        def render_backend_status(self) -> RenderPacket:
+            return packet
+
+    monkeypatch.setattr(mcp_server, "_session", lambda: StubSession())
+
+    result = asyncio.run(mcp_server.mcp.call_tool("render_backend_status", {}))
+
+    assert isinstance(result, CallToolResult)
+    assert result.content[0].text == packet.player_markdown
+    assert result.structuredContent["surface"] == "backend_status"
+    assert result.structuredContent["agent_context"]["mutation"] is False
+    assert (
+        result.structuredContent["agent_context"]["backend_status"]["event_log"]["backend"]
+        == "postgres"
+    )
+
+
 def test_render_dossier_mcp_call_returns_text_and_structured_packet(monkeypatch):
     packet = RenderPacket(
         surface="dossier",
@@ -592,6 +620,7 @@ def test_public_mcp_tools_do_not_expose_local_path_overrides():
         "render_crew_activity_delta",
         "render_conversations",
         "render_thread",
+        "render_backend_status",
         "send_message",
         "render_deals",
         "preview_deal_acceptance",
