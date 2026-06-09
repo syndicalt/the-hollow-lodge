@@ -70,6 +70,35 @@ def test_render_deals_mcp_call_returns_text_and_structured_packet(monkeypatch):
     assert result.structuredContent["agent_context"]["deals"][0]["deal_id"] == "deal_000001"
 
 
+def test_render_dossier_mcp_call_returns_text_and_structured_packet(monkeypatch):
+    packet = RenderPacket(
+        surface="dossier",
+        player_markdown="Proof Dossier: crew_0001\nClaim: The finger is false.",
+        agent_context={
+            "dossier": {"crew_id": "crew_0001"},
+            "artifact_citation_count": 1,
+            "mutation": False,
+        },
+    )
+
+    class StubSession:
+        def render_dossier(self, crew_id: str | None = None) -> RenderPacket:
+            assert crew_id == "crew_0001"
+            return packet
+
+    monkeypatch.setattr(mcp_server, "_session", lambda: StubSession())
+
+    result = asyncio.run(
+        mcp_server.mcp.call_tool("render_dossier", {"crew_id": "crew_0001"})
+    )
+
+    assert isinstance(result, CallToolResult)
+    assert result.content[0].text == packet.player_markdown
+    assert result.structuredContent["surface"] == "dossier"
+    assert result.structuredContent["agent_context"]["dossier"]["crew_id"] == "crew_0001"
+    assert result.structuredContent["agent_context"]["mutation"] is False
+
+
 def test_render_activity_mcp_call_returns_text_and_structured_packet(monkeypatch):
     packet = RenderPacket(
         surface="activity",
@@ -237,6 +266,7 @@ def test_public_mcp_tools_do_not_expose_local_path_overrides():
         "render_inbox",
         "render_contract_board",
         "render_crew_board",
+        "render_dossier",
         "render_activity",
         "render_thread",
         "render_deals",

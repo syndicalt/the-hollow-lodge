@@ -3,6 +3,7 @@ from hollow_lodge.client.render_packets import (
     build_mutation_result_packet,
     build_contract_board_packet,
     build_crew_board_packet,
+    build_dossier_packet,
     build_inbox_packet,
 )
 
@@ -844,6 +845,71 @@ def test_crew_board_packet_shows_packet_lead_and_dossier_status():
         }
     ]
     assert packet.agent_context["urgent_items"] == packet.agent_context["pending_decisions"]
+
+
+def test_dossier_packet_renders_claim_citations_contributions_without_hidden_fields():
+    packet = build_dossier_packet(
+        {
+            "dossier_id": "dossier_crew_0001",
+            "crew_id": "crew_0001",
+            "packet_lead_player_id": "player_0001",
+            "claim": "The reliquary finger is a later devotional forgery.",
+            "evidence_ids": ["fragment_ledger_hand", "artifact_lot_card"],
+            "artifact_citations": [
+                {
+                    "player_id": "player_0002",
+                    "artifact_id": "artifact_ledger_rubric",
+                    "claim": "The ledger contradicts the public lot card.",
+                    "quote": "The last hand is redder and later than the binding.",
+                    "hidden_note": "server-only",
+                }
+            ],
+            "member_contributions": [
+                {
+                    "player_id": "player_0003",
+                    "note": "Auction leverage depends on proving the chapel debt mark.",
+                    "evidence_ids": ["fragment_ledger_hand"],
+                    "private_body": "hidden",
+                }
+            ],
+            "reasoning": "The timeline breaks after the chapel seal.",
+            "weaknesses": ["Material proof is still thin."],
+            "provenance_concerns": ["Public lot card may be planted."],
+            "server_notes": "hidden",
+        }
+    )
+
+    assert packet.surface == "dossier"
+    assert "Proof Dossier: crew_0001" in packet.player_markdown
+    assert "Dossier ID: dossier_crew_0001" in packet.player_markdown
+    assert "Packet Lead: player_0001" in packet.player_markdown
+    assert "Claim: The reliquary finger is a later devotional forgery." in packet.player_markdown
+    assert "- fragment_ledger_hand" in packet.player_markdown
+    assert "- artifact_ledger_rubric: The ledger contradicts the public lot card." in packet.player_markdown
+    assert "- player_0003: Auction leverage depends on proving the chapel debt mark." in packet.player_markdown
+    assert "Reasoning: The timeline breaks after the chapel seal." in packet.player_markdown
+    assert "- Material proof is still thin." in packet.player_markdown
+    assert "- Public lot card may be planted." in packet.player_markdown
+    assert "hidden" not in packet.player_markdown
+    assert "server_notes" not in packet.player_markdown
+    assert packet.agent_context["dossier"]["artifact_citations"] == [
+        {
+            "player_id": "player_0002",
+            "artifact_id": "artifact_ledger_rubric",
+            "claim": "The ledger contradicts the public lot card.",
+            "quote": "The last hand is redder and later than the binding.",
+        }
+    ]
+    assert packet.agent_context["evidence_count"] == 2
+    assert packet.agent_context["artifact_citation_count"] == 1
+    assert packet.agent_context["contribution_count"] == 1
+    assert packet.agent_context["mutation"] is False
+    assert "hidden" not in str(packet.agent_context)
+    assert packet.suggested_prompts == [
+        "Contribute to dossier",
+        "Cite an artifact",
+        "Open crew board",
+    ]
 
 
 def test_crew_board_packet_renders_legacy_and_future_modifiers_without_hidden_fields():

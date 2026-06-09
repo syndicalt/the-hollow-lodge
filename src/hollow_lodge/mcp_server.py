@@ -58,6 +58,15 @@ def render_crew_board(
 
 
 @mcp.tool()
+def render_dossier(
+    crew_id: str | None = None,
+) -> CallToolResult:
+    return packet_response(
+        _session().render_dossier(crew_id=crew_id)
+    )
+
+
+@mcp.tool()
 def render_artifacts() -> CallToolResult:
     return packet_response(_session().render_artifacts())
 

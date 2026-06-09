@@ -17,6 +17,7 @@ class RenderPacket(BaseModel):
         "inbox",
         "contract_board",
         "crew_board",
+        "dossier",
         "deals",
         "deal_preview",
         "artifact",
@@ -969,6 +970,78 @@ def _shape_dossier(dossier: dict[str, Any]) -> dict[str, Any]:
         for citation in dossier.get("artifact_citations", [])
     ]
     return shaped
+
+
+def build_dossier_packet(dossier: dict[str, Any]) -> RenderPacket:
+    shaped = _shape_dossier(dossier)
+    lines = [
+        f"Proof Dossier: {shaped['crew_id']}",
+        f"Dossier ID: {shaped['dossier_id']}",
+        f"Packet Lead: {shaped['packet_lead_player_id']}",
+        f"Claim: {shaped.get('claim') or 'not set'}",
+        "",
+        "Evidence:",
+    ]
+    evidence_ids = shaped.get("evidence_ids", [])
+    if evidence_ids:
+        lines.extend(f"- {evidence_id}" for evidence_id in evidence_ids)
+    else:
+        lines.append("- none")
+
+    lines.append("Artifact citations:")
+    artifact_citations = shaped.get("artifact_citations", [])
+    if artifact_citations:
+        for citation in artifact_citations:
+            lines.append(f"- {citation['artifact_id']}: {citation['claim']}")
+    else:
+        lines.append("- none")
+
+    lines.append("Contributions:")
+    contributions = shaped.get("member_contributions", [])
+    if contributions:
+        for contribution in contributions:
+            lines.append(f"- {contribution['player_id']}: {contribution['note']}")
+    else:
+        lines.append("- none")
+
+    if shaped.get("reasoning"):
+        lines.extend(["", f"Reasoning: {shaped['reasoning']}"])
+
+    weaknesses = [str(weakness) for weakness in shaped.get("weaknesses", []) if str(weakness)]
+    if weaknesses:
+        lines.extend(["", "Weaknesses:"])
+        lines.extend(f"- {weakness}" for weakness in weaknesses)
+
+    concerns = [
+        str(concern)
+        for concern in shaped.get("provenance_concerns", [])
+        if str(concern)
+    ]
+    if concerns:
+        lines.extend(["", "Provenance concerns:"])
+        lines.extend(f"- {concern}" for concern in concerns)
+
+    return RenderPacket(
+        surface="dossier",
+        player_markdown="\n".join(lines),
+        agent_context={
+            "dossier": shaped,
+            "evidence_count": len(evidence_ids),
+            "artifact_citation_count": len(artifact_citations),
+            "contribution_count": len(contributions),
+            "mutation": False,
+        },
+        suggested_prompts=[
+            "Contribute to dossier",
+            "Cite an artifact",
+            "Open crew board",
+        ],
+        actions=[
+            RenderAction(label="Contribute to dossier", intent="dossier_contribute"),
+            RenderAction(label="Cite an artifact", intent="dossier_cite_artifact"),
+            RenderAction(label="Open crew board", intent="render_crew_board"),
+        ],
+    )
 
 
 def build_contract_board_packet(board: dict[str, Any]) -> RenderPacket:

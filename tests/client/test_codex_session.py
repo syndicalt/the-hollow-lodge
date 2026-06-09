@@ -80,6 +80,32 @@ class FakeApi:
             ],
         }
 
+    def dossier(self, *, crew_id: str):
+        self.calls.append(f"dossier:{crew_id}")
+        return {
+            "dossier_id": f"dossier_{crew_id}",
+            "crew_id": crew_id,
+            "packet_lead_player_id": "player_0001",
+            "claim": "The reliquary finger is a later devotional forgery.",
+            "evidence_ids": ["fragment_ledger_hand"],
+            "artifact_citations": [
+                {
+                    "player_id": "player_0002",
+                    "artifact_id": "artifact_ledger_rubric",
+                    "claim": "The ledger contradicts the public lot card.",
+                    "quote": "The last hand is redder and later than the binding.",
+                }
+            ],
+            "member_contributions": [
+                {
+                    "player_id": "player_0003",
+                    "note": "Auction leverage depends on proving the chapel debt mark.",
+                    "evidence_ids": ["fragment_ledger_hand"],
+                }
+            ],
+            "server_notes": "hidden",
+        }
+
     def artifacts(self):
         self.calls.append("artifacts")
         return {
@@ -467,6 +493,31 @@ def test_codex_session_crew_board_accepts_explicit_crew_override(tmp_path):
 
     assert fake_api.calls == ["visible_events", "crew_board:crew_0002"]
     assert packet.agent_context["crew"]["crew_id"] == "crew_0002"
+
+
+def test_codex_session_renders_dossier_with_active_crew(tmp_path):
+    config_path = tmp_path / "config.json"
+    log_path = tmp_path / "local.jsonl"
+    fake_api = FakeApi()
+    save_config(
+        config_path,
+        ClientConfig(
+            server_url="http://testserver",
+            player_id="player_0001",
+            token="token",
+            active_crew_id="crew_0001",
+        ),
+    )
+    session = CodexGameSession(config_path=config_path, local_log_path=log_path, api=fake_api)
+
+    packet = session.render_dossier()
+
+    assert fake_api.calls == ["visible_events", "dossier:crew_0001"]
+    assert packet.surface == "dossier"
+    assert "Proof Dossier: crew_0001" in packet.player_markdown
+    assert packet.agent_context["dossier"]["crew_id"] == "crew_0001"
+    assert packet.agent_context["artifact_citation_count"] == 1
+    assert "server_notes" not in str(packet.agent_context)
 
 
 def test_codex_session_crew_board_requires_crew_id_without_active_crew(tmp_path):

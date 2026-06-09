@@ -18,6 +18,7 @@ from hollow_lodge.client.render_packets import (
     build_deals_packet,
     build_contract_board_packet,
     build_crew_board_packet,
+    build_dossier_packet,
     build_inbox_packet,
     build_mutation_result_packet,
     build_thread_packet,
@@ -58,10 +59,13 @@ class CodexGameSession:
 
     def render_crew_board(self, crew_id: str | None = None) -> RenderPacket:
         self.sync()
-        target_crew_id = crew_id or self.config.active_crew_id
-        if target_crew_id is None:
-            raise ValueError("crew id required when no active crew is configured")
+        target_crew_id = self._target_crew_id(crew_id)
         return build_crew_board_packet(self.api.crew_board(crew_id=target_crew_id))
+
+    def render_dossier(self, crew_id: str | None = None) -> RenderPacket:
+        self.sync()
+        target_crew_id = self._target_crew_id(crew_id)
+        return build_dossier_packet(self.api.dossier(crew_id=target_crew_id))
 
     def render_artifacts(self) -> RenderPacket:
         self.sync()

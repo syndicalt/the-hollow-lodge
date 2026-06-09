@@ -1324,6 +1324,24 @@ Expected verification:
 - `pytest tests/server/test_projection_store.py tests/server/test_crew_routes.py tests/server/test_crew_legacy_projection.py tests/server/test_action_routes.py tests/server/test_deal_routes.py tests/server/test_contract_seed.py tests/server/test_phase_resolution.py tests/client/test_render_packets.py tests/test_mcp_server.py -q`
 - `pytest -q`
 
+### Slice 50: Dedicated Codex Dossier Rendering
+
+Status: completed.
+
+Add a first-class Codex/MCP read surface for the current crew proof dossier.
+`render_dossier` syncs the local event log, fetches the authoritative dossier
+for the active or explicit crew, and returns player Markdown plus structured
+agent context. The render packet makes claim, evidence IDs, artifact citations,
+member contributions, reasoning, weaknesses, and provenance concerns easy to
+scan while preserving the existing safe dossier shaping that strips hidden
+server fields before text or context reaches the client.
+
+Expected verification:
+
+- `pytest tests/client/test_render_packets.py::test_dossier_packet_renders_claim_citations_contributions_without_hidden_fields tests/client/test_codex_session.py::test_codex_session_renders_dossier_with_active_crew tests/test_mcp_server.py::test_render_dossier_mcp_call_returns_text_and_structured_packet -q`
+- `pytest tests/client/test_render_packets.py tests/client/test_codex_session.py tests/test_mcp_server.py tests/client/test_api.py tests/client/test_dossier_cli.py tests/server/test_proof_routes.py tests/server/test_packet_lead.py -q`
+- `pytest -q`
+
 ## Completion Standard
 
 Each slice must:
