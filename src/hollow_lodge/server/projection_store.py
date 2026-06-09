@@ -47,6 +47,15 @@ class SqliteProjectionStore:
             self._set_meta(connection, "schema_version", SCHEMA_VERSION)
             self._set_meta(connection, "last_sequence", str(last_sequence))
             self._set_meta(connection, "contract_count", str(len(board["contracts"])))
+            self._set_meta(
+                connection,
+                "campaign_json",
+                json.dumps(
+                    board["campaign"],
+                    sort_keys=True,
+                    separators=(",", ":"),
+                ),
+            )
             connection.commit()
         return self.diagnostics(authoritative_last_sequence=last_sequence)
 
@@ -101,6 +110,20 @@ class SqliteProjectionStore:
             "authoritative_last_sequence": authoritative,
             "lag": lag,
             "contract_count": int(meta.get("contract_count", str(contract_count))),
+        }
+
+    def read_contract_board(self) -> dict[str, Any]:
+        with sqlite3.connect(self.path) as connection:
+            self._ensure_schema(connection)
+            meta = dict(
+                connection.execute("select key, value from projection_meta").fetchall()
+            )
+            rows = connection.execute(
+                "select payload_json from contract_board order by contract_id"
+            ).fetchall()
+        return {
+            "campaign": json.loads(meta["campaign_json"]) if "campaign_json" in meta else None,
+            "contracts": [json.loads(row[0]) for row in rows],
         }
 
     def _ensure_schema(self, connection: sqlite3.Connection) -> None:

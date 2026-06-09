@@ -1089,13 +1089,32 @@ availability, schema version, last applied event sequence, authoritative event
 sequence, lag, and contract count without mutating projection state. The first
 projection intentionally stores only player-safe contract-board payloads, so
 hidden truth and server-only seed internals stay out of the database read model.
-Live gameplay reads still use the existing projections until later slices move
-specific surfaces over with parity tests.
+Live gameplay reads still use the existing projections unless a later
+feature-flagged slice enables a parity-tested read path.
 
 Expected verification:
 
 - `pytest tests/server/test_projection_store.py -q`
 - `pytest tests/server/test_projection_store.py tests/server/test_app_config.py tests/server/test_contract_seed.py tests/server/test_phase_resolution.py tests/eventlog/test_jsonl_store.py -q`
+- `pytest -q`
+
+### Slice 41: Feature-Flagged Contract Board Projection Reads
+
+Status: completed.
+
+Move the first player-facing read surface onto the SQLite projection path
+without making it mandatory. When
+`HOLLOW_LODGE_CONTRACT_BOARD_PROJECTION_READS=1` is set, `/contracts` reads the
+public contract board from SQLite only if the projection is available and has
+zero lag against the authoritative event log. Stale, missing, or unreadable
+projection state falls back to the existing JSONL projection path. Projection
+store tests assert DB parity with `contract_board_from_events`, and route tests
+prove both fresh-projection use and stale fallback behavior.
+
+Expected verification:
+
+- `pytest tests/server/test_projection_store.py -q`
+- `pytest tests/server/test_projection_store.py tests/server/test_app_config.py tests/server/test_contract_seed.py tests/server/test_crew_routes.py tests/server/test_phase_resolution.py tests/client/test_contract_board.py tests/client/test_render_packets.py -q`
 - `pytest -q`
 
 ## Completion Standard

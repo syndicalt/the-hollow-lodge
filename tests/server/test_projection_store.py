@@ -4,6 +4,74 @@ import sqlite3
 from fastapi.testclient import TestClient
 
 from hollow_lodge.server.app import create_app
+from hollow_lodge.server.projections import contract_board_from_events
+
+
+def register(client: TestClient, invite: str, name: str) -> dict[str, str]:
+    response = client.post(
+        "/identity/register",
+        json={"invite_code": invite, "display_name": name},
+        headers={"Idempotency-Key": f"register-{invite}"},
+    )
+    assert response.status_code == 201
+    return response.json()
+
+
+def auth(token: str) -> dict[str, str]:
+    return {"Authorization": f"Bearer {token}"}
+
+
+def test_contract_board_route_reads_fresh_projection_when_enabled(tmp_path, monkeypatch):
+    monkeypatch.setenv("HOLLOW_LODGE_CONTRACT_BOARD_PROJECTION_READS", "1")
+    client = TestClient(create_app(data_dir=tmp_path, invite_codes=["a"]))
+    ada = register(client, "a", "Ada")
+    client.app.state.projection_store.rebuild(client.app.state.event_store.read())
+    original_read = client.app.state.projection_store.read_contract_board
+    calls = {"count": 0}
+
+    def tracked_read_contract_board():
+        calls["count"] += 1
+        return original_read()
+
+    client.app.state.projection_store.read_contract_board = tracked_read_contract_board
+
+    response = client.get("/contracts", headers=auth(ada["token"]))
+
+    assert response.status_code == 200
+    assert calls["count"] == 1
+    assert response.json()["contracts"][0]["contract_id"] == "contract_false_finger"
+
+
+def test_contract_board_route_falls_back_to_event_log_when_projection_is_stale(
+    tmp_path,
+    monkeypatch,
+):
+    monkeypatch.setenv("HOLLOW_LODGE_ADMIN_TOKEN", "admin-secret")
+    monkeypatch.setenv("HOLLOW_LODGE_CONTRACT_BOARD_PROJECTION_READS", "1")
+    client = TestClient(create_app(data_dir=tmp_path, invite_codes=["a"]))
+    ada = register(client, "a", "Ada")
+    activated = client.post(
+        "/contracts/admin/activate",
+        headers={
+            "Idempotency-Key": "activate-ash-window",
+            "X-Hollow-Lodge-Admin-Token": "admin-secret",
+        },
+        json={"seed": "tests/fixtures/ash_window_contract.json"},
+    )
+
+    def fail_if_projection_read():
+        raise AssertionError("stale projection should not be used")
+
+    client.app.state.projection_store.read_contract_board = fail_if_projection_read
+
+    response = client.get("/contracts", headers=auth(ada["token"]))
+
+    assert activated.status_code == 201
+    assert response.status_code == 200
+    assert {
+        contract["contract_id"]
+        for contract in response.json()["contracts"]
+    } == {"contract_false_finger", "contract_ash_window"}
 
 
 def test_projection_store_rebuilds_for_environment_configured_data_dir(tmp_path, monkeypatch):
@@ -84,6 +152,9 @@ def test_projection_store_rebuilds_after_new_public_contract_event(tmp_path, mon
 
     assert contract_ids == ["contract_ash_window", "contract_false_finger"]
     assert int(meta_rows["last_sequence"]) == projection["last_sequence"]
+    assert client.app.state.projection_store.read_contract_board() == (
+        contract_board_from_events(client.app.state.event_store.read())
+    )
 
 
 def test_projection_diagnostics_does_not_mutate_stale_projection(tmp_path, monkeypatch):

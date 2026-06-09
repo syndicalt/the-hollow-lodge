@@ -163,7 +163,9 @@ def inbox(
 
 
 def _board_for_player_with_unlocks(request: Request, player_id: str) -> dict:
-    payload = _contract_service(request).board_for_player(player_id)
+    payload = _projection_contract_board(request) or _contract_service(
+        request
+    ).board_for_player(player_id)
     crew_ids = request.app.state.crew_service.crew_ids_for_player(player_id)
     apply_contract_unlock_status(
         contracts=payload["contracts"],
@@ -175,6 +177,22 @@ def _board_for_player_with_unlocks(request: Request, player_id: str) -> dict:
         },
     )
     return payload
+
+
+def _projection_contract_board(request: Request) -> dict | None:
+    if os.environ.get("HOLLOW_LODGE_CONTRACT_BOARD_PROJECTION_READS") != "1":
+        return None
+    events = request.app.state.event_store.read()
+    authoritative_last_sequence = events[-1].sequence if events else 0
+    diagnostics = request.app.state.projection_store.diagnostics(
+        authoritative_last_sequence=authoritative_last_sequence,
+    )
+    if diagnostics.get("status") != "available" or diagnostics.get("lag") != 0:
+        return None
+    try:
+        return request.app.state.projection_store.read_contract_board()
+    except Exception:
+        return None
 
 
 @router.post("/contracts/{contract_id}/phases/auction-preview/lock")
