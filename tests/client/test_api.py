@@ -37,6 +37,42 @@ def test_api_gets_health_without_auth_headers(monkeypatch):
     ]
 
 
+def test_api_gets_diagnostics_without_auth_headers(monkeypatch):
+    calls = []
+
+    class Response:
+        def raise_for_status(self):
+            calls.append("raise_for_status")
+
+        def json(self):
+            return {"data": {"event_log": {"backend": "jsonl"}}}
+
+    def fake_get(url, *, headers, timeout):
+        calls.append(
+            {
+                "url": url,
+                "headers": headers,
+                "timeout": timeout,
+            }
+        )
+        return Response()
+
+    monkeypatch.setattr("httpx.get", fake_get)
+    api = HollowLodgeApi(server_url="http://testserver", token="secret-token")
+
+    result = api.diagnostics()
+
+    assert result == {"data": {"event_log": {"backend": "jsonl"}}}
+    assert calls == [
+        {
+            "url": "http://testserver/diagnostics",
+            "headers": {},
+            "timeout": 10,
+        },
+        "raise_for_status",
+    ]
+
+
 def test_api_fetches_visible_chat_events(monkeypatch):
     calls = []
 

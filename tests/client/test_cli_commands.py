@@ -60,6 +60,31 @@ class FakeApi:
         self.calls.append(("health", {}))
         return {"status": "ok"}
 
+    def diagnostics(self):
+        self.calls.append(("diagnostics", {}))
+        return {
+            "data": {
+                "event_log": {
+                    "backend": "jsonl",
+                    "status": "available",
+                },
+                "projection_db": {
+                    "backend": "postgres",
+                    "status": "available",
+                    "lag": 0,
+                    "last_sequence": 12,
+                    "authoritative_last_sequence": 12,
+                    "database_url": "postgresql://user:***@host:5432/hollow_lodge",
+                },
+                "projection_reads": {
+                    "surfaces": {
+                        "contract_board": True,
+                        "crew_summary": True,
+                    }
+                },
+            }
+        }
+
     def create_invite(self, *, admin_token: str, idempotency_key: str):
         self.calls.append(
             (
@@ -1138,6 +1163,96 @@ def test_admin_event_log_commands_verify_and_export(tmp_path, monkeypatch):
     assert '"identity.player.registered"' in output_path.read_text(encoding="utf-8")
     assert created_clients[0].calls == [("verify_event_log", {"admin_token": "admin-secret"})]
     assert created_clients[1].calls == [("export_event_log", {"admin_token": "admin-secret"})]
+
+
+def test_admin_backend_smoke_command_reports_safe_backend_status(monkeypatch):
+    runner = CliRunner()
+    created_clients: list[FakeApi] = []
+
+    def fake_client(**kwargs):
+        client = FakeApi(**kwargs)
+        created_clients.append(client)
+        return client
+
+    monkeypatch.setattr(cli, "HollowLodgeApi", fake_client)
+
+    result = runner.invoke(
+        cli.app,
+        [
+            "admin",
+            "backend-smoke",
+            "--server",
+            "http://testserver",
+            "--expected-backend",
+            "postgres",
+            "--expected-event-backend",
+            "jsonl",
+            "--require-projection-reads",
+        ],
+    )
+
+    assert result.exit_code == 0
+    assert (
+        "backend readiness ok: event=jsonl event_status=available "
+        "projection=postgres projection_status=available projection_lag=0 sequence=12"
+    ) in result.output
+    assert "secret" not in result.output
+    assert created_clients[0].calls == [("health", {}), ("diagnostics", {})]
+
+
+def test_admin_backend_smoke_command_rejects_unredacted_database_url(monkeypatch):
+    class UnsafeDiagnosticsApi(FakeApi):
+        def diagnostics(self):
+            payload = super().diagnostics()
+            payload["data"]["projection_db"][
+                "database_url"
+            ] = "postgresql://user:secret@host:5432/hollow_lodge"
+            return payload
+
+    monkeypatch.setattr(cli, "HollowLodgeApi", UnsafeDiagnosticsApi)
+    runner = CliRunner()
+
+    result = runner.invoke(
+        cli.app,
+        [
+            "admin",
+            "backend-smoke",
+            "--server",
+            "http://testserver",
+            "--expected-backend",
+            "postgres",
+        ],
+    )
+
+    assert result.exit_code != 0
+    assert "projection diagnostics expose an unredacted database URL password" in result.output
+    assert "postgresql://user:secret" not in result.output
+
+
+def test_admin_backend_smoke_command_rejects_unhealthy_server(monkeypatch):
+    class UnhealthyApi(FakeApi):
+        def health(self):
+            self.calls.append(("health", {}))
+            return {"status": "starting"}
+
+    monkeypatch.setattr(cli, "HollowLodgeApi", UnhealthyApi)
+    runner = CliRunner()
+
+    result = runner.invoke(
+        cli.app,
+        [
+            "admin",
+            "backend-smoke",
+            "--server",
+            "http://testserver",
+            "--expected-backend",
+            "postgres",
+        ],
+    )
+
+    assert result.exit_code != 0
+    assert "unexpected health response" in result.output
+    assert "starting" in result.output
 
 
 def test_admin_oracle_audits_command_lists_redacted_audits(tmp_path, monkeypatch):

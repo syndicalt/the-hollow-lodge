@@ -9,6 +9,7 @@ from hollow_lodge.client.artifact_render import (
     build_artifact_graph_packet,
     build_artifact_packet,
 )
+from hollow_lodge.client.backend_smoke import validate_backend_diagnostics
 from hollow_lodge.client.codex_mcp_config import (
     codex_mcp_server_registered,
     install_codex_mcp_server,
@@ -387,6 +388,61 @@ def admin_event_log_export(
     output.parent.mkdir(parents=True, exist_ok=True)
     output.write_text(json.dumps(response, indent=2, sort_keys=True) + "\n", encoding="utf-8")
     typer.echo(f"wrote {output}")
+
+
+@admin_app.command("backend-smoke")
+def admin_backend_smoke(
+    server: str = typer.Option(
+        DEFAULT_SERVER_URL,
+        "--server",
+        help="Authoritative server URL. Defaults to the official Lodge.",
+    ),
+    expected_backend: str = typer.Option(
+        ...,
+        "--expected-backend",
+        help="Expected projection backend: sqlite or postgres.",
+    ),
+    expected_event_backend: str | None = typer.Option(
+        None,
+        "--expected-event-backend",
+        help="Expected authoritative event-log backend: jsonl or postgres.",
+    ),
+    require_projection_reads: bool = typer.Option(
+        False,
+        "--require-projection-reads",
+        help="Require all implemented projection read surfaces to be enabled.",
+    ),
+) -> None:
+    """Verify hosted event-log and projection backend readiness."""
+    if expected_backend not in {"sqlite", "postgres"}:
+        raise typer.BadParameter("expected backend must be sqlite or postgres")
+    if expected_event_backend not in {None, "jsonl", "postgres"}:
+        raise typer.BadParameter("expected event backend must be jsonl or postgres")
+
+    api = HollowLodgeApi(server_url=server)
+    health = api.health()
+    if health != {"status": "ok"}:
+        typer.echo(f"Error: unexpected health response: {health}", err=True)
+        raise typer.Exit(1)
+    try:
+        result = validate_backend_diagnostics(
+            api.diagnostics(),
+            expected_backend=expected_backend,
+            expected_event_backend=expected_event_backend,
+            require_projection_reads=require_projection_reads,
+        )
+    except RuntimeError as exc:
+        typer.echo(f"Error: {exc}", err=True)
+        raise typer.Exit(1) from exc
+    typer.echo(
+        "backend readiness ok: "
+        f"event={result['event_log']['backend']} "
+        f"event_status={result['event_log']['status']} "
+        f"projection={result['projection']['backend']} "
+        f"projection_status={result['projection']['status']} "
+        f"projection_lag={result['projection']['lag']} "
+        f"sequence={result['projection']['last_sequence']}"
+    )
 
 
 @admin_app.command("oracle-audits")

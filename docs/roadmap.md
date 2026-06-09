@@ -1934,6 +1934,26 @@ Expected verification:
 - `pytest tests/e2e/test_event_log_migration.py tests/eventlog tests/server/test_identity_routes.py tests/client/test_cli_commands.py::test_admin_event_log_commands_verify_and_export -q`
 - `pytest -q`
 
+### Slice 77: Installed Backend Readiness Command
+
+Status: completed.
+
+Move the hosted database readiness gate into the installed CLI so operators do
+not need a repository checkout to verify production storage cutovers.
+`hollow-lodge admin backend-smoke` now checks `/health`, fetches public
+`/diagnostics`, validates the expected authoritative event-log backend,
+projection backend, event-log status, projection status, zero projection lag,
+optional projection-read surface enablement, and database URL redaction, then
+prints a compact safe status line. The existing
+`scripts/smoke_projection_backend.py` now reuses the same package validator so
+script and installed-client checks cannot drift.
+
+Expected verification:
+
+- `pytest tests/client/test_api.py::test_api_gets_diagnostics_without_auth_headers tests/client/test_cli_commands.py::test_admin_backend_smoke_command_reports_safe_backend_status tests/client/test_cli_commands.py::test_admin_backend_smoke_command_rejects_unredacted_database_url tests/e2e/test_projection_backend_smoke.py -q`
+- `pytest tests/client/test_api.py tests/client/test_cli_commands.py tests/e2e/test_projection_backend_smoke.py -q`
+- `pytest -q`
+
 ## Completion Standard
 
 Each slice must:

@@ -103,6 +103,16 @@ python scripts/smoke_projection_backend.py \
   --expected-event-backend jsonl
 ```
 
+Installed clients can run the same readiness gate without checking out the
+repository:
+
+```sh
+hollow-lodge admin backend-smoke \
+  --server https://server.thehollowlodge.com \
+  --expected-backend sqlite \
+  --expected-event-backend jsonl
+```
+
 After configuring `HOLLOW_LODGE_PROJECTION_DATABASE_URL`, or attaching a
 Railway Postgres database that provides `DATABASE_URL`, and redeploying the
 server, verify the new backend:
@@ -130,6 +140,16 @@ that all implemented projection read surfaces are enabled:
 ```sh
 python scripts/smoke_projection_backend.py \
   --server-url https://server.thehollowlodge.com \
+  --expected-backend postgres \
+  --expected-event-backend jsonl \
+  --require-projection-reads
+```
+
+The installed-client equivalent is:
+
+```sh
+hollow-lodge admin backend-smoke \
+  --server https://server.thehollowlodge.com \
   --expected-backend postgres \
   --expected-event-backend jsonl \
   --require-projection-reads
