@@ -12,7 +12,7 @@ fi
 
 uv tool install "$PACKAGE" --force
 
-hollow-lodge codex install-mcp
+hollow-lodge codex install-mcp --confirm
 
 run_doctor() {
   if [ "${HOLLOW_LODGE_SKIP_DOCTOR:-0}" = "1" ]; then

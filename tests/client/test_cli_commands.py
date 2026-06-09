@@ -917,6 +917,42 @@ def test_onboard_defaults_to_official_server_for_access_request(tmp_path, monkey
     assert created_clients[0].server_url == cli.DEFAULT_SERVER_URL
 
 
+def test_codex_install_mcp_previews_until_confirmed(tmp_path):
+    runner = CliRunner()
+    codex_config = tmp_path / "codex.toml"
+
+    preview = runner.invoke(
+        cli.app,
+        [
+            "codex",
+            "install-mcp",
+            "--config",
+            str(codex_config),
+        ],
+    )
+
+    assert preview.exit_code == 0
+    assert "Preview: codex_install_mcp" in preview.output
+    assert "No server mutation was submitted." in preview.output
+    assert f"- config: {codex_config}" in preview.output
+    assert not codex_config.exists()
+
+    result = runner.invoke(
+        cli.app,
+        [
+            "codex",
+            "install-mcp",
+            "--config",
+            str(codex_config),
+            "--confirm",
+        ],
+    )
+
+    assert result.exit_code == 0
+    assert result.output == "registered the-hollow-lodge MCP server\n"
+    assert '[mcp_servers."the-hollow-lodge"]' in codex_config.read_text(encoding="utf-8")
+
+
 def test_doctor_reports_registered_player_and_mcp_without_secret_material(
     tmp_path,
     monkeypatch,

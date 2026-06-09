@@ -10,7 +10,7 @@ def test_install_script_bootstraps_cli_and_runs_onboarding():
 
     assert "uv tool install" in script
     assert "git+https://github.com/syndicalt/the-hollow-lodge.git" in script
-    assert "hollow-lodge codex install-mcp" in script
+    assert "hollow-lodge codex install-mcp --confirm" in script
     assert "hollow-lodge onboard" in script
     assert "hollow-lodge doctor" in script
     assert "server, auth, MCP, and Codex render readiness" in script
@@ -38,7 +38,7 @@ def test_install_script_runs_onboarding_then_doctor_with_fake_commands(tmp_path)
     assert result.returncode == 0
     assert log_path.read_text(encoding="utf-8").splitlines() == [
         "uv tool install local-test-package --force",
-        "hollow-lodge codex install-mcp",
+        "hollow-lodge codex install-mcp --confirm",
         "hollow-lodge onboard --name Ada",
         "hollow-lodge doctor",
     ]
@@ -75,7 +75,7 @@ def test_install_script_stops_when_mcp_install_fails(tmp_path):
         env={
             **os.environ,
             "PATH": f"{bin_dir}{os.pathsep}{os.environ['PATH']}",
-            "HOLLOW_LODGE_FAIL_ARGS": "codex install-mcp",
+            "HOLLOW_LODGE_FAIL_ARGS": "codex install-mcp --confirm",
             "HOLLOW_LODGE_FAIL_CODE": "42",
         },
         text=True,
@@ -85,7 +85,7 @@ def test_install_script_stops_when_mcp_install_fails(tmp_path):
     assert result.returncode == 42
     assert log_path.read_text(encoding="utf-8").splitlines() == [
         "uv tool install git+https://github.com/syndicalt/the-hollow-lodge.git --force",
-        "hollow-lodge codex install-mcp",
+        "hollow-lodge codex install-mcp --confirm",
     ]
 
 
@@ -109,7 +109,7 @@ def test_install_script_stops_when_onboarding_fails(tmp_path):
     assert result.returncode == 43
     assert log_path.read_text(encoding="utf-8").splitlines() == [
         "uv tool install git+https://github.com/syndicalt/the-hollow-lodge.git --force",
-        "hollow-lodge codex install-mcp",
+        "hollow-lodge codex install-mcp --confirm",
         "hollow-lodge onboard --name Ada",
     ]
 
@@ -134,7 +134,7 @@ def test_install_script_skip_doctor_keeps_onboarding_with_fake_commands(tmp_path
     assert "Skipping hollow-lodge doctor." in result.stdout
     assert log_path.read_text(encoding="utf-8").splitlines() == [
         "uv tool install git+https://github.com/syndicalt/the-hollow-lodge.git --force",
-        "hollow-lodge codex install-mcp",
+        "hollow-lodge codex install-mcp --confirm",
         "hollow-lodge onboard --name Ada",
     ]
 
@@ -158,7 +158,7 @@ def test_install_script_server_url_overrides_onboarding_and_doctor(tmp_path):
     assert result.returncode == 0
     assert log_path.read_text(encoding="utf-8").splitlines() == [
         "uv tool install git+https://github.com/syndicalt/the-hollow-lodge.git --force",
-        "hollow-lodge codex install-mcp",
+        "hollow-lodge codex install-mcp --confirm",
         "hollow-lodge onboard --server https://staging.example.invalid --name Ada",
         "hollow-lodge doctor --server https://staging.example.invalid",
     ]
@@ -184,7 +184,7 @@ def test_install_script_skip_onboard_still_runs_doctor_with_fake_commands(tmp_pa
     assert "Run 'hollow-lodge onboard' when ready." in result.stdout
     assert log_path.read_text(encoding="utf-8").splitlines() == [
         "uv tool install git+https://github.com/syndicalt/the-hollow-lodge.git --force",
-        "hollow-lodge codex install-mcp",
+        "hollow-lodge codex install-mcp --confirm",
         "hollow-lodge doctor",
     ]
 
@@ -210,7 +210,7 @@ def test_install_script_skip_onboard_keeps_server_url_for_doctor(tmp_path):
     assert "Run 'hollow-lodge onboard' when ready." in result.stdout
     assert log_path.read_text(encoding="utf-8").splitlines() == [
         "uv tool install git+https://github.com/syndicalt/the-hollow-lodge.git --force",
-        "hollow-lodge codex install-mcp",
+        "hollow-lodge codex install-mcp --confirm",
         "hollow-lodge doctor --server https://staging.example.invalid",
     ]
 

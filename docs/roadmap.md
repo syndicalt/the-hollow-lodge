@@ -4089,6 +4089,27 @@ Expected verification:
 - `pytest tests/client/test_cli_commands.py tests/client/test_api.py tests/server/test_identity_routes.py tests/server/test_app_config.py -q`
 - `pytest -q`
 
+### Slice 169: CLI Codex MCP Install Confirmation Guard
+
+Status: completed.
+
+Protect local Codex configuration writes from accidental shell submission.
+`hollow-lodge codex install-mcp` now renders a no-mutation
+`codex_install_mcp` preview by default, showing the target Codex config path
+without creating or editing the file. The command writes the MCP server block
+only when rerun with `--confirm`.
+
+The scripted installer remains fully automated by calling
+`hollow-lodge codex install-mcp --confirm` explicitly from both packaged
+installer entrypoints. This keeps onboarding smooth while making manual config
+mutation opt-in and visible.
+
+Expected verification:
+
+- `pytest tests/client/test_cli_commands.py::test_codex_install_mcp_previews_until_confirmed tests/client/test_installer_script.py -q`
+- `pytest tests/client/test_cli_commands.py tests/client/test_installer_script.py tests/client/test_codex_mcp_config.py tests/client/test_codex_session.py tests/test_mcp_server.py -q`
+- `pytest -q`
+
 ## Completion Standard
 
 Each slice must:

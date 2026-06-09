@@ -958,8 +958,22 @@ def codex_install_mcp(
         "--config",
         help="Codex config.toml path.",
     ),
+    confirm: bool = typer.Option(
+        False,
+        "--confirm",
+        help="Write the MCP server block to the Codex config.",
+    ),
 ) -> None:
     """Register The Hollow Lodge MCP server with Codex."""
+    if not confirm:
+        packet = build_mutation_result_packet(
+            operation="codex_install_mcp",
+            confirmed=False,
+            preview_fields={"config": str(config)},
+        )
+        _echo_packet(packet, as_json=False)
+        return
+
     changed = install_codex_mcp_server(config)
     typer.echo("registered the-hollow-lodge MCP server" if changed else "the-hollow-lodge MCP server already registered")
 
