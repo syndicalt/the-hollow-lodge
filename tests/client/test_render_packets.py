@@ -1034,6 +1034,41 @@ def test_dossier_framing_mutation_result_uses_visible_shaped_result_only():
     }
 
 
+def test_inspect_artifact_mutation_result_uses_visible_shaped_result_only():
+    packet = build_mutation_result_packet(
+        operation="inspect_artifact",
+        confirmed=True,
+        result={
+            "artifact_id": "artifact_ledger_rubric",
+            "title": "Red Ledger Rubric",
+            "kind": "ledger",
+            "public_summary": "A copied rubric marks prior ownership.",
+            "full_text": "Lot 19 passed under chapel seal.",
+            "source_chain": ["archive:lot-card"],
+            "hidden_flags": ["server-only"],
+            "server_notes": "hidden",
+        },
+    )
+
+    assert "Submitted: inspect_artifact" in packet.player_markdown
+    assert "Result: artifact_ledger_rubric" in packet.player_markdown
+    assert packet.agent_context == {
+        "operation": "inspect_artifact",
+        "mutation": True,
+        "confirmed": True,
+        "result": {
+            "artifact_id": "artifact_ledger_rubric",
+            "title": "Red Ledger Rubric",
+            "kind": "ledger",
+            "public_summary": "A copied rubric marks prior ownership.",
+        },
+    }
+    assert "Lot 19 passed under chapel seal" not in str(packet.agent_context)
+    assert "archive:lot-card" not in str(packet.agent_context)
+    assert "hidden_flags" not in str(packet.agent_context)
+    assert "server_notes" not in str(packet.agent_context)
+
+
 def test_submit_action_mutation_result_includes_safe_rumor_response_mode():
     packet = build_mutation_result_packet(
         operation="submit_action",

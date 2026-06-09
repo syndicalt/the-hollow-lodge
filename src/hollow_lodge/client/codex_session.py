@@ -110,6 +110,24 @@ class CodexGameSession:
         self.sync()
         return build_artifact_packet(self.api.artifact(artifact_id=artifact_id))
 
+    def inspect_artifact(self, *, artifact_id: str, confirm: bool) -> RenderPacket:
+        if not confirm:
+            return build_mutation_result_packet(
+                operation="inspect_artifact",
+                confirmed=False,
+                preview_fields={"artifact_id": artifact_id},
+            )
+        result = self.api.inspect_artifact(
+            artifact_id=artifact_id,
+            idempotency_key=new_command_key("artifact-inspect"),
+        )
+        self.sync()
+        return build_mutation_result_packet(
+            operation="inspect_artifact",
+            confirmed=True,
+            result=result,
+        )
+
     def render_deals(self) -> RenderPacket:
         self.sync()
         return build_deals_packet(self.api.deals())

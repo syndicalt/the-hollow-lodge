@@ -755,7 +755,7 @@ def _shape_mutation_result(operation: str, result: dict[str, Any]) -> dict[str, 
         return _shape_dossier(result)
     if operation in {"propose_deal", "accept_deal"}:
         return _shape_deal(result)
-    if operation == "transfer_artifact":
+    if operation in {"inspect_artifact", "transfer_artifact"}:
         return _shape_artifact(result)
     if operation == "phase_lock":
         return {

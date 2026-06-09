@@ -31,6 +31,8 @@ def test_full_game_loop_with_escrow_trade(tmp_path):
         "mutation",
         "mutation",
         "mutation",
+        "mutation",
+        "mutation",
         "conversations",
         "mutation",
         "mutation",
@@ -66,6 +68,8 @@ def test_full_game_loop_with_escrow_trade(tmp_path):
         "activity",
     ]
     assert result["codex_mutations"] == [
+        {"operation": "inspect_artifact", "confirmed": False},
+        {"operation": "inspect_artifact", "confirmed": True},
         {"operation": "send_message", "confirmed": False},
         {"operation": "send_message", "confirmed": True},
         {"operation": "send_message", "confirmed": False},

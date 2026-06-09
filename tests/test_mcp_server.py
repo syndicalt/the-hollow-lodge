@@ -653,6 +653,40 @@ def test_dossier_update_framing_mcp_call_passes_fields_and_confirmation(monkeypa
     assert result.structuredContent["agent_context"]["mutation"] is False
 
 
+def test_inspect_artifact_mcp_call_passes_confirmation_to_session(monkeypatch):
+    packet = RenderPacket(
+        surface="mutation",
+        player_markdown="Preview: inspect_artifact\nNo server mutation was submitted.",
+        agent_context={"operation": "inspect_artifact", "mutation": False},
+    )
+
+    class StubSession:
+        def inspect_artifact(
+            self,
+            *,
+            artifact_id: str,
+            confirm: bool,
+        ) -> RenderPacket:
+            assert artifact_id == "artifact_ledger_rubric"
+            assert confirm is False
+            return packet
+
+    monkeypatch.setattr(mcp_server, "_session", lambda: StubSession())
+
+    result = asyncio.run(
+        mcp_server.mcp.call_tool(
+            "inspect_artifact",
+            {
+                "artifact_id": "artifact_ledger_rubric",
+                "confirm": False,
+            },
+        )
+    )
+
+    assert result.content[0].text == packet.player_markdown
+    assert result.structuredContent["agent_context"]["mutation"] is False
+
+
 def test_phase_lock_mcp_call_passes_confirmation_to_session(monkeypatch):
     packet = RenderPacket(
         surface="mutation",
@@ -717,6 +751,7 @@ def test_public_mcp_tools_do_not_expose_local_path_overrides():
         "dossier_contribute",
         "dossier_cite_artifact",
         "dossier_update_framing",
+        "inspect_artifact",
         "propose_deal",
         "accept_deal",
         "transfer_artifact",
@@ -738,6 +773,7 @@ def test_mutating_mcp_tools_require_confirm_argument():
         "dossier_contribute",
         "dossier_cite_artifact",
         "dossier_update_framing",
+        "inspect_artifact",
         "propose_deal",
         "accept_deal",
         "transfer_artifact",
@@ -750,3 +786,4 @@ def test_mutating_mcp_tools_require_confirm_argument():
 
     assert "note" in tools["dossier_contribute"].inputSchema["required"]
     assert "evidence_ids" in tools["dossier_contribute"].inputSchema["required"]
+    assert "artifact_id" in tools["inspect_artifact"].inputSchema["required"]

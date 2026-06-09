@@ -87,6 +87,16 @@ def render_artifact(artifact_id: str) -> CallToolResult:
 
 
 @mcp.tool()
+def inspect_artifact(artifact_id: str, confirm: bool) -> CallToolResult:
+    return packet_response(
+        _session().inspect_artifact(
+            artifact_id=artifact_id,
+            confirm=confirm,
+        )
+    )
+
+
+@mcp.tool()
 def render_deals() -> CallToolResult:
     return packet_response(_session().render_deals())
 

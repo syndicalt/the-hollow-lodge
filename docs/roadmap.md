@@ -3252,6 +3252,29 @@ Expected verification:
 - `pytest tests/e2e/test_full_game_loop_with_escrow.py tests/client/test_codex_session.py tests/client/test_render_packets.py tests/test_mcp_server.py -q`
 - `pytest -q`
 
+### Slice 130: Codex Artifact Inspection Mutation
+
+Status: completed.
+
+Expose artifact inspection through the Codex-native preview/confirm mutation
+surface. `CodexGameSession.inspect_artifact` now wraps the server inspection
+API with a non-mutating preview, explicit confirmation, command idempotency,
+activity sync, and safe artifact result shaping. The MCP `inspect_artifact`
+tool exposes the same flow to Codex without local path overrides.
+
+The full two-crew mock playthrough now inspects the initial ledger artifact
+through Codex preview/confirm packets instead of direct REST. This keeps the
+source-material acquisition loop visible to the player and local agent inside
+the Codex session before crew chat, escrowed trades, dossier citations, action
+submission, and phase resolution.
+
+Expected verification:
+
+- `pytest tests/client/test_codex_session.py::test_codex_session_confirmed_mutations_use_expected_api_calls tests/client/test_codex_session.py::test_codex_session_inspect_artifact_preview_does_not_call_api tests/client/test_render_packets.py::test_inspect_artifact_mutation_result_uses_visible_shaped_result_only tests/test_mcp_server.py::test_inspect_artifact_mcp_call_passes_confirmation_to_session tests/test_mcp_server.py::test_mutating_mcp_tools_require_confirm_argument tests/test_mcp_server.py::test_public_mcp_tools_do_not_expose_local_path_overrides tests/e2e/test_full_game_loop_with_escrow.py::test_full_game_loop_with_escrow_trade -q`
+- `python scripts/mock_full_game_loop.py`
+- `pytest tests/e2e/test_full_game_loop_with_escrow.py tests/client/test_codex_session.py tests/client/test_render_packets.py tests/test_mcp_server.py -q`
+- `pytest -q`
+
 ## Completion Standard
 
 Each slice must:

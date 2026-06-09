@@ -286,6 +286,26 @@ class FakeApi:
             "source_chain": ["archive:lot-card"],
         }
 
+    def inspect_artifact(self, *, artifact_id: str, idempotency_key: str):
+        self.calls.append(
+            (
+                "inspect_artifact",
+                {
+                    "artifact_id": artifact_id,
+                    "idempotency_key": idempotency_key,
+                },
+            )
+        )
+        return {
+            "artifact_id": artifact_id,
+            "title": "Red Ledger Rubric",
+            "kind": "ledger",
+            "public_summary": "A copied rubric marks prior ownership.",
+            "full_text": "Lot 19 passed under chapel seal.",
+            "source_chain": ["archive:lot-card"],
+            "server_notes": "hidden",
+        }
+
     def deals(self):
         self.calls.append("deals")
         return {
@@ -1737,6 +1757,10 @@ def test_codex_session_confirmed_mutations_use_expected_api_calls(tmp_path, monk
             quote="The last hand is later.",
             confirm=True,
         ),
+        session.inspect_artifact(
+            artifact_id="artifact_ledger_rubric",
+            confirm=True,
+        ),
         session.dossier_update_framing(
             claim="The finger is false.",
             evidence_ids=["artifact_ledger_rubric"],
@@ -1769,12 +1793,21 @@ def test_codex_session_confirmed_mutations_use_expected_api_calls(tmp_path, monk
             "evidence_ids": ["fragment_1", "artifact_ledger_rubric"],
         }
     ]
-    assert packets[4].agent_context["result"]["recipient_received_artifact_ids"] == [
+    assert packets[2].agent_context["result"] == {
+        "artifact_id": "artifact_ledger_rubric",
+        "title": "Red Ledger Rubric",
+        "kind": "ledger",
+        "public_summary": "A copied rubric marks prior ownership.",
+    }
+    assert "server_notes" not in str(packets[2].agent_context)
+    assert "Lot 19 passed under chapel seal" not in str(packets[2].agent_context)
+    assert packets[5].agent_context["result"]["recipient_received_artifact_ids"] == [
         "artifact_ledger_rubric.dealcopy.deal_000001.crew_0002.1"
     ]
     assert keys == [
         "dossier-contribute",
         "dossier-cite-artifact",
+        "artifact-inspect",
         "dossier-framing",
         "deal-propose",
         "deal-accept",
@@ -1800,6 +1833,14 @@ def test_codex_session_confirmed_mutations_use_expected_api_calls(tmp_path, monk
                 "claim": "The ledger contradicts the lot card.",
                 "quote": "The last hand is later.",
                 "idempotency_key": "dossier-cite-artifact.fixed",
+            },
+        ),
+        "visible_events",
+        (
+            "inspect_artifact",
+            {
+                "artifact_id": "artifact_ledger_rubric",
+                "idempotency_key": "artifact-inspect.fixed",
             },
         ),
         "visible_events",
@@ -1851,6 +1892,36 @@ def test_codex_session_confirmed_mutations_use_expected_api_calls(tmp_path, monk
         ),
         "visible_events",
     ]
+
+
+def test_codex_session_inspect_artifact_preview_does_not_call_api(tmp_path):
+    config_path = tmp_path / "config.json"
+    log_path = tmp_path / "local.jsonl"
+    fake_api = FakeApi()
+    save_config(
+        config_path,
+        ClientConfig(
+            server_url="http://testserver",
+            player_id="player_0001",
+            token="token",
+            active_crew_id="crew_0001",
+        ),
+    )
+    session = CodexGameSession(config_path=config_path, local_log_path=log_path, api=fake_api)
+
+    packet = session.inspect_artifact(
+        artifact_id="artifact_ledger_rubric",
+        confirm=False,
+    )
+
+    assert packet.surface == "mutation"
+    assert packet.agent_context == {
+        "operation": "inspect_artifact",
+        "mutation": False,
+        "confirmed": False,
+        "preview": {"artifact_id": "artifact_ledger_rubric"},
+    }
+    assert fake_api.calls == []
 
 
 def test_codex_session_dossier_update_framing_rejects_empty_update(tmp_path):

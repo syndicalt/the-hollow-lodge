@@ -46,12 +46,13 @@ def run_mock(data_dir: str) -> dict[str, Any]:
     contract_board = _get(client, "/contracts", headers=ada_headers)
     initial_contract_packet = ada_session.render_contract_board()
     initial_artifact_packet = ada_session.render_artifacts()
-    _post(
-        client,
-        "/artifacts/artifact_ledger_rubric/inspect",
-        headers=_command_auth(ada["token"], "inspect-ledger"),
-        json={},
-        expected_status=200,
+    artifact_inspect_preview = ada_session.inspect_artifact(
+        artifact_id="artifact_ledger_rubric",
+        confirm=False,
+    )
+    artifact_inspect_packet = ada_session.inspect_artifact(
+        artifact_id="artifact_ledger_rubric",
+        confirm=True,
     )
     client.app.state.artifact_service.grant_artifact_access(
         artifact_id="artifact_chapel_debt_mark",
@@ -261,6 +262,8 @@ def run_mock(data_dir: str) -> dict[str, Any]:
     codex_packets = [
         initial_contract_packet,
         initial_artifact_packet,
+        artifact_inspect_preview,
+        artifact_inspect_packet,
         opening_message_preview,
         opening_message,
         reply_message_preview,
@@ -435,6 +438,13 @@ class _TestClientCodexApi:
 
     def artifact(self, *, artifact_id: str) -> dict[str, Any]:
         return self._get(f"/artifacts/{artifact_id}")
+
+    def inspect_artifact(self, *, artifact_id: str, idempotency_key: str) -> dict[str, Any]:
+        return self._post(
+            f"/artifacts/{artifact_id}/inspect",
+            json={},
+            idempotency_key=idempotency_key,
+        )
 
     def deals(self) -> dict[str, Any]:
         return self._get("/deals")
