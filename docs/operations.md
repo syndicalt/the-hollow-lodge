@@ -377,7 +377,10 @@ hollow-lodge admin backend-smoke \
 database invariant: Postgres authoritative event log, Postgres projections,
 both Postgres startup guards, all implemented projection reads enabled, current
 projection schema, zero projection lag, aligned authoritative/projection
-sequences, and a successful latest projection refresh.
+sequences, a successful latest projection refresh, and maintenance read-only
+mode disabled. During an intentional freeze window, add
+`--require-maintenance-read-only`; this checks the frozen posture instead of
+the normal read/write posture.
 
 The smoke fails if `/health` is not ok, the event-log backend does not match
 `--expected-event-backend`, event-log status is not `available` or
@@ -616,6 +619,17 @@ maintenance flag and redeploying:
 
 ```sh
 railway variable delete --service hollow-lodge-server HOLLOW_LODGE_MAINTENANCE_READ_ONLY
+```
+
+If the platform keeps the old runtime value after deletion, set
+`HOLLOW_LODGE_MAINTENANCE_READ_ONLY=0` and redeploy or restart the service.
+Verify the writable production posture with the full smoke preset:
+
+```sh
+hollow-lodge admin backend-smoke \
+  --server https://server.thehollowlodge.com \
+  --production-postgres \
+  --event-log-manifest backups/hollow-lodge-events.manifest.json
 ```
 
 Treat exports as sensitive operational data. They include server-visible events

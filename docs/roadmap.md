@@ -2813,7 +2813,8 @@ backend-smoke --production-postgres` and `scripts/smoke_projection_backend.py
 Postgres authoritative event log, Postgres projection database, both Postgres
 startup guards, all implemented projection reads enabled, current projection
 schema, aligned authoritative/projection sequences, zero projection lag, and a
-successful latest projection refresh.
+successful latest projection refresh. Slice 117 later tightens the same preset
+to prove the server is back in read/write mode after a maintenance window.
 
 The preset rejects contradictory backend flags instead of silently overriding
 them. Explicit staged-cutover flags remain available for local development,
@@ -2946,6 +2947,30 @@ Expected verification:
   `data.event_log.backend=postgres`,
   `data.storage_guards.require_postgres_event_log=true`, and
   `data.maintenance.read_only=false`
+
+### Slice 117: Production Smoke Read/Write Maintenance Gate
+
+Status: completed.
+
+Close the post-maintenance verification gap exposed by the hosted event-log
+cutover. `hollow-lodge admin backend-smoke` and
+`scripts/smoke_projection_backend.py` now accept
+`--require-maintenance-read-write`, which fails unless
+`/diagnostics.data.maintenance.read_only=false`.
+
+The `--production-postgres` preset now requires the normal read/write posture
+by default, in addition to the Postgres event log, Postgres projections,
+storage guards, projection reads, current schema, sequence alignment, zero
+lag, and successful projection refresh. Operators can still run
+`--production-postgres --require-maintenance-read-only` during an intentional
+freeze window; the two explicit maintenance requirements are mutually
+exclusive.
+
+Expected verification:
+
+- `pytest tests/e2e/test_projection_backend_smoke.py::test_run_smoke_production_postgres_preset_forwards_required_checks tests/e2e/test_projection_backend_smoke.py::test_backend_smoke_accepts_required_maintenance_read_write tests/e2e/test_projection_backend_smoke.py::test_backend_smoke_rejects_frozen_required_maintenance_read_write tests/e2e/test_projection_backend_smoke.py::test_backend_smoke_rejects_conflicting_maintenance_requirements -q`
+- `pytest tests/client/test_cli_commands.py::test_admin_backend_smoke_command_accepts_required_maintenance_read_write tests/client/test_cli_commands.py::test_admin_backend_smoke_command_rejects_frozen_required_read_write tests/client/test_cli_commands.py::test_admin_backend_smoke_command_rejects_conflicting_maintenance_requirements tests/client/test_cli_commands.py::test_admin_backend_smoke_command_accepts_production_postgres_preset -q`
+- `python scripts/smoke_projection_backend.py --server-url https://server.thehollowlodge.com --production-postgres --event-log-manifest backups/hollow-lodge-events-2026-06-09-frozen.manifest.json`
 
 ## Completion Standard
 

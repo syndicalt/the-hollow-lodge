@@ -36,7 +36,13 @@ def resolve_backend_smoke_options(
     require_postgres_projection_guard: bool = False,
     require_projection_refresh_ok: bool = False,
     require_maintenance_read_only: bool = False,
+    require_maintenance_read_write: bool = False,
 ) -> dict[str, Any]:
+    if require_maintenance_read_only and require_maintenance_read_write:
+        raise RuntimeError(
+            "--require-maintenance-read-only and "
+            "--require-maintenance-read-write cannot both be used"
+        )
     if production_postgres:
         if expected_backend not in {None, "postgres"}:
             raise RuntimeError(
@@ -59,6 +65,7 @@ def resolve_backend_smoke_options(
             "require_postgres_projection_guard": True,
             "require_projection_refresh_ok": True,
             "require_maintenance_read_only": require_maintenance_read_only,
+            "require_maintenance_read_write": not require_maintenance_read_only,
         }
 
     if expected_backend is None:
@@ -78,6 +85,7 @@ def resolve_backend_smoke_options(
         "require_postgres_projection_guard": require_postgres_projection_guard,
         "require_projection_refresh_ok": require_projection_refresh_ok,
         "require_maintenance_read_only": require_maintenance_read_only,
+        "require_maintenance_read_write": require_maintenance_read_write,
     }
 
 
@@ -95,6 +103,7 @@ def run_backend_smoke(
     require_postgres_projection_guard: bool = False,
     require_projection_refresh_ok: bool = False,
     require_maintenance_read_only: bool = False,
+    require_maintenance_read_write: bool = False,
 ) -> dict[str, Any]:
     manifest = (
         load_event_log_manifest(event_log_manifest)
@@ -125,6 +134,7 @@ def run_backend_smoke(
             require_postgres_projection_guard=require_postgres_projection_guard,
             require_projection_refresh_ok=require_projection_refresh_ok,
             require_maintenance_read_only=require_maintenance_read_only,
+            require_maintenance_read_write=require_maintenance_read_write,
         )
 
 
@@ -142,6 +152,7 @@ def validate_backend_diagnostics(
     require_postgres_projection_guard: bool = False,
     require_projection_refresh_ok: bool = False,
     require_maintenance_read_only: bool = False,
+    require_maintenance_read_write: bool = False,
 ) -> dict[str, Any]:
     data = diagnostics.get("data", {})
     if not isinstance(data, dict):
@@ -190,13 +201,21 @@ def validate_backend_diagnostics(
         projection_refresh = None
 
     maintenance = data.get("maintenance")
-    if require_maintenance_read_only:
+    if require_maintenance_read_only or require_maintenance_read_write:
         if not isinstance(maintenance, dict):
             errors.append("diagnostics response did not include data.maintenance")
             maintenance = {}
+    if require_maintenance_read_only:
         if maintenance.get("read_only") is not True:
             errors.append("maintenance read-only mode is not enabled")
-    elif not isinstance(maintenance, dict):
+    if require_maintenance_read_write:
+        if maintenance.get("read_only") is not False:
+            errors.append("maintenance read/write mode is not enabled")
+    if (
+        not require_maintenance_read_only
+        and not require_maintenance_read_write
+        and not isinstance(maintenance, dict)
+    ):
         maintenance = None
 
     event_backend = event_log.get("backend")
@@ -420,6 +439,7 @@ def validate_projection_diagnostics(
     require_postgres_projection_guard: bool = False,
     require_projection_refresh_ok: bool = False,
     require_maintenance_read_only: bool = False,
+    require_maintenance_read_write: bool = False,
 ) -> dict[str, Any]:
     if not isinstance(diagnostics.get("data"), dict):
         diagnostics = {"data": {"event_log": {"backend": None, "status": "not_created"}}}
@@ -443,6 +463,7 @@ def validate_projection_diagnostics(
         require_postgres_projection_guard=require_postgres_projection_guard,
         require_projection_refresh_ok=require_projection_refresh_ok,
         require_maintenance_read_only=require_maintenance_read_only,
+        require_maintenance_read_write=require_maintenance_read_write,
     )
     projection = result["projection"]
     return {

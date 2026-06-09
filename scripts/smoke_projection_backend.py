@@ -78,6 +78,11 @@ def main() -> None:
         help="Require deployed diagnostics to prove read-only maintenance mode is active.",
     )
     parser.add_argument(
+        "--require-maintenance-read-write",
+        action="store_true",
+        help="Require deployed diagnostics to prove maintenance read-only mode is inactive.",
+    )
+    parser.add_argument(
         "--production-postgres",
         action="store_true",
         help=(
@@ -104,6 +109,7 @@ def main() -> None:
             require_postgres_projection_guard=args.require_postgres_projection_guard,
             require_projection_refresh_ok=args.require_projection_refresh_ok,
             require_maintenance_read_only=args.require_maintenance_read_only,
+            require_maintenance_read_write=args.require_maintenance_read_write,
             production_postgres=args.production_postgres,
         )
     except RuntimeError as exc:
@@ -136,6 +142,7 @@ def run_smoke(
     require_postgres_projection_guard: bool = False,
     require_projection_refresh_ok: bool = False,
     require_maintenance_read_only: bool = False,
+    require_maintenance_read_write: bool = False,
     production_postgres: bool = False,
 ) -> dict[str, Any]:
     smoke_options = resolve_backend_smoke_options(
@@ -150,6 +157,7 @@ def run_smoke(
         require_postgres_projection_guard=require_postgres_projection_guard,
         require_projection_refresh_ok=require_projection_refresh_ok,
         require_maintenance_read_only=require_maintenance_read_only,
+        require_maintenance_read_write=require_maintenance_read_write,
     )
     return run_backend_smoke(
         server_url=server_url,

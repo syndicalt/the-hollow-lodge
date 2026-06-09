@@ -609,6 +609,11 @@ def admin_backend_smoke(
         "--require-maintenance-read-only",
         help="Require deployed diagnostics to prove read-only maintenance mode is active.",
     ),
+    require_maintenance_read_write: bool = typer.Option(
+        False,
+        "--require-maintenance-read-write",
+        help="Require deployed diagnostics to prove maintenance read-only mode is inactive.",
+    ),
     production_postgres: bool = typer.Option(
         False,
         "--production-postgres",
@@ -639,6 +644,7 @@ def admin_backend_smoke(
             require_postgres_projection_guard=require_postgres_projection_guard,
             require_projection_refresh_ok=require_projection_refresh_ok,
             require_maintenance_read_only=require_maintenance_read_only,
+            require_maintenance_read_write=require_maintenance_read_write,
         )
     except RuntimeError as exc:
         typer.echo(f"Error: {exc}", err=True)
