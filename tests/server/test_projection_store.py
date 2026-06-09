@@ -5,7 +5,10 @@ from fastapi.testclient import TestClient
 
 from hollow_lodge.domain.events import EventVisibility
 from hollow_lodge.server.app import create_app
-from hollow_lodge.server.projections import contract_board_from_events
+from hollow_lodge.server.projections import (
+    contract_board_from_events,
+    crew_summaries_from_events,
+)
 from hollow_lodge.server.seed_data import STARTER_CONTRACT
 
 
@@ -260,6 +263,109 @@ def test_contract_mutation_still_succeeds_when_projection_refresh_fails(
     assert response.json()["contract_id"] == "contract_ash_window"
 
 
+def test_crew_board_reads_fresh_projected_crew_summary_when_enabled(
+    tmp_path,
+    monkeypatch,
+):
+    monkeypatch.setenv("HOLLOW_LODGE_CREW_SUMMARY_PROJECTION_READS", "1")
+    client = TestClient(create_app(data_dir=tmp_path, invite_codes=["a", "b"]))
+    ada = register(client, "a", "Ada")
+    grace = register(client, "b", "Grace")
+    crew = create_crew(client, ada["token"], "crew-create-gilt", "The Gilt Knives")
+    joined = client.post(
+        f"/crews/{crew['crew_id']}/join",
+        headers=command_auth(grace["token"], "crew-join-grace"),
+        json={"join_code": crew["join_code"]},
+    )
+    original_read = client.app.state.projection_store.read_crew_summary
+    calls = {"count": 0}
+
+    def tracked_read_crew_summary(crew_id: str):
+        calls["count"] += 1
+        return original_read(crew_id)
+
+    client.app.state.projection_store.read_crew_summary = tracked_read_crew_summary
+    client.app.state.crew_service.summary = (
+        lambda crew_id: (_ for _ in ()).throw(
+            AssertionError("fresh crew summary projection should be used")
+        )
+    )
+
+    response = client.get(f"/crews/{crew['crew_id']}/board", headers=auth(ada["token"]))
+    diagnostics = client.get("/diagnostics").json()["data"]["projection_db"]
+
+    assert joined.status_code == 200
+    assert response.status_code == 200
+    assert diagnostics["lag"] == 0
+    assert diagnostics["crew_count"] == 1
+    assert calls["count"] == 1
+    assert response.json()["crew"] == {
+        "crew_id": crew["crew_id"],
+        "name": "The Gilt Knives",
+        "member_ids": ["player_0001", "player_0002"],
+        "member_count": 2,
+        "ready_for_full_contracts": False,
+        "readiness_warning": (
+            "Crews should have 3-5 players for full contracts; "
+            "2-player starter slices are allowed."
+        ),
+    }
+    assert "join_code" not in str(response.json()["crew"])
+
+
+def test_crew_board_falls_back_when_projected_crew_summary_is_stale(
+    tmp_path,
+    monkeypatch,
+):
+    monkeypatch.setenv("HOLLOW_LODGE_CREW_SUMMARY_PROJECTION_READS", "1")
+    client = TestClient(create_app(data_dir=tmp_path, invite_codes=["a"]))
+    ada = register(client, "a", "Ada")
+    crew = create_crew(client, ada["token"], "crew-create-gilt", "The Gilt Knives")
+    out_of_band_contract = STARTER_CONTRACT.model_copy(
+        update={"contract_id": "contract_out_of_band", "title": "Out Of Band"}
+    )
+    client.app.state.event_store.append_command(
+        event_type="contract.board.published",
+        actor_id="server",
+        visibility=EventVisibility.public(),
+        payload=out_of_band_contract.model_dump(mode="json"),
+        idempotency_key="out-of-band-contract",
+    )
+
+    def fail_if_projection_read(crew_id: str):
+        raise AssertionError("stale crew summary projection should not be used")
+
+    client.app.state.projection_store.read_crew_summary = fail_if_projection_read
+
+    response = client.get(f"/crews/{crew['crew_id']}/board", headers=auth(ada["token"]))
+
+    assert response.status_code == 200
+    assert response.json()["crew"]["crew_id"] == crew["crew_id"]
+    assert response.json()["crew"]["member_ids"] == ["player_0001"]
+
+
+def test_crew_creation_still_succeeds_when_projection_refresh_fails(
+    tmp_path,
+    monkeypatch,
+):
+    client = TestClient(create_app(data_dir=tmp_path, invite_codes=["a"]))
+    ada = register(client, "a", "Ada")
+
+    def fail_refresh(events):
+        raise sqlite3.OperationalError("projection store unavailable")
+
+    client.app.state.projection_store.rebuild = fail_refresh
+
+    response = client.post(
+        "/crews",
+        headers=command_auth(ada["token"], "crew-create-gilt"),
+        json={"name": "The Gilt Knives"},
+    )
+
+    assert response.status_code == 201
+    assert response.json()["name"] == "The Gilt Knives"
+
+
 def test_projection_store_rebuilds_for_environment_configured_data_dir(tmp_path, monkeypatch):
     data_dir = tmp_path / "data"
     monkeypatch.setenv("HOLLOW_LODGE_DATA_DIR", str(data_dir))
@@ -298,6 +404,44 @@ def test_projection_store_materializes_public_contract_board_without_hidden_trut
     assert payload["title"] == "The Saint's False Finger"
     assert "saint-bone forgery" not in rows[0][1]
     assert "hidden_truth" not in rows[0][1]
+
+
+def test_projection_store_materializes_crew_summaries_without_join_codes(tmp_path):
+    client = TestClient(create_app(data_dir=tmp_path, invite_codes=["a", "b"]))
+    ada = register(client, "a", "Ada")
+    grace = register(client, "b", "Grace")
+    crew = create_crew(client, ada["token"], "crew-create-gilt", "The Gilt Knives")
+    joined = client.post(
+        f"/crews/{crew['crew_id']}/join",
+        headers=command_auth(grace["token"], "crew-join-grace"),
+        json={"join_code": crew["join_code"]},
+    )
+
+    assert joined.status_code == 200
+    with sqlite3.connect(tmp_path / "server-projections.sqlite3") as connection:
+        rows = connection.execute(
+            "select crew_id, member_count, payload_json from crew_summary"
+        ).fetchall()
+
+    assert rows == [
+        (
+            crew["crew_id"],
+            2,
+            (
+                '{"crew_id":"crew_0001","member_count":2,'
+                '"member_ids":["player_0001","player_0002"],'
+                '"name":"The Gilt Knives",'
+                '"readiness_warning":"Crews should have 3-5 players for full contracts; '
+                '2-player starter slices are allowed.",'
+                '"ready_for_full_contracts":false}'
+            ),
+        )
+    ]
+    assert "join_code" not in rows[0][2]
+    assert crew["join_code"] not in rows[0][2]
+    assert client.app.state.projection_store.read_crew_summary(crew["crew_id"]) == (
+        crew_summaries_from_events(client.app.state.event_store.read())[crew["crew_id"]]
+    )
 
 
 def test_projection_store_rebuilds_after_new_public_contract_event(tmp_path, monkeypatch):

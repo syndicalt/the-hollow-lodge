@@ -6,7 +6,10 @@ from pathlib import Path
 from typing import Any
 
 from hollow_lodge.domain.events import GameEvent
-from hollow_lodge.server.projections import contract_board_from_events
+from hollow_lodge.server.projections import (
+    contract_board_from_events,
+    crew_summaries_from_events,
+)
 
 
 SCHEMA_VERSION = "1"
@@ -19,10 +22,12 @@ class SqliteProjectionStore:
     def rebuild(self, events: list[GameEvent]) -> dict[str, Any]:
         self.path.parent.mkdir(parents=True, exist_ok=True)
         board = contract_board_from_events(events)
+        crew_summaries = crew_summaries_from_events(events)
         last_sequence = events[-1].sequence if events else 0
         with sqlite3.connect(self.path) as connection:
             self._ensure_schema(connection)
             connection.execute("delete from contract_board")
+            connection.execute("delete from crew_summary")
             for contract in board["contracts"]:
                 connection.execute(
                     """
@@ -44,9 +49,27 @@ class SqliteProjectionStore:
                         last_sequence,
                     ),
                 )
+            for crew_id, crew in crew_summaries.items():
+                connection.execute(
+                    """
+                    insert into crew_summary (
+                        crew_id,
+                        member_count,
+                        payload_json,
+                        updated_sequence
+                    ) values (?, ?, ?, ?)
+                    """,
+                    (
+                        crew_id,
+                        crew["member_count"],
+                        json.dumps(crew, sort_keys=True, separators=(",", ":")),
+                        last_sequence,
+                    ),
+                )
             self._set_meta(connection, "schema_version", SCHEMA_VERSION)
             self._set_meta(connection, "last_sequence", str(last_sequence))
             self._set_meta(connection, "contract_count", str(len(board["contracts"])))
+            self._set_meta(connection, "crew_count", str(len(crew_summaries)))
             self._set_meta(
                 connection,
                 "campaign_json",
@@ -72,6 +95,7 @@ class SqliteProjectionStore:
                 "authoritative_last_sequence": authoritative,
                 "lag": authoritative,
                 "contract_count": 0,
+                "crew_count": 0,
             }
         try:
             with sqlite3.connect(self.path) as connection:
@@ -81,6 +105,9 @@ class SqliteProjectionStore:
                 )
                 contract_count = connection.execute(
                     "select count(*) from contract_board"
+                ).fetchone()[0]
+                crew_count = connection.execute(
+                    "select count(*) from crew_summary"
                 ).fetchone()[0]
         except sqlite3.DatabaseError:
             authoritative = authoritative_last_sequence or 0
@@ -93,6 +120,7 @@ class SqliteProjectionStore:
                 "authoritative_last_sequence": authoritative,
                 "lag": authoritative,
                 "contract_count": 0,
+                "crew_count": 0,
             }
         last_sequence = int(meta.get("last_sequence", "0"))
         authoritative = (
@@ -110,6 +138,7 @@ class SqliteProjectionStore:
             "authoritative_last_sequence": authoritative,
             "lag": lag,
             "contract_count": int(meta.get("contract_count", str(contract_count))),
+            "crew_count": int(meta.get("crew_count", str(crew_count))),
         }
 
     def read_contract_board(self) -> dict[str, Any]:
@@ -125,6 +154,17 @@ class SqliteProjectionStore:
             "campaign": json.loads(meta["campaign_json"]) if "campaign_json" in meta else None,
             "contracts": [json.loads(row[0]) for row in rows],
         }
+
+    def read_crew_summary(self, crew_id: str) -> dict[str, Any]:
+        with sqlite3.connect(self.path) as connection:
+            self._ensure_schema(connection)
+            row = connection.execute(
+                "select payload_json from crew_summary where crew_id = ?",
+                (crew_id,),
+            ).fetchone()
+        if row is None:
+            raise KeyError(crew_id)
+        return json.loads(row[0])
 
     def _ensure_schema(self, connection: sqlite3.Connection) -> None:
         connection.execute(
@@ -151,6 +191,16 @@ class SqliteProjectionStore:
             """
             create index if not exists idx_contract_board_campaign
             on contract_board (campaign_id, lifecycle_status, phase_status)
+            """
+        )
+        connection.execute(
+            """
+            create table if not exists crew_summary (
+                crew_id text primary key,
+                member_count integer not null,
+                payload_json text not null,
+                updated_sequence integer not null
+            )
             """
         )
 

@@ -3,6 +3,7 @@ from __future__ import annotations
 from typing import Any
 
 from hollow_lodge.domain.contracts import Campaign, Contract
+from hollow_lodge.domain.crews import Crew
 from hollow_lodge.domain.events import GameEvent
 from hollow_lodge.server.contract_seed import ContractUnlockRequirement
 
@@ -50,6 +51,34 @@ def inbox_from_board(*, player_id: str, board: dict[str, Any]) -> dict[str, Any]
             if contract.get("lifecycle_status", "active") != "archived"
         ],
         "incoming_proof_fragments": [],
+    }
+
+
+def crew_summaries_from_events(events: list[GameEvent]) -> dict[str, dict[str, Any]]:
+    crews: dict[str, Crew] = {}
+    for event in events:
+        if event.type == "crew.created":
+            crew = Crew(
+                crew_id=event.payload["crew_id"],
+                name=event.payload["name"],
+                join_code="",
+            )
+            crew.add_member(event.payload["owner_id"])
+            crews[crew.crew_id] = crew
+        elif event.type == "crew.member.joined":
+            crew = crews.get(event.payload["crew_id"])
+            if crew is not None:
+                crew.add_member(event.payload["player_id"])
+    return {
+        crew_id: {
+            "crew_id": crew.crew_id,
+            "name": crew.name,
+            "member_ids": list(crew.member_ids),
+            "member_count": len(crew.member_ids),
+            "ready_for_full_contracts": crew.ready_for_full_contracts,
+            "readiness_warning": crew.readiness_warning,
+        }
+        for crew_id, crew in sorted(crews.items())
     }
 
 

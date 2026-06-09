@@ -1,5 +1,8 @@
 from __future__ import annotations
 
+import logging
+import os
+
 from pydantic import BaseModel, Field
 from fastapi import APIRouter, Depends, Header, HTTPException, Request, status
 
@@ -19,6 +22,7 @@ from hollow_lodge.server.services import ActionService, ContractService, ProofSe
 
 
 router = APIRouter(prefix="/crews", tags=["crews"])
+logger = logging.getLogger(__name__)
 
 
 class CreateCrewRequest(BaseModel):
@@ -51,6 +55,7 @@ def create_crew(
             owner_id=player.player_id,
             idempotency_key=idempotency_key,
         )
+        _refresh_projection_store(request)
     except ValueError as exc:
         raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail=str(exc)) from exc
     return _crew_response(crew)
@@ -71,6 +76,7 @@ def join_crew(
             join_code=payload.join_code,
             idempotency_key=idempotency_key,
         )
+        _refresh_projection_store(request)
     except KeyError as exc:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="crew not found") from exc
     except PermissionError as exc:
@@ -125,7 +131,7 @@ def crew_board(
         opportunities=legacy["future_opportunities"],
     )
     rumors = visible_rumors_for_crew(request.app.state.event_store, crew_id)
-    crew = crew_service.summary(crew_id)
+    crew = _crew_summary(request, crew_id)
     return {
         "player_id": player.player_id,
         "crew": crew,
@@ -160,6 +166,39 @@ def _crew_response(crew, *, include_join_code: bool = True) -> CrewResponse:
         readiness_warning=crew.readiness_warning,
         join_code=crew.join_code if include_join_code else None,
     )
+
+
+def _crew_summary(request: Request, crew_id: str) -> dict:
+    projected = _projected_crew_summary(request, crew_id)
+    if projected is not None:
+        return projected
+    return request.app.state.crew_service.summary(crew_id)
+
+
+def _projected_crew_summary(request: Request, crew_id: str) -> dict | None:
+    if os.environ.get("HOLLOW_LODGE_CREW_SUMMARY_PROJECTION_READS") != "1":
+        return None
+    events = request.app.state.event_store.read()
+    authoritative_last_sequence = events[-1].sequence if events else 0
+    diagnostics = request.app.state.projection_store.diagnostics(
+        authoritative_last_sequence=authoritative_last_sequence,
+    )
+    if diagnostics.get("status") != "available" or diagnostics.get("lag") != 0:
+        return None
+    try:
+        return request.app.state.projection_store.read_crew_summary(crew_id)
+    except Exception:
+        return None
+
+
+def _refresh_projection_store(request: Request) -> None:
+    if hasattr(request.app.state, "projection_store"):
+        try:
+            request.app.state.projection_store.rebuild(
+                request.app.state.event_store.read()
+            )
+        except Exception:
+            logger.exception("failed to refresh crew summary projection")
 
 
 def _crew_board_contract(contract: dict) -> dict:

@@ -298,6 +298,10 @@ Status:
   read the public contract board from SQLite when the projection is fresh, and
   contract activation, archival, and phase resolution refresh that read model
   after successful authoritative mutations.
+- Feature-flagged crew-summary projection reads completed: crew-board roster
+  metadata can read from SQLite when the projection is fresh, while crew
+  membership checks, dossiers, artifacts, deals, rumors, pending decisions, and
+  legacy calculations remain authoritative and visibility-scoped.
 - Deferred: deeper death/legacy inheritance, additional long-term unlock paths,
   and migrating heavier campaign reads onto the projection database.
 
@@ -1139,6 +1143,28 @@ Expected verification:
 
 - `pytest tests/server/test_projection_store.py::test_contract_activation_refreshes_projection_for_flagged_reads tests/server/test_projection_store.py::test_contract_archive_refreshes_projection_for_flagged_reads tests/server/test_projection_store.py::test_phase_resolution_refreshes_projection_for_flagged_reads tests/server/test_projection_store.py::test_contract_mutation_still_succeeds_when_projection_refresh_fails -q`
 - `pytest tests/server/test_projection_store.py tests/server/test_contract_seed.py tests/server/test_phase_resolution.py tests/server/test_crew_routes.py tests/client/test_contract_board.py tests/client/test_render_packets.py -q`
+- `pytest -q`
+
+### Slice 43: Feature-Flagged Crew Summary Projection Reads
+
+Status: completed.
+
+Move the first safe part of the crew-board surface onto the SQLite projection
+path without changing authorization or visibility boundaries. The projection
+store now materializes sanitized crew summaries from `crew.created` and
+`crew.member.joined` events, excluding join codes. When
+`HOLLOW_LODGE_CREW_SUMMARY_PROJECTION_READS=1` is set, `/crews/{crew_id}/board`
+uses the projected crew summary only after the normal authoritative crew
+existence and membership checks pass and only if the projection has zero lag.
+Stale, missing, or unreadable projection state falls back to the existing crew
+service. Crew creation and join mutations refresh the projection after the
+authoritative event-log write, and projection refresh remains best-effort so
+SQLite availability cannot invalidate a successful crew mutation.
+
+Expected verification:
+
+- `pytest tests/server/test_projection_store.py::test_crew_board_reads_fresh_projected_crew_summary_when_enabled tests/server/test_projection_store.py::test_crew_board_falls_back_when_projected_crew_summary_is_stale tests/server/test_projection_store.py::test_crew_creation_still_succeeds_when_projection_refresh_fails -q`
+- `pytest tests/server/test_projection_store.py tests/server/test_crew_routes.py tests/server/test_contract_seed.py tests/server/test_phase_resolution.py tests/server/test_app_config.py tests/client/test_render_packets.py tests/client/test_contract_board.py tests/test_mcp_server.py -q`
 - `pytest -q`
 
 ## Completion Standard
