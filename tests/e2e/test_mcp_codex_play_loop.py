@@ -812,6 +812,101 @@ def test_player_can_progress_contract_through_actual_mcp_tools(tmp_path, monkeyp
     assert "Packet Lead votes:" in post_vote_dossier["player_markdown"]
     assert "- 27 player_0001 -> player_0003" in post_vote_dossier["player_markdown"]
 
+    async_update = client.post(
+        "/chat/crew",
+        json={
+            "crew_id": crew["crew_id"],
+            "body": "Grace saw the chapel ledger move while Ada was away.",
+        },
+        headers=_command_auth(grace["token"], "grace-async-crew-update"),
+    )
+    assert async_update.status_code == 201
+
+    activity_delta = _assert_packet(
+        _call_tool("render_activity_delta"),
+        surface="activity_delta",
+    )
+    assert activity_delta["agent_context"]["mutation"] is False
+    assert activity_delta["agent_context"]["synced_event_count"] == 1
+    assert activity_delta["agent_context"]["activity_event_count"] == 1
+    assert activity_delta["agent_context"]["event_type_counts"] == {
+        "chat.message.created": 1
+    }
+    assert activity_delta["agent_context"]["recent_events"] == [
+        {
+            "sequence": 28,
+            "type": "chat.message.created",
+            "message": {
+                "message_id": "msg_000002",
+                "sender_player_id": grace["player_id"],
+                "sender_crew_id": crew["crew_id"],
+                "body": "Grace saw the chapel ledger move while Ada was away.",
+                "artifact_ids": [],
+            },
+        }
+    ]
+    assert "What changed since sequence 27:" in activity_delta["player_markdown"]
+    assert "Grace saw the chapel ledger move" in activity_delta["player_markdown"]
+
+    another_async_update = client.post(
+        "/chat/direct",
+        json={
+            "recipient_player_id": ada["player_id"],
+            "body": "Moth Lanterns compare the copied rubric elsewhere.",
+        },
+        headers=_command_auth(bela["token"], "bela-async-crew-update"),
+    )
+    assert another_async_update.status_code == 201
+    crew_async_update = client.post(
+        "/chat/crew",
+        json={
+            "crew_id": crew["crew_id"],
+            "body": "Grace files a second crew note for the packet room.",
+        },
+        headers=_command_auth(grace["token"], "grace-second-crew-update"),
+    )
+    assert crew_async_update.status_code == 201
+
+    crew_activity_delta = _assert_packet(
+        _call_tool("render_crew_activity_delta", {"crew_id": crew["crew_id"]}),
+        surface="activity_delta",
+    )
+    assert crew_activity_delta["agent_context"]["mutation"] is False
+    assert crew_activity_delta["agent_context"]["crew_id"] == crew["crew_id"]
+    assert crew_activity_delta["agent_context"]["synced_event_count"] == 2
+    assert crew_activity_delta["agent_context"]["activity_event_count"] == 1
+    assert crew_activity_delta["agent_context"]["skipped_visible_event_count"] == 1
+    assert crew_activity_delta["agent_context"]["event_type_counts"] == {
+        "chat.message.created": 1
+    }
+    assert crew_activity_delta["agent_context"]["recent_events"] == [
+        {
+            "sequence": 30,
+            "type": "chat.message.created",
+            "message": {
+                "message_id": "msg_000004",
+                "sender_player_id": grace["player_id"],
+                "sender_crew_id": crew["crew_id"],
+                "body": "Grace files a second crew note for the packet room.",
+                "artifact_ids": [],
+            },
+        }
+    ]
+    assert "Crew changes since sequence 28: crew_0001" in (
+        crew_activity_delta["player_markdown"]
+    )
+    assert "Moth Lanterns compare" not in crew_activity_delta["player_markdown"]
+    assert "Grace files a second crew note" in crew_activity_delta["player_markdown"]
+
+    crew_activity = _assert_packet(
+        _call_tool("render_crew_activity", {"crew_id": crew["crew_id"]}),
+        surface="crew_activity",
+    )
+    assert crew_activity["agent_context"]["crew_id"] == crew["crew_id"]
+    assert crew_activity["agent_context"]["crew_event_count"] > 0
+    assert "Crew activity: crew_0001" in crew_activity["player_markdown"]
+    assert "Grace saw the chapel ledger move" in crew_activity["player_markdown"]
+
     action_preview = _assert_packet(
         _call_tool(
             "submit_action",
@@ -1144,6 +1239,9 @@ def test_player_can_progress_contract_through_actual_mcp_tools(tmp_path, monkeyp
             ada_vote_preview,
             ada_vote_confirm,
             post_vote_dossier,
+            activity_delta,
+            crew_activity_delta,
+            crew_activity,
             second_action_preview,
             second_action_confirm,
             pre_revision_board,

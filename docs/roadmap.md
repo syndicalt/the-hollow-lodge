@@ -4605,6 +4605,31 @@ Expected verification:
 - `pytest tests/e2e/test_mcp_codex_play_loop.py tests/e2e/test_full_game_loop_with_escrow.py tests/server/test_packet_lead.py tests/server/test_crew_routes.py tests/test_mcp_server.py tests/client/test_codex_session.py tests/client/test_render_packets.py -q`
 - `pytest -q`
 
+### Slice 190: Actual MCP Activity Resume Proof Gate
+
+Status: completed.
+
+Extend the real MCP-boundary play loop so asynchronous resume surfaces are
+exercised inside Codex. After Packet Lead replacement, the e2e now creates
+server-side updates while Ada's local log is stale, then calls
+`render_activity_delta`, `render_crew_activity_delta`, and
+`render_crew_activity` through actual `mcp.call_tool` calls.
+
+The proof verifies that `render_activity_delta` reports a non-mutating,
+non-empty resume packet from the previous local checkpoint, including a safe
+shaped chat event. It then creates both an unrelated direct message visible to
+Ada and a new Gilt crew message, proving `render_crew_activity_delta` syncs
+visible changes, filters to the requested crew, counts skipped visible events,
+and renders only the crew-relevant update. The full crew activity surface is
+also rendered through MCP, and the serialized MCP leak guard covers the new
+activity packets alongside the existing gameplay surfaces.
+
+Expected verification:
+
+- `pytest tests/e2e/test_mcp_codex_play_loop.py -q`
+- `pytest tests/e2e/test_mcp_codex_play_loop.py tests/e2e/test_full_game_loop_with_escrow.py tests/client/test_render_packets.py tests/client/test_codex_session.py tests/test_mcp_server.py tests/server/test_chat_routes.py tests/server/test_event_sync.py -q`
+- `pytest -q`
+
 ## Completion Standard
 
 Each slice must:
