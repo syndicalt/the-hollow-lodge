@@ -2919,6 +2919,34 @@ Expected verification:
 - `python scripts/smoke_projection_backend.py --server-url https://server.thehollowlodge.com --expected-backend postgres --expected-event-backend jsonl --require-projection-reads --require-current-projection-read-surfaces --require-current-projection-schema --require-sequence-alignment --require-projection-refresh-ok --require-postgres-projection-guard`
 - `python scripts/smoke_projection_backend.py --server-url https://server.thehollowlodge.com --expected-backend postgres --expected-event-backend jsonl --require-maintenance-read-only` fails with `maintenance read-only mode is not enabled`
 
+### Slice 116: Hosted Event Log Postgres Cutover
+
+Status: completed.
+
+Freeze the live server, export the authoritative JSONL Eventloom, verify its
+content-safe manifest, import the frozen chain into Railway Postgres from
+inside the deployed service network, and switch production to the Postgres
+event backend. The cutover uses the same Railway Postgres database as
+projections, with the event backend isolated in its `event_log` table.
+
+The frozen backup manifest is
+`backups/hollow-lodge-events-2026-06-09-frozen.manifest.json`: `23` events,
+last sequence `23`, last event hash
+`0211f43c455e34c8698b45173a5fbc53171338acf89fec4e610703cc52f7629c`, and
+chain digest
+`e65bf3e22cbc01dec4d3df4cd2f10fa443cec188e12fa05a09228a5d60ff334b`.
+Production now reports `event_log.backend=postgres`, `projection_db.backend=postgres`,
+zero projection lag, both Postgres startup guards enabled, and maintenance
+read-only disabled.
+
+Expected verification:
+
+- `python -m hollow_lodge.client.cli admin backend-smoke --server https://server.thehollowlodge.com --production-postgres --event-log-manifest backups/hollow-lodge-events-2026-06-09-frozen.manifest.json`
+- `curl -fsSL https://server.thehollowlodge.com/diagnostics` reports
+  `data.event_log.backend=postgres`,
+  `data.storage_guards.require_postgres_event_log=true`, and
+  `data.maintenance.read_only=false`
+
 ## Completion Standard
 
 Each slice must:

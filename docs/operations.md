@@ -9,12 +9,15 @@ The production Railway project has two services:
 
 Current server storage state, verified on 2026-06-09:
 
-- authoritative event log: JSONL on the server volume
+- authoritative event log: Railway Postgres
 - projection database: Railway Postgres
 - projection reads: enabled for all implemented surfaces
-- startup guards: Postgres projection guard enabled; Postgres event-log guard
-  not yet enabled
+- startup guards: Postgres event-log guard and Postgres projection guard
+  enabled
 - maintenance diagnostics: deployed; read-only mode is currently disabled
+- migration backup manifest:
+  `backups/hollow-lodge-events-2026-06-09-frozen.manifest.json`
+  (`23` events, last sequence `23`)
 
 Deploy the server from the repository root:
 
