@@ -1485,6 +1485,7 @@ def build_backend_readiness_packet(payload: dict[str, Any]) -> RenderPacket:
     mode = str(payload.get("mode", "custom"))
     result = _shape_backend_readiness_result(payload.get("result"))
     errors = _bounded_readiness_errors(payload.get("errors"))
+    projection_read_summary = _projection_read_summary(result.get("projection_reads"))
     if ok:
         lines = [
             f"Backend Readiness: pass ({mode})",
@@ -1510,6 +1511,7 @@ def build_backend_readiness_packet(payload: dict[str, Any]) -> RenderPacket:
                 "- projection refresh: "
                 f"{_backend_value(result, 'projection_refresh', 'status')}"
             ),
+            f"- projection reads: {projection_read_summary}",
             (
                 "- maintenance read-only: "
                 f"{_backend_value(result, 'maintenance', 'read_only')}"

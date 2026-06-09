@@ -3386,6 +3386,24 @@ Expected verification:
 - `pytest tests/client/test_render_packets.py tests/client/test_codex_session.py tests/e2e/test_projection_backend_smoke.py -q`
 - `pytest -q`
 
+### Slice 136: Backend Readiness Projection Read Summary
+
+Status: completed.
+
+Carry projection-read coverage into the Codex backend readiness pass packet.
+`check_backend_readiness` already validates the current projection read surface
+set during production Postgres checks; the rendered packet now also shows a
+bounded player-facing summary and keeps safe `projection_reads.surfaces` in
+agent context. This makes the readiness check and backend status packet agree
+when operators verify that all implemented read surfaces, including
+`identity_admin`, are enabled.
+
+Expected verification:
+
+- `pytest tests/client/test_render_packets.py::test_backend_readiness_packet_renders_safe_pass_summary -q`
+- `pytest tests/client/test_render_packets.py tests/client/test_codex_session.py tests/test_mcp_server.py -q`
+- `pytest -q`
+
 ## Completion Standard
 
 Each slice must:

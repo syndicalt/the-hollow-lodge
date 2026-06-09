@@ -426,6 +426,13 @@ def test_backend_readiness_packet_renders_safe_pass_summary():
                     "last_success_sequence": 42,
                     "last_failure": {"message": "password=secret"},
                 },
+                "projection_reads": {
+                    "surfaces": {
+                        "contract_board": True,
+                        "identity_admin": True,
+                        "chat": True,
+                    }
+                },
                 "storage_guards": {
                     "production_postgres": True,
                     "production_postgres_env": "HOLLOW_LODGE_PRODUCTION_POSTGRES",
@@ -447,11 +454,19 @@ def test_backend_readiness_packet_renders_safe_pass_summary():
     assert "- event log: postgres (available; events 42)" in packet.player_markdown
     assert "- projection: postgres (available; lag 0)" in packet.player_markdown
     assert "- operational replay: postgres" in packet.player_markdown
+    assert "- projection reads: 3 enabled; all on" in packet.player_markdown
     assert "secret" not in packet.player_markdown
     assert "postgresql://" not in packet.player_markdown
     assert "secret" not in str(packet.agent_context)
     assert "postgresql://" not in str(packet.agent_context)
     assert packet.agent_context["backend_readiness"]["ok"] is True
+    assert packet.agent_context["backend_readiness"]["result"]["projection_reads"] == {
+        "surfaces": {
+            "contract_board": True,
+            "identity_admin": True,
+            "chat": True,
+        }
+    }
 
 
 def test_backend_readiness_packet_renders_bounded_failure_summary():
