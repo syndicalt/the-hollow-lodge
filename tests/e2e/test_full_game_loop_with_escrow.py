@@ -249,10 +249,76 @@ def test_full_game_loop_with_escrow_trade(tmp_path):
         "fallback_reason",
     ):
         assert forbidden not in serialized_contract
-    assert result["final_activity_delta"]["surface"] == "activity_delta"
-    assert result["final_activity_delta"]["agent_context"]["checkpoint_sequence"] > 0
-    assert result["final_activity_delta"]["agent_context"]["synced_event_count"] > 0
-    assert result["final_activity_delta"]["agent_context"]["activity_event_count"] > 0
+    final_delta = result["final_activity_delta"]
+    assert final_delta["surface"] == "activity_delta"
+    assert final_delta["agent_context"]["mutation"] is False
+    assert final_delta["agent_context"]["checkpoint_sequence"] == 34
+    assert final_delta["agent_context"]["max_sequence"] == 42
+    assert final_delta["agent_context"]["synced_event_count"] == 6
+    assert final_delta["agent_context"]["activity_event_count"] == 6
+    assert final_delta["agent_context"]["event_type_counts"] == {
+        "contract.phase.locked": 1,
+        "contract.phase.resolved": 1,
+        "artifact.phase_reward.awarded": 1,
+        "artifact.access.granted": 1,
+        "crew.legacy.delta.recorded": 2,
+    }
+    assert [
+        event["sequence"]
+        for event in final_delta["agent_context"]["recent_events"]
+    ] == [35, 38, 39, 40, 41, 42]
+    assert [
+        event["type"]
+        for event in final_delta["agent_context"]["recent_events"]
+    ] == [
+        "contract.phase.locked",
+        "contract.phase.resolved",
+        "artifact.phase_reward.awarded",
+        "artifact.access.granted",
+        "crew.legacy.delta.recorded",
+        "crew.legacy.delta.recorded",
+    ]
+    phase_event = final_delta["agent_context"]["recent_events"][1]
+    assert phase_event["phase_result"]["standings"] == expected_standings
+    assert phase_event["phase_result"]["contract_state"] == result["reveal"]["contract_state"]
+    assert final_delta["agent_context"]["recent_events"][4]["legacy_delta"]["crew_id"] == (
+        result["moth_crew_id"]
+    )
+    assert final_delta["agent_context"]["recent_events"][5]["legacy_delta"]["crew_id"] == (
+        result["gilt_crew_id"]
+    )
+    assert "What changed since sequence 34:" in final_delta["player_markdown"]
+    assert "- 35 contract.phase.locked" in final_delta["player_markdown"]
+    assert "- 38 phase result: crew_0002 Strong lead 100" in final_delta["player_markdown"]
+    assert "- 41 legacy crew_0002: Strong lead" in final_delta["player_markdown"]
+    assert "- 42 legacy crew_0001: Weak" in final_delta["player_markdown"]
+    serialized_delta = str(final_delta)
+    for forbidden in (
+        "hidden_truth",
+        "hidden_truth_summary",
+        "contract.hidden_truth.seeded",
+        "server_only",
+        "server_only_note",
+        "server_notes",
+        "visibility",
+        "oracle.resolution",
+        "accepted_output",
+        "accepted_output_hash",
+        "input_packet_hash",
+        "provider",
+        "model",
+        "prompt_version",
+        "validation_status",
+        "fallback_reason",
+        "token",
+        "join_code",
+        "event_id",
+        "event_hash",
+        "origin",
+        "payload",
+        "idempotency_key",
+    ):
+        assert forbidden not in serialized_delta
     assert (
         result["final_what_now"]["agent_context"]["summary_counts"]["active_contracts"]
         == 1

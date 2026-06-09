@@ -4199,6 +4199,28 @@ Expected verification:
 - `pytest tests/e2e/test_full_game_loop_with_escrow.py tests/e2e/test_codex_render_surfaces.py tests/client/test_render_packets.py tests/client/test_codex_session.py tests/test_mcp_server.py tests/client/test_installer_script.py tests/client/test_cli_commands.py -q`
 - `pytest -q`
 
+### Slice 174: Full Loop Activity Delta Resume Proof Gate
+
+Status: completed.
+
+Strengthen the playable-loop smoke so the asynchronous "what changed while I
+was away" surface proves the exact post-lock resume window. The full-loop e2e
+now asserts the final `activity_delta` packet is non-mutating, starts from the
+local checkpoint before phase lock, advances to the resolved sequence, and
+contains the expected lock, resolution, reward, access-grant, and crew legacy
+event counts.
+
+The proof also verifies the shaped phase result and legacy deltas exposed to
+the player and agent, checks the player markdown includes concrete resume
+lines, and guards against hidden truth, raw oracle/audit metadata, provider
+details, hashes, auth tokens, join codes, and visibility/server-only fields.
+
+Expected verification:
+
+- `pytest tests/e2e/test_full_game_loop_with_escrow.py::test_full_game_loop_with_escrow_trade -q`
+- `pytest tests/e2e/test_full_game_loop_with_escrow.py tests/client/test_render_packets.py tests/client/test_codex_session.py tests/test_mcp_server.py tests/server/test_event_sync.py -q`
+- `pytest -q`
+
 ## Completion Standard
 
 Each slice must:
