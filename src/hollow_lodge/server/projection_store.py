@@ -21,7 +21,7 @@ from hollow_lodge.server.pending_decisions import pending_decisions_for_player
 from hollow_lodge.server.rumors import SAFE_RUMOR_FIELDS
 
 
-SCHEMA_VERSION = "6"
+SCHEMA_VERSION = "7"
 PROJECTION_SCHEMA_MIGRATIONS: tuple[tuple[str, str], ...] = (
     ("1", "initial projection read models"),
     ("2", "proof dossier projection read model"),
@@ -29,6 +29,7 @@ PROJECTION_SCHEMA_MIGRATIONS: tuple[tuple[str, str], ...] = (
     ("4", "pending decision projection read model"),
     ("5", "current action projection read model"),
     ("6", "visible rumor projection read model"),
+    ("7", "contract unlock projection read model"),
 )
 
 
@@ -51,6 +52,7 @@ class SqliteProjectionStore:
         actions_by_crew = snapshot["actions_by_crew"]
         pending_decisions = snapshot["pending_decisions"]
         visible_rumors_by_crew = snapshot["visible_rumors_by_crew"]
+        contract_unlock_statuses = snapshot["contract_unlock_statuses"]
         visible_events = snapshot["visible_events"]
         last_sequence = snapshot["last_sequence"]
         with sqlite3.connect(self.path) as connection:
@@ -68,6 +70,7 @@ class SqliteProjectionStore:
             connection.execute("delete from action_surface")
             connection.execute("delete from pending_decision_surface")
             connection.execute("delete from visible_rumor_surface")
+            connection.execute("delete from contract_unlock_surface")
             for contract in board["contracts"]:
                 connection.execute(
                     """
@@ -337,6 +340,27 @@ class SqliteProjectionStore:
                         last_sequence,
                     ),
                 )
+            for row in contract_unlock_statuses:
+                connection.execute(
+                    """
+                    insert into contract_unlock_surface (
+                        crew_id,
+                        contract_id,
+                        payload_json,
+                        updated_sequence
+                    ) values (?, ?, ?, ?)
+                    """,
+                    (
+                        row["crew_id"],
+                        row["contract_id"],
+                        json.dumps(
+                            row["unlock_status"],
+                            sort_keys=True,
+                            separators=(",", ":"),
+                        ),
+                        last_sequence,
+                    ),
+                )
             rumor_count = 0
             for crew_id, rumors in visible_rumors_by_crew.items():
                 for rumor_index, rumor in enumerate(rumors):
@@ -378,6 +402,11 @@ class SqliteProjectionStore:
                 str(len(pending_decisions)),
             )
             self._set_meta(connection, "visible_rumor_count", str(rumor_count))
+            self._set_meta(
+                connection,
+                "contract_unlock_count",
+                str(len(contract_unlock_statuses)),
+            )
             self._set_meta(connection, "visible_event_count", str(len(visible_events)))
             self._set_meta(
                 connection,
@@ -423,6 +452,7 @@ class SqliteProjectionStore:
                 "action_count": 0,
                 "pending_decision_count": 0,
                 "visible_rumor_count": 0,
+                "contract_unlock_count": 0,
                 "schema_migration_count": 0,
                 "latest_schema_migration": None,
                 "visible_event_count": 0,
@@ -461,6 +491,9 @@ class SqliteProjectionStore:
                 ).fetchone()[0]
                 visible_rumor_count = connection.execute(
                     "select count(*) from visible_rumor_surface"
+                ).fetchone()[0]
+                contract_unlock_count = connection.execute(
+                    "select count(*) from contract_unlock_surface"
                 ).fetchone()[0]
                 visible_event_count = connection.execute(
                     "select count(*) from visible_event_surface"
@@ -502,6 +535,7 @@ class SqliteProjectionStore:
                 "action_count": 0,
                 "pending_decision_count": 0,
                 "visible_rumor_count": 0,
+                "contract_unlock_count": 0,
                 "schema_migration_count": 0,
                 "latest_schema_migration": None,
                 "visible_event_count": 0,
@@ -542,6 +576,9 @@ class SqliteProjectionStore:
             ),
             "visible_rumor_count": int(
                 meta.get("visible_rumor_count", str(visible_rumor_count))
+            ),
+            "contract_unlock_count": int(
+                meta.get("contract_unlock_count", str(contract_unlock_count))
             ),
             "schema_migration_count": int(schema_migration_count),
             "latest_schema_migration": (
@@ -779,6 +816,36 @@ class SqliteProjectionStore:
                 (crew_id,),
             ).fetchall()
         return [json.loads(row[0]) for row in rows]
+
+    def read_contract_unlock_statuses(
+        self,
+        *,
+        crew_ids: list[str] | tuple[str, ...] = (),
+    ) -> dict[str, dict[str, Any]]:
+        crew_set = {str(crew_id) for crew_id in crew_ids if str(crew_id)}
+        if not crew_set:
+            return {}
+        with sqlite3.connect(self.path) as connection:
+            self._ensure_schema(connection)
+            rows = connection.execute(
+                """
+                select crew_id, contract_id, payload_json
+                from contract_unlock_surface
+                where crew_id in (
+                    select value from json_each(?)
+                )
+                order by contract_id, crew_id
+                """,
+                (json.dumps(sorted(crew_set), separators=(",", ":")),),
+            ).fetchall()
+        return merge_contract_unlock_status_rows(
+            {
+                "crew_id": row[0],
+                "contract_id": row[1],
+                "unlock_status": json.loads(row[2]),
+            }
+            for row in rows
+        )
 
     def read_current_actions_for_crew(self, crew_id: str) -> list[dict[str, Any]]:
         with sqlite3.connect(self.path) as connection:
@@ -1020,6 +1087,23 @@ class SqliteProjectionStore:
             on visible_rumor_surface (crew_id, rumor_index)
             """
         )
+        connection.execute(
+            """
+            create table if not exists contract_unlock_surface (
+                crew_id text not null,
+                contract_id text not null,
+                payload_json text not null,
+                updated_sequence integer not null,
+                primary key (crew_id, contract_id)
+            )
+            """
+        )
+        connection.execute(
+            """
+            create index if not exists idx_contract_unlock_surface_contract
+            on contract_unlock_surface (contract_id, crew_id)
+            """
+        )
 
     def _ensure_artifact_scoped_surface_schema(self, connection: sqlite3.Connection) -> None:
         existing_columns = {
@@ -1079,6 +1163,12 @@ def build_projection_snapshot(events: list[GameEvent]) -> dict[str, Any]:
         deals=deals,
         events=events,
     )
+    contract_unlock_statuses = _contract_unlock_statuses_from_projection_inputs(
+        crew_ids=crew_summaries.keys(),
+        contracts=board["contracts"],
+        deals=deals,
+        events=events,
+    )
     proof_dossiers = proof_dossiers_from_events(events)
     actions_by_crew = _current_actions_by_crew_from_events(events)
     pending_decisions = _pending_decisions_from_projection_inputs(
@@ -1107,6 +1197,7 @@ def build_projection_snapshot(events: list[GameEvent]) -> dict[str, Any]:
         "artifact_visibility": artifact_visibility,
         "deals": deals,
         "crew_legacies": crew_legacies,
+        "contract_unlock_statuses": contract_unlock_statuses,
         "proof_dossiers": proof_dossiers,
         "actions_by_crew": actions_by_crew,
         "pending_decisions": pending_decisions,
@@ -1216,6 +1307,68 @@ def _pending_decisions_from_projection_inputs(
                     }
                 )
     return rows
+
+
+def _contract_unlock_statuses_from_projection_inputs(
+    *,
+    crew_ids: Any,
+    contracts: list[dict[str, Any]],
+    deals: list[dict[str, Any]],
+    events: list[GameEvent],
+) -> list[dict[str, Any]]:
+    rows: list[dict[str, Any]] = []
+    for crew_id in sorted(str(candidate) for candidate in crew_ids):
+        crew_deals = [
+            deal
+            for deal in deals
+            if crew_id in {deal.get("proposer_crew_id"), deal.get("recipient_crew_id")}
+        ]
+        crew_contracts = [
+            deepcopy(contract)
+            for contract in contracts
+            if contract.get("lifecycle_status", "active") != "archived"
+        ]
+        apply_contract_unlock_status(
+            contracts=crew_contracts,
+            crew_ids=[crew_id],
+            events=events,
+            deals_by_crew={crew_id: crew_deals},
+        )
+        for contract in crew_contracts:
+            unlock_status = contract.get("unlock_status")
+            if unlock_status is None:
+                continue
+            rows.append(
+                {
+                    "crew_id": crew_id,
+                    "contract_id": contract["contract_id"],
+                    "unlock_status": unlock_status,
+                }
+            )
+    return rows
+
+
+def merge_contract_unlock_status_rows(
+    rows: Any,
+) -> dict[str, dict[str, Any]]:
+    best_by_contract: dict[str, dict[str, Any]] = {}
+    for row in rows:
+        contract_id = str(row["contract_id"])
+        status = deepcopy(row["unlock_status"])
+        existing = best_by_contract.get(contract_id)
+        if existing is None or _unlock_status_rank(status) > _unlock_status_rank(existing):
+            best_by_contract[contract_id] = status
+    return best_by_contract
+
+
+def _unlock_status_rank(status: dict[str, Any]) -> tuple[int, int]:
+    unlocked_rank = 1 if status.get("state") == "unlocked" else 0
+    satisfied_count = sum(
+        1
+        for requirement in status.get("requirements", [])
+        if requirement.get("satisfied") is True
+    )
+    return unlocked_rank, satisfied_count
 
 
 def _current_actions_by_crew_from_events(

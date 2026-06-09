@@ -19,6 +19,10 @@ from hollow_lodge.server.projected_deals import projected_visible_deals
 from hollow_lodge.server.projected_dossiers import projected_proof_dossier
 from hollow_lodge.server.projected_pending_decisions import projected_pending_decisions
 from hollow_lodge.server.projected_rumors import projected_visible_rumors_for_crew
+from hollow_lodge.server.projected_unlocks import (
+    apply_projected_contract_unlock_statuses,
+    projected_contract_unlock_statuses,
+)
 from hollow_lodge.server.projection_readiness import projection_read_ready
 from hollow_lodge.server.projections import (
     apply_contract_unlock_status,
@@ -190,15 +194,22 @@ def _board_for_player_with_unlocks(request: Request, player_id: str) -> dict:
         request
     ).board_for_player(player_id)
     crew_ids = request.app.state.crew_service.crew_ids_for_player(player_id)
-    apply_contract_unlock_status(
-        contracts=payload["contracts"],
-        crew_ids=crew_ids,
-        events=read_authoritative_events(request),
-        deals_by_crew={
-            crew_id: _deals_for_crew(request, player_id, crew_id)
-            for crew_id in crew_ids
-        },
-    )
+    unlock_statuses = projected_contract_unlock_statuses(request, crew_ids=crew_ids)
+    if unlock_statuses is None:
+        apply_contract_unlock_status(
+            contracts=payload["contracts"],
+            crew_ids=crew_ids,
+            events=read_authoritative_events(request),
+            deals_by_crew={
+                crew_id: _deals_for_crew(request, player_id, crew_id)
+                for crew_id in crew_ids
+            },
+        )
+    else:
+        apply_projected_contract_unlock_statuses(
+            contracts=payload["contracts"],
+            unlock_statuses=unlock_statuses,
+        )
     return payload
 
 

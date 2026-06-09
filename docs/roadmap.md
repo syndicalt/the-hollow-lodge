@@ -282,6 +282,10 @@ Status:
 - Request-scoped Eventloom read reuse completed: dense contract and crew-board
   read paths now share one authoritative event snapshot per request for
   fallback-only unlock, legacy, and pending-decision derivations.
+- Crew-specific contract unlock projection completed: contract-board and
+  crew-board reads can now use a safe per-crew unlock status read model when the
+  projection is fresh, keeping raw seed requirements, hidden truth, and artifact
+  graph internals out of the database surface.
 
 Proof gate:
 
@@ -471,6 +475,10 @@ Status:
   contract unlocks, inbox pending decisions, and crew-board legacy now reuses a
   single per-request authoritative event snapshot instead of independently
   replaying the Eventloom log for each derived block.
+- Feature-flagged contract unlock projection reads completed: crew-scoped
+  `unlock_status` rows can now be read from SQLite/Postgres projections by
+  `/contracts` and crew boards when fresh, while stale or unavailable state falls
+  back to the existing Eventloom-derived unlock calculation.
 - Admin oracle audit surface completed: operators can inspect redacted
   provider, validation, fallback, count, and hash evidence for server-only
   oracle audit events without exposing raw oracle inputs, hidden truth, or
@@ -2465,6 +2473,29 @@ Expected verification:
 
 - `pytest tests/server/test_projection_store.py::test_inbox_fallback_reuses_authoritative_events_with_projection_reads tests/server/test_projection_store.py::test_inbox_skips_local_decision_inputs_when_pending_projection_is_fresh tests/server/test_projection_store.py::test_pending_decision_projection_reads_fall_back_when_stale -q`
 - `pytest tests/server/test_projection_store.py tests/server/test_contract_seed.py tests/server/test_crew_routes.py tests/server/test_deal_routes.py tests/server/test_chat_routes.py tests/server/test_app_config.py tests/client/test_render_packets.py tests/test_mcp_server.py -q`
+- `pytest -q`
+
+### Slice 98: Crew Contract Unlock Projection
+
+Status: completed.
+
+Move crew-specific contract unlock status onto the projection database read
+side. Projection rebuilds now materialize `contract_unlock_surface` rows keyed
+by crew and contract, storing only the player-safe `unlock_status` payload. The
+surface omits raw `unlock_requirements`, hidden truth, server notes, artifact
+graph internals, and private event payloads.
+
+`/contracts` and crew boards can read this surface with
+`HOLLOW_LODGE_CONTRACT_UNLOCK_PROJECTION_READS=1` when projection diagnostics
+show zero lag. If the projection is stale, unavailable, disabled, or missing
+crew ids, the routes keep the existing Eventloom-derived fallback. Multi-crew
+contract boards merge projected statuses deterministically, preferring an
+unlocked status and then the status with the most satisfied requirements.
+
+Expected verification:
+
+- `pytest tests/server/test_projection_store.py::test_projection_store_materializes_contract_unlocks_without_hidden_rules tests/server/test_projection_store.py::test_contract_board_applies_fresh_projected_unlock_statuses tests/server/test_projection_store.py::test_contract_unlock_projection_falls_back_when_stale tests/server/test_projection_store.py::test_crew_board_applies_fresh_projected_unlock_statuses -q`
+- `pytest tests/server/test_projection_store.py tests/server/test_contract_seed.py tests/server/test_crew_routes.py tests/server/test_deal_routes.py tests/server/test_app_config.py tests/e2e/test_projection_backend_smoke.py tests/client/test_cli_commands.py tests/client/test_render_packets.py tests/test_mcp_server.py -q`
 - `pytest -q`
 
 ## Completion Standard

@@ -1,4 +1,5 @@
 import json
+from pathlib import Path
 import sqlite3
 
 from fastapi.testclient import TestClient
@@ -35,6 +36,24 @@ def auth(token: str) -> dict[str, str]:
 
 def command_auth(token: str, key: str) -> dict[str, str]:
     return {**auth(token), "Idempotency-Key": key}
+
+
+def locked_ash_seed_path(tmp_path) -> str:
+    seed = json.loads(
+        Path("tests/fixtures/ash_window_contract.json").read_text(encoding="utf-8")
+    )
+    seed["unlock_requirements"] = [
+        {
+            "scope": "crew",
+            "metric": "reputation",
+            "minimum": 2,
+            "label": "Reputation 2+",
+            "description": "Complete earlier Lodge work with a strong lead.",
+        }
+    ]
+    seed_path = tmp_path / "locked-ash-window.json"
+    seed_path.write_text(json.dumps(seed), encoding="utf-8")
+    return str(seed_path)
 
 
 def create_crew(client: TestClient, token: str, key: str, name: str) -> dict:
@@ -508,6 +527,62 @@ def test_projection_store_materializes_visible_rumors_without_private_sources(
     assert client.app.state.projection_store.read_visible_rumors_for_crew(
         gilt["crew_id"]
     ) == []
+
+
+def test_projection_store_materializes_contract_unlocks_without_hidden_rules(
+    tmp_path,
+    monkeypatch,
+):
+    monkeypatch.setenv("HOLLOW_LODGE_ADMIN_TOKEN", "admin-secret")
+    client = TestClient(create_app(data_dir=tmp_path, invite_codes=["a"]))
+    ada = register(client, "a", "Ada")
+    crew = create_crew(client, ada["token"], "crew-create-gilt", "The Gilt Knives")
+    activated = client.post(
+        "/contracts/admin/activate",
+        headers={
+            "Idempotency-Key": "activate-locked-ash-window",
+            "X-Hollow-Lodge-Admin-Token": "admin-secret",
+        },
+        json={"seed": locked_ash_seed_path(tmp_path)},
+    )
+
+    client.app.state.projection_store.rebuild(client.app.state.event_store.read())
+    statuses = client.app.state.projection_store.read_contract_unlock_statuses(
+        crew_ids=[crew["crew_id"]],
+    )
+    diagnostics = client.app.state.projection_store.diagnostics()
+    with sqlite3.connect(tmp_path / "server-projections.sqlite3") as connection:
+        rows = connection.execute(
+            """
+            select crew_id, contract_id, payload_json
+            from contract_unlock_surface
+            order by crew_id, contract_id
+            """
+        ).fetchall()
+
+    assert activated.status_code == 201
+    assert diagnostics["contract_unlock_count"] == 1
+    assert rows[0][0] == crew["crew_id"]
+    assert rows[0][1] == "contract_ash_window"
+    assert statuses["contract_ash_window"] == {
+        "state": "locked",
+        "requirements": [
+            {
+                "scope": "crew",
+                "metric": "reputation",
+                "minimum": 2,
+                "current": 0,
+                "label": "Reputation 2+",
+                "description": "Complete earlier Lodge work with a strong lead.",
+                "satisfied": False,
+            }
+        ],
+    }
+    serialized_rows = str(rows)
+    assert "unlock_requirements" not in serialized_rows
+    assert "hidden_truth" not in serialized_rows
+    assert "artifact_graph" not in serialized_rows
+    assert "server_notes" not in serialized_rows
 
 
 def test_crew_board_embeds_projected_visible_rumors_when_enabled(
@@ -1202,6 +1277,101 @@ def test_contract_board_route_falls_back_to_event_log_when_projection_is_stale(
     } == {"contract_false_finger", "contract_out_of_band"}
 
 
+def test_contract_board_applies_fresh_projected_unlock_statuses(
+    tmp_path,
+    monkeypatch,
+):
+    monkeypatch.setenv("HOLLOW_LODGE_ADMIN_TOKEN", "admin-secret")
+    monkeypatch.setenv("HOLLOW_LODGE_CONTRACT_BOARD_PROJECTION_READS", "1")
+    monkeypatch.setenv("HOLLOW_LODGE_CONTRACT_UNLOCK_PROJECTION_READS", "1")
+    client = TestClient(create_app(data_dir=tmp_path, invite_codes=["a"]))
+    ada = register(client, "a", "Ada")
+    create_crew(client, ada["token"], "crew-create-gilt", "The Gilt Knives")
+    activated = client.post(
+        "/contracts/admin/activate",
+        headers={
+            "Idempotency-Key": "activate-locked-ash-window",
+            "X-Hollow-Lodge-Admin-Token": "admin-secret",
+        },
+        json={"seed": locked_ash_seed_path(tmp_path)},
+    )
+    original_read = client.app.state.projection_store.read_contract_unlock_statuses
+    calls = {"count": 0}
+
+    def tracked_read_contract_unlock_statuses(*, crew_ids=()):
+        calls["count"] += 1
+        return original_read(crew_ids=crew_ids)
+
+    monkeypatch.setattr(
+        client.app.state.projection_store,
+        "read_contract_unlock_statuses",
+        tracked_read_contract_unlock_statuses,
+    )
+    monkeypatch.setattr(
+        routes_contracts,
+        "apply_contract_unlock_status",
+        lambda **_: (_ for _ in ()).throw(
+            AssertionError("fresh contract unlock projection should be used")
+        ),
+    )
+
+    response = client.get("/contracts", headers=auth(ada["token"]))
+    ash = {
+        contract["contract_id"]: contract
+        for contract in response.json()["contracts"]
+    }["contract_ash_window"]
+
+    assert activated.status_code == 201
+    assert response.status_code == 200
+    assert calls["count"] == 1
+    assert ash["unlock_status"]["state"] == "locked"
+    assert ash["unlock_status"]["requirements"][0]["current"] == 0
+
+
+def test_contract_unlock_projection_falls_back_when_stale(tmp_path, monkeypatch):
+    monkeypatch.setenv("HOLLOW_LODGE_ADMIN_TOKEN", "admin-secret")
+    monkeypatch.setenv("HOLLOW_LODGE_CONTRACT_UNLOCK_PROJECTION_READS", "1")
+    client = TestClient(create_app(data_dir=tmp_path, invite_codes=["a"]))
+    ada = register(client, "a", "Ada")
+    create_crew(client, ada["token"], "crew-create-gilt", "The Gilt Knives")
+    activated = client.post(
+        "/contracts/admin/activate",
+        headers={
+            "Idempotency-Key": "activate-locked-ash-window",
+            "X-Hollow-Lodge-Admin-Token": "admin-secret",
+        },
+        json={"seed": locked_ash_seed_path(tmp_path)},
+    )
+    client.app.state.projection_store.rebuild(client.app.state.event_store.read())
+    client.app.state.event_store.append_command(
+        event_type="contract.note.published",
+        actor_id="server",
+        visibility=EventVisibility.public(),
+        payload={"note": "projection stale marker"},
+        idempotency_key="projection-stale-marker",
+    )
+
+    def fail_if_projection_read(*, crew_ids=()):
+        raise AssertionError("stale unlock projection should not be used")
+
+    monkeypatch.setattr(
+        client.app.state.projection_store,
+        "read_contract_unlock_statuses",
+        fail_if_projection_read,
+    )
+
+    response = client.get("/contracts", headers=auth(ada["token"]))
+    ash = {
+        contract["contract_id"]: contract
+        for contract in response.json()["contracts"]
+    }["contract_ash_window"]
+
+    assert activated.status_code == 201
+    assert response.status_code == 200
+    assert ash["unlock_status"]["state"] == "locked"
+    assert ash["unlock_status"]["requirements"][0]["current"] == 0
+
+
 def test_contract_activation_refreshes_projection_for_flagged_reads(tmp_path, monkeypatch):
     monkeypatch.setenv("HOLLOW_LODGE_ADMIN_TOKEN", "admin-secret")
     monkeypatch.setenv("HOLLOW_LODGE_CONTRACT_BOARD_PROJECTION_READS", "1")
@@ -1411,6 +1581,54 @@ def test_crew_board_reads_fresh_projected_crew_summary_when_enabled(
         ),
     }
     assert "join_code" not in str(response.json()["crew"])
+
+
+def test_crew_board_applies_fresh_projected_unlock_statuses(
+    tmp_path,
+    monkeypatch,
+):
+    monkeypatch.setenv("HOLLOW_LODGE_ADMIN_TOKEN", "admin-secret")
+    monkeypatch.setenv("HOLLOW_LODGE_CONTRACT_UNLOCK_PROJECTION_READS", "1")
+    client = TestClient(create_app(data_dir=tmp_path, invite_codes=["a"]))
+    ada = register(client, "a", "Ada")
+    crew = create_crew(client, ada["token"], "crew-create-gilt", "The Gilt Knives")
+    activated = client.post(
+        "/contracts/admin/activate",
+        headers={
+            "Idempotency-Key": "activate-locked-ash-window",
+            "X-Hollow-Lodge-Admin-Token": "admin-secret",
+        },
+        json={"seed": locked_ash_seed_path(tmp_path)},
+    )
+    original_read = client.app.state.projection_store.read_contract_unlock_statuses
+    calls = {"count": 0}
+
+    def tracked_read_contract_unlock_statuses(*, crew_ids=()):
+        calls["count"] += 1
+        return original_read(crew_ids=crew_ids)
+
+    monkeypatch.setattr(
+        client.app.state.projection_store,
+        "read_contract_unlock_statuses",
+        tracked_read_contract_unlock_statuses,
+    )
+    monkeypatch.setattr(
+        routes_crews,
+        "apply_contract_unlock_status",
+        lambda **_: (_ for _ in ()).throw(
+            AssertionError("fresh crew-board unlock projection should be used")
+        ),
+    )
+
+    response = client.get(f"/crews/{crew['crew_id']}/board", headers=auth(ada["token"]))
+
+    assert activated.status_code == 201
+    assert response.status_code == 200
+    assert calls["count"] == 1
+    assert "contract_ash_window" not in {
+        contract["contract_id"]
+        for contract in response.json()["active_contracts"]
+    }
 
 
 def test_crew_board_falls_back_when_projected_crew_summary_is_stale(

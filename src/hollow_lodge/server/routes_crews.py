@@ -16,6 +16,10 @@ from hollow_lodge.server.projected_dossiers import projected_proof_dossier
 from hollow_lodge.server.projected_legacy import projected_crew_legacy
 from hollow_lodge.server.projected_pending_decisions import projected_pending_decisions
 from hollow_lodge.server.projected_rumors import projected_visible_rumors_for_crew
+from hollow_lodge.server.projected_unlocks import (
+    apply_projected_contract_unlock_statuses,
+    projected_contract_unlock_statuses,
+)
 from hollow_lodge.server.projection_readiness import projection_read_ready
 from hollow_lodge.server.runtime_services import (
     ensure_deal_service,
@@ -116,12 +120,19 @@ def crew_board(
         if contract.get("lifecycle_status", "active") != "archived"
     ]
     deals = _deals_for_crew(request, player.player_id, crew_id)
-    apply_contract_unlock_status(
-        contracts=contracts,
-        crew_ids=[crew_id],
-        events=read_authoritative_events(request),
-        deals_by_crew={crew_id: deals},
-    )
+    unlock_statuses = projected_contract_unlock_statuses(request, crew_ids=[crew_id])
+    if unlock_statuses is None:
+        apply_contract_unlock_status(
+            contracts=contracts,
+            crew_ids=[crew_id],
+            events=read_authoritative_events(request),
+            deals_by_crew={crew_id: deals},
+        )
+    else:
+        apply_projected_contract_unlock_statuses(
+            contracts=contracts,
+            unlock_statuses=unlock_statuses,
+        )
     active_contracts = unlocked_actionable_contracts(contracts)
     dossier = _dossier_for_crew(request, player_id=player.player_id, crew_id=crew_id)
     shaped_contracts = [

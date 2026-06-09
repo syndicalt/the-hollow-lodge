@@ -124,9 +124,10 @@ HOLLOW_LODGE_PROJECTION_READS=1
 Individual surface flags such as `HOLLOW_LODGE_CHAT_PROJECTION_READS=0` can
 override the global switch during a targeted rollback. `/diagnostics` reports
 the effective projection read configuration in `data.projection_reads`.
-Implemented surfaces include contract board, crew summary, visible artifacts,
-visible deals, proof dossiers, chat, visible events, pending decisions,
-current actions, and crew-board visible rumors.
+Implemented surfaces include contract board, crew-scoped contract unlock
+status, crew summary, visible artifacts, visible deals, proof dossiers, chat,
+visible events, pending decisions, current actions, and crew-board visible
+rumors.
 
 Projection storage and authoritative event storage are separate cutovers.
 Projection storage can use `DATABASE_URL` for Railway convenience; the
@@ -149,6 +150,14 @@ contract unlocks, crew legacy, or pending-decision context, the server reuses a
 request-scoped authoritative event snapshot. The snapshot is not retained
 across requests and is not used for mutations, imports, projection refresh, or
 integrity checks.
+
+Crew-specific contract unlock reads can be enabled independently with
+`HOLLOW_LODGE_CONTRACT_UNLOCK_PROJECTION_READS=1`. The projection stores only
+safe `unlock_status` payloads keyed by crew and contract; raw seed
+`unlock_requirements`, hidden truth, server notes, artifact graph internals, and
+private event payloads remain outside the read model. `/diagnostics` reports
+`contract_unlock_count` so operators can confirm the surface is materialized
+before enabling the read flag.
 
 Before any projection backend cutover, verify the current backend:
 
