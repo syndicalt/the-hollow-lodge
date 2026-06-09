@@ -11,7 +11,9 @@ The repo already contains the core shape of the game:
 
 - Authoritative FastAPI server with invite registration, crews, brokered chat,
   contracts, artifacts, proofs, actions, deals, event sync, and health routes.
-- Append-only JSONL event log with visibility filtering.
+- Append-only event log with visibility filtering. JSONL remains the default
+  local backend; an explicit Postgres backend is available for the
+  authoritative hosted log.
 - CLI client with onboarding, crew creation and join, chat, contract board,
   inbox, crew board, artifacts, artifact transfer, local sync/replay, freeform
   actions, proof dossier commands, Packet Lead votes, and escrowed deal
@@ -41,7 +43,9 @@ The next work should harden the actual game loop before expanding content.
   invariants, not implementation trivia.
 - The append-only event log remains authoritative. Database-backed projections
   should become the read-side acceleration layer for contracts, crew legacy,
-  artifacts, unlocks, and activity summaries.
+  artifacts, unlocks, and activity summaries. Hosted authoritative-event
+  storage must be an explicit operator choice, not an accidental side effect of
+  attaching a platform database.
 
 ## Milestone 1: Playable Alpha Loop
 
@@ -224,6 +228,11 @@ Status:
   Hollow-specific projection URL is unset, while explicit
   `HOLLOW_LODGE_PROJECTION_DATABASE_URL` remains the override and diagnostics
   report which env var selected the backend without leaking credentials.
+- Postgres authoritative event-store foundation completed: the event log now
+  has a Postgres backend selected only by explicit
+  `HOLLOW_LODGE_EVENT_DATABASE_URL`, preserving append-only hash-chain
+  validation, idempotency replay/conflict behavior, visibility-scoped reads,
+  admin verify/export, and redacted diagnostics.
 
 Proof gate:
 
@@ -352,6 +361,11 @@ Status:
   can now select the Postgres projection backend when the Hollow-specific
   projection URL is unset, preserving the explicit override and the
   authoritative Eventloom JSONL write model.
+- Postgres authoritative event-store foundation completed: the `EventStore`
+  interface now has JSONL and Postgres implementations. The app can select the
+  Postgres event backend with `HOLLOW_LODGE_EVENT_DATABASE_URL`, while identity
+  replay secrets remain in the configured data directory and diagnostics no
+  longer assume the authoritative log is file-backed.
 - Admin oracle audit surface completed: operators can inspect redacted
   provider, validation, fallback, count, and hash evidence for server-only
   oracle audit events without exposing raw oracle inputs, hidden truth, or
@@ -1836,6 +1850,28 @@ Expected verification:
 
 - `pytest tests/server/test_app_config.py::test_platform_database_url_selects_postgres_projection_backend tests/server/test_app_config.py::test_explicit_projection_database_url_overrides_platform_database_url tests/server/test_app_config.py::test_require_postgres_projection_accepts_platform_database_url tests/server/test_app_config.py::test_require_postgres_projection_rejects_missing_database_url -q`
 - `pytest tests/server/test_app_config.py tests/e2e/test_projection_backend_smoke.py -q`
+- `pytest -q`
+
+### Slice 74: Postgres Authoritative Event Store Foundation
+
+Status: completed.
+
+Add a production-oriented Postgres implementation of the authoritative
+`EventStore` without changing the default local JSONL backend. The app now
+selects JSONL by default and uses Postgres only when
+`HOLLOW_LODGE_EVENT_DATABASE_URL` is set explicitly. The Postgres store writes
+the same canonical `GameEvent` payload shape, serializes appends under a
+transaction-scoped advisory lock, preserves hash-chain validation,
+idempotency replay and conflict behavior, visibility-scoped reads, admin
+verify/export compatibility, and redacted diagnostics. Identity token/invite
+replay files are now rooted in the configured data directory instead of being
+derived from a file-backed event store path, so non-file event stores do not
+crash during onboarding.
+
+Expected verification:
+
+- `pytest tests/eventlog/test_postgres_store.py tests/eventlog/test_jsonl_store.py tests/server/test_app_config.py::test_diagnostics_reports_safe_operational_status tests/server/test_app_config.py::test_diagnostics_reports_existing_event_log -q`
+- `pytest tests/eventlog tests/server/test_app_config.py tests/server/test_identity_routes.py -q`
 - `pytest -q`
 
 ## Completion Standard

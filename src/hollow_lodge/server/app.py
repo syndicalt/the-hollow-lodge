@@ -7,7 +7,7 @@ from typing import Any
 from fastapi import FastAPI
 
 from hollow_lodge import __version__
-from hollow_lodge.eventlog.jsonl_store import JsonlEventStore
+from hollow_lodge.eventlog.config import event_store_from_env
 from hollow_lodge.server.artifact_service import ArtifactService
 from hollow_lodge.server.deal_service import DealService
 from hollow_lodge.server.projection_config import (
@@ -53,7 +53,7 @@ def create_app(
     configured_data_dir = os.environ.get("HOLLOW_LODGE_DATA_DIR")
     storage_configured = data_dir is not None or configured_data_dir is not None
     root = Path(data_dir) if data_dir is not None else Path(configured_data_dir or ".hollow-lodge")
-    event_store = JsonlEventStore(root / "server-events.jsonl")
+    event_store = event_store_from_env(root)
     projection_store = projection_store_from_env(root)
     resolved_oracle = resolution_oracle if resolution_oracle is not None else resolution_oracle_from_env()
     app.state.event_store = event_store
@@ -62,6 +62,7 @@ def create_app(
     identity_service = IdentityService(
         invite_codes=invite_codes or [],
         event_store=event_store,
+        replay_dir=root,
     )
     crew_service = CrewService(event_store=event_store)
     artifact_service = ArtifactService(event_store=event_store) if data_dir is not None else None
@@ -129,7 +130,7 @@ def create_app(
             ),
             "data": {
                 "directory": str(root),
-                "event_log": _event_log_diagnostics(app.state.event_store.path),
+                "event_log": app.state.event_store.diagnostics(),
                 "projection_db": app.state.projection_store.diagnostics(
                     authoritative_last_sequence=_last_event_sequence(
                         app.state.event_store.read()
@@ -148,16 +149,6 @@ def _oracle_provider_name(oracle: ResolutionOracle) -> str:
     if isinstance(oracle, DeterministicResolutionOracle):
         return "deterministic"
     return oracle.__class__.__name__
-
-
-def _event_log_diagnostics(path: Path) -> dict[str, Any]:
-    exists = path.exists()
-    status = "available" if exists else "not_created"
-    return {
-        "path": str(path),
-        "exists": exists,
-        "status": status,
-    }
 
 
 def _last_event_sequence(events: list[Any]) -> int:

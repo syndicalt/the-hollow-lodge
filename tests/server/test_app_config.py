@@ -51,6 +51,7 @@ def test_diagnostics_reports_safe_operational_status(tmp_path, monkeypatch):
     body = response.json()
     assert body["server"]["version"] == "0.1.0"
     assert body["data"]["directory"] == str(tmp_path)
+    assert body["data"]["event_log"]["backend"] == "jsonl"
     assert body["data"]["event_log"]["path"] == str(tmp_path / "server-events.jsonl")
     assert body["data"]["event_log"]["exists"] is False
     assert body["data"]["event_log"]["status"] == "not_created"
@@ -73,6 +74,7 @@ def test_diagnostics_reports_existing_event_log(tmp_path):
 
     assert response.status_code == 200
     assert response.json()["data"]["event_log"] == {
+        "backend": "jsonl",
         "path": str(event_log),
         "exists": True,
         "status": "available",

@@ -34,6 +34,23 @@ class IntegrityReport:
     repaired_trailing_row: bool = False
 
 
+def validate_event_chain(events: list[GameEvent]) -> None:
+    previous_hash: str | None = None
+    expected_sequence = 1
+    for event in events:
+        if event.sequence != expected_sequence:
+            raise EventLogIntegrityError(
+                f"invalid sequence {event.sequence}; expected {expected_sequence}"
+            )
+        if event.previous_hash != previous_hash:
+            raise EventLogIntegrityError(f"hash chain break at sequence {event.sequence}")
+        expected_hash = compute_event_hash(event.model_dump(mode="json", exclude={"event_hash"}))
+        if event.event_hash != expected_hash:
+            raise EventLogIntegrityError(f"invalid event hash at sequence {event.sequence}")
+        previous_hash = event.event_hash
+        expected_sequence += 1
+
+
 class EventStore(ABC):
     @abstractmethod
     def append(
@@ -76,6 +93,14 @@ class EventStore(ABC):
         start_sequence: int | None = None,
         end_sequence: int | None = None,
     ) -> list[GameEvent]:
+        raise NotImplementedError
+
+    @abstractmethod
+    def verify_integrity(self, *, repair: bool = False) -> IntegrityReport:
+        raise NotImplementedError
+
+    @abstractmethod
+    def diagnostics(self) -> dict[str, Any]:
         raise NotImplementedError
 
 
@@ -188,21 +213,18 @@ class JsonlEventStore(EventStore):
             repaired_trailing_row=repaired_trailing_row,
         )
 
+    def diagnostics(self) -> dict[str, Any]:
+        exists = self.path.exists()
+        status = "available" if exists else "not_created"
+        return {
+            "backend": "jsonl",
+            "path": str(self.path),
+            "exists": exists,
+            "status": status,
+        }
+
     def _validate_chain(self, events: list[GameEvent]) -> None:
-        previous_hash: str | None = None
-        expected_sequence = 1
-        for event in events:
-            if event.sequence != expected_sequence:
-                raise EventLogIntegrityError(
-                    f"invalid sequence {event.sequence}; expected {expected_sequence}"
-                )
-            if event.previous_hash != previous_hash:
-                raise EventLogIntegrityError(f"hash chain break at sequence {event.sequence}")
-            expected_hash = compute_event_hash(event.model_dump(mode="json", exclude={"event_hash"}))
-            if event.event_hash != expected_hash:
-                raise EventLogIntegrityError(f"invalid event hash at sequence {event.sequence}")
-            previous_hash = event.event_hash
-            expected_sequence += 1
+        validate_event_chain(events)
 
     def _read_unlocked(
         self,

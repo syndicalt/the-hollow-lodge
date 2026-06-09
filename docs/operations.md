@@ -187,6 +187,20 @@ opening the event log.
 
 ## Event-Log Integrity And Export
 
+The authoritative event log defaults to the local append-only JSONL file at
+`$HOLLOW_LODGE_DATA_DIR/server-events.jsonl`. Operators can explicitly place
+the authoritative event log in Postgres with:
+
+```sh
+HOLLOW_LODGE_EVENT_DATABASE_URL=postgresql://user:password@host:5432/database
+```
+
+Unlike projection storage, the event log does not implicitly use `DATABASE_URL`;
+this prevents an attached platform database from accidentally becoming the
+source of truth before the operator has chosen that cutover. `/diagnostics`
+reports `data.event_log.backend` and redacts any Postgres password before
+returning `database_url`.
+
 Verify the authoritative event log:
 
 ```sh

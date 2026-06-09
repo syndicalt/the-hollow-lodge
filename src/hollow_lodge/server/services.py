@@ -7,6 +7,7 @@ import re
 import secrets
 import threading
 from datetime import UTC, datetime, timedelta
+from pathlib import Path
 
 from hollow_lodge.domain.artifact_graph import ArtifactGraph
 from hollow_lodge.domain.contracts import Contract, HiddenTruth
@@ -24,7 +25,7 @@ from hollow_lodge.domain.identity import (
 from hollow_lodge.domain.proofs import ProofDossier, ProofFragment
 from hollow_lodge.domain.scoring import AuctionPreviewScoreInput
 from hollow_lodge.domain.actions import NormalizedAction
-from hollow_lodge.eventlog.jsonl_store import JsonlEventStore
+from hollow_lodge.eventlog.jsonl_store import EventStore, JsonlEventStore
 from hollow_lodge.eventlog.visibility import Principal
 from hollow_lodge.server.artifact_seed import STARTER_ARTIFACT_GRAPH, STARTER_PUBLIC_ARTIFACT_IDS
 from hollow_lodge.server.artifact_service import ArtifactService
@@ -66,8 +67,24 @@ STARTER_FRAGMENT = ProofFragment(
 )
 
 
+def _event_store_replay_dir(event_store: EventStore) -> Path:
+    path = getattr(event_store, "path", None)
+    if path is None:
+        raise RuntimeError(
+            "identity replay storage requires an explicit replay_dir for "
+            "non-file event stores"
+        )
+    return Path(path).parent
+
+
 class IdentityService:
-    def __init__(self, *, invite_codes: list[str], event_store: JsonlEventStore):
+    def __init__(
+        self,
+        *,
+        invite_codes: list[str],
+        event_store: EventStore,
+        replay_dir: str | Path | None = None,
+    ):
         self._unused_invites = set(invite_codes)
         self._used_invites: set[str] = set()
         self._invites: dict[str, Invite] = {}
@@ -76,8 +93,13 @@ class IdentityService:
         self._key_requests: dict[str, AccessKeyRequest] = {}
         self._registration_replays: dict[str, tuple[Player, str]] = {}
         self._event_store = event_store
-        self._registration_replay_path = event_store.path.with_suffix(".registration-replays.json")
-        self._invite_replay_path = event_store.path.with_suffix(".invite-replays.json")
+        resolved_replay_dir = (
+            Path(replay_dir)
+            if replay_dir is not None
+            else _event_store_replay_dir(event_store)
+        )
+        self._registration_replay_path = resolved_replay_dir / "server-events.registration-replays.json"
+        self._invite_replay_path = resolved_replay_dir / "server-events.invite-replays.json"
         self._lock = threading.RLock()
         self._rebuild_from_events()
 
