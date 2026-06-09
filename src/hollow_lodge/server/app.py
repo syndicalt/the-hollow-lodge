@@ -67,11 +67,17 @@ def create_app(
     app.state.event_store = event_store
     app.state.projection_store = projection_store
     app.state.resolution_oracle = resolved_oracle
-    identity_service = IdentityService(
-        invite_codes=invite_codes or [],
-        event_store=event_store,
-        replay_dir=root,
-    )
+    try:
+        identity_service = IdentityService(
+            invite_codes=invite_codes or [],
+            event_store=event_store,
+            replay_dir=root,
+        )
+    except Exception as exc:
+        raise _startup_bootstrap_error(
+            "replaying authoritative events",
+            exc,
+        ) from None
     crew_service = CrewService(event_store=event_store)
     artifact_service = ArtifactService(event_store=event_store) if data_dir is not None else None
     app.state.identity_service = identity_service
@@ -112,8 +118,8 @@ def create_app(
             artifact_service=artifact_service,
         )
     if storage_configured:
-        startup_events = event_store.read()
-        projection_store.rebuild(startup_events)
+        startup_events = _read_startup_events(event_store)
+        _rebuild_startup_projection(projection_store, startup_events)
         record_projection_refresh_success(
             app.state,
             context="startup",
@@ -172,6 +178,33 @@ def _oracle_provider_name(oracle: ResolutionOracle) -> str:
 
 def _last_event_sequence(events: list[Any]) -> int:
     return events[-1].sequence if events else 0
+
+
+def _read_startup_events(event_store: Any) -> list[Any]:
+    try:
+        return event_store.read()
+    except Exception as exc:
+        raise _startup_bootstrap_error(
+            "replaying authoritative events",
+            exc,
+        ) from None
+
+
+def _rebuild_startup_projection(projection_store: Any, events: list[Any]) -> None:
+    try:
+        projection_store.rebuild(events)
+    except Exception as exc:
+        raise _startup_bootstrap_error(
+            "rebuilding projection store",
+            exc,
+        ) from None
+
+
+def _startup_bootstrap_error(context: str, exc: Exception) -> RuntimeError:
+    return RuntimeError(
+        "startup bootstrap failed while "
+        f"{context}; error_type={exc.__class__.__name__}"
+    )
 
 
 def _projection_diagnostics_from_event_log(

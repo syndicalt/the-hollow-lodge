@@ -2731,6 +2731,27 @@ Expected verification:
 - `pytest tests/e2e/test_projection_backend_smoke.py tests/client/test_cli_commands.py tests/server/test_app_config.py -q`
 - `pytest -q`
 
+### Slice 108: Safe Startup Projection Bootstrap Failures
+
+Status: completed.
+
+Harden configured-storage startup for production Postgres cutovers. Server
+startup still fails fast if authoritative event replay or the initial
+projection rebuild fails, but the raised error now reports only the bootstrap
+stage and exception type. Raw database URLs, provider messages, invite codes,
+and other secret-bearing exception text are not included in the startup error
+message.
+
+This covers both identity-service event replay during service construction and
+the configured-storage projection rebuild that runs before the app starts
+serving requests.
+
+Expected verification:
+
+- `pytest tests/server/test_app_config.py::test_startup_event_replay_failure_reports_safe_context tests/server/test_app_config.py::test_startup_projection_rebuild_failure_reports_safe_context -q`
+- `pytest tests/server/test_app_config.py tests/server/test_projection_store.py tests/eventlog/test_postgres_store.py -q`
+- `pytest -q`
+
 ## Completion Standard
 
 Each slice must:

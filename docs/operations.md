@@ -38,6 +38,12 @@ exception type, last successful event sequence, and failure count so operators
 can see when projection-backed reads may be stale without leaking connection
 strings or raw exception messages.
 
+Startup projection bootstrap failures are fail-fast. If the server cannot
+replay authoritative events or rebuild the projection store during startup, the
+process raises a bounded error that names the bootstrap stage and exception
+type without including raw database URLs, API keys, invite codes, or provider
+messages.
+
 ## Authoritative Event Log
 
 The authoritative game record is the append-only Eventloom log. Local

@@ -32,6 +32,62 @@ def test_default_app_keeps_artifact_and_deal_services_lazy(tmp_path, monkeypatch
     assert app.state.action_service._artifact_service is None
 
 
+def test_startup_event_replay_failure_reports_safe_context(tmp_path, monkeypatch):
+    class FailingEventStore:
+        def read(self, **kwargs):
+            raise RuntimeError(
+                "raw event database error postgresql://user:secret@host/db"
+            )
+
+    monkeypatch.setattr(
+        "hollow_lodge.server.app.event_store_from_env",
+        lambda root: FailingEventStore(),
+    )
+
+    with pytest.raises(RuntimeError) as exc_info:
+        create_app(data_dir=tmp_path)
+
+    message = str(exc_info.value)
+    assert "startup bootstrap failed while replaying authoritative events" in message
+    assert "RuntimeError" in message
+    assert "secret" not in message
+    assert "postgresql://user" not in message
+
+
+def test_startup_projection_rebuild_failure_reports_safe_context(
+    tmp_path,
+    monkeypatch,
+):
+    class EmptyEventStore:
+        def read(self, **kwargs):
+            return []
+
+    class FailingProjectionStore:
+        def rebuild(self, events):
+            raise RuntimeError(
+                "raw projection database error postgresql://user:secret@host/db"
+            )
+
+    monkeypatch.setenv("HOLLOW_LODGE_DATA_DIR", str(tmp_path))
+    monkeypatch.setattr(
+        "hollow_lodge.server.app.event_store_from_env",
+        lambda root: EmptyEventStore(),
+    )
+    monkeypatch.setattr(
+        "hollow_lodge.server.app.projection_store_from_env",
+        lambda root: FailingProjectionStore(),
+    )
+
+    with pytest.raises(RuntimeError) as exc_info:
+        create_app()
+
+    message = str(exc_info.value)
+    assert "startup bootstrap failed while rebuilding projection store" in message
+    assert "RuntimeError" in message
+    assert "secret" not in message
+    assert "postgresql://user" not in message
+
+
 def test_health_response_stays_backward_compatible(tmp_path):
     client = TestClient(create_app(data_dir=tmp_path))
 
