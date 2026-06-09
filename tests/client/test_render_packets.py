@@ -1274,6 +1274,48 @@ def test_accept_deal_mutation_packet_renders_received_artifacts():
     ]
 
 
+def test_decline_and_cancel_deal_mutation_packets_render_safe_status():
+    decline = build_mutation_result_packet(
+        operation="decline_deal",
+        confirmed=True,
+        result={
+            "deal_id": "deal_000001",
+            "contract_id": "contract_false_finger",
+            "proposer_crew_id": "crew_0001",
+            "recipient_crew_id": "crew_0002",
+            "status": "declined",
+            "offered_artifact_ids": ["artifact_ledger_rubric"],
+            "requested_artifact_ids": ["artifact_chapel_debt_mark"],
+            "soft_terms": ["Do not cite us."],
+            "expires_phase": None,
+            "server_notes": "hidden",
+        },
+    )
+    cancel = build_mutation_result_packet(
+        operation="cancel_deal",
+        confirmed=True,
+        result={
+            "deal_id": "deal_000001",
+            "contract_id": "contract_false_finger",
+            "proposer_crew_id": "crew_0001",
+            "recipient_crew_id": "crew_0002",
+            "status": "canceled",
+            "offered_artifact_ids": ["artifact_ledger_rubric"],
+            "requested_artifact_ids": ["artifact_chapel_debt_mark"],
+            "soft_terms": [],
+            "expires_phase": None,
+        },
+    )
+
+    assert "Submitted: decline_deal" in decline.player_markdown
+    assert "deal_000001 declined" in decline.player_markdown
+    assert "server_notes" not in str(decline.agent_context)
+    assert decline.agent_context["result"]["status"] == "declined"
+    assert "Submitted: cancel_deal" in cancel.player_markdown
+    assert "deal_000001 canceled" in cancel.player_markdown
+    assert cancel.agent_context["result"]["status"] == "canceled"
+
+
 def test_crew_board_packet_shows_packet_lead_and_dossier_status():
     packet = build_crew_board_packet(
         {

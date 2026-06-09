@@ -332,6 +332,16 @@ def accept_deal(deal_id: str, confirm: bool) -> CallToolResult:
 
 
 @mcp.tool()
+def decline_deal(deal_id: str, confirm: bool) -> CallToolResult:
+    return packet_response(_session().decline_deal(deal_id=deal_id, confirm=confirm))
+
+
+@mcp.tool()
+def cancel_deal(deal_id: str, confirm: bool) -> CallToolResult:
+    return packet_response(_session().cancel_deal(deal_id=deal_id, confirm=confirm))
+
+
+@mcp.tool()
 def transfer_artifact(
     artifact_id: str,
     recipient_player_id: str,

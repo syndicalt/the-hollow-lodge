@@ -571,6 +571,42 @@ class CodexGameSession:
             result=result,
         )
 
+    def decline_deal(self, *, deal_id: str, confirm: bool) -> RenderPacket:
+        if not confirm:
+            return build_mutation_result_packet(
+                operation="decline_deal",
+                confirmed=False,
+                preview_fields={"deal_id": deal_id},
+            )
+        result = self.api.decline_deal(
+            deal_id=deal_id,
+            idempotency_key=new_command_key("deal-decline"),
+        )
+        self.sync()
+        return build_mutation_result_packet(
+            operation="decline_deal",
+            confirmed=True,
+            result=result,
+        )
+
+    def cancel_deal(self, *, deal_id: str, confirm: bool) -> RenderPacket:
+        if not confirm:
+            return build_mutation_result_packet(
+                operation="cancel_deal",
+                confirmed=False,
+                preview_fields={"deal_id": deal_id},
+            )
+        result = self.api.cancel_deal(
+            deal_id=deal_id,
+            idempotency_key=new_command_key("deal-cancel"),
+        )
+        self.sync()
+        return build_mutation_result_packet(
+            operation="cancel_deal",
+            confirmed=True,
+            result=result,
+        )
+
     def transfer_artifact(
         self,
         *,

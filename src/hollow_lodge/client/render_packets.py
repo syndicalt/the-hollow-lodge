@@ -761,7 +761,7 @@ def _shape_mutation_result(operation: str, result: dict[str, Any]) -> dict[str, 
         "vote_packet_lead",
     }:
         return _shape_dossier(result)
-    if operation in {"propose_deal", "accept_deal"}:
+    if operation in {"propose_deal", "accept_deal", "decline_deal", "cancel_deal"}:
         return _shape_deal(result)
     if operation in {"inspect_artifact", "transfer_artifact"}:
         return _shape_artifact(result)
@@ -822,7 +822,7 @@ def build_mutation_result_packet(
         f"Submitted: {operation}",
         f"Result: {_mutation_result_label(operation, shaped_result)}",
     ]
-    if operation in {"propose_deal", "accept_deal"} and shaped_result:
+    if operation in {"propose_deal", "accept_deal", "decline_deal", "cancel_deal"} and shaped_result:
         lines.extend(_render_deal_lines(shaped_result))
     return RenderPacket(
         surface="mutation",

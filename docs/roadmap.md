@@ -3813,6 +3813,29 @@ Expected verification:
 - `pytest tests/e2e/test_full_game_loop_with_escrow.py tests/e2e/test_artifact_game_loop.py tests/server/test_action_artifact_awards.py -q`
 - `pytest -q`
 
+### Slice 156: Codex Deal Decline And Cancel Tools
+
+Status: completed.
+
+Close the Codex-side deal response gap. Players could already inspect deals,
+preview acceptance, propose deals, and accept deals from MCP, but declining an
+incoming deal or canceling an outgoing deal still required the shell CLI. The
+Codex session now exposes `decline_deal` and `cancel_deal` with the same
+preview/confirm contract used by other irreversible game actions, and the MCP
+server publishes both tools with required `confirm` arguments.
+
+Confirmed decline and cancel results reuse the safe deal result shaping used by
+accepted and proposed deals, so player markdown shows deal id, status, crews,
+artifact ids, and soft terms without exposing server-only fields. Preview mode
+does not read or mutate server state; it only confirms which deal id would be
+declined or canceled if rerun with confirmation.
+
+Expected verification:
+
+- `pytest tests/client/test_codex_session.py::test_codex_session_deal_decline_and_cancel_preview_without_mutation tests/client/test_codex_session.py::test_codex_session_confirmed_mutations_use_expected_api_calls tests/client/test_render_packets.py::test_decline_and_cancel_deal_mutation_packets_render_safe_status tests/test_mcp_server.py::test_deal_decline_and_cancel_mcp_calls_pass_confirmation_to_session tests/test_mcp_server.py::test_public_mcp_tools_do_not_expose_local_path_overrides tests/test_mcp_server.py::test_mutating_mcp_tools_require_confirm_argument -q`
+- `pytest tests/client/test_codex_session.py tests/client/test_render_packets.py tests/test_mcp_server.py tests/e2e/test_full_game_loop_with_escrow.py -q`
+- `pytest -q`
+
 ## Completion Standard
 
 Each slice must:

@@ -447,6 +447,49 @@ def test_preview_deal_acceptance_mcp_call_is_read_only(monkeypatch):
     assert result.structuredContent["surface"] == "deal_preview"
 
 
+def test_deal_decline_and_cancel_mcp_calls_pass_confirmation_to_session(monkeypatch):
+    calls: list[tuple[str, dict]] = []
+
+    class StubSession:
+        def decline_deal(self, *, deal_id: str, confirm: bool) -> RenderPacket:
+            calls.append(("decline_deal", {"deal_id": deal_id, "confirm": confirm}))
+            return RenderPacket(
+                surface="mutation",
+                player_markdown="Preview: decline_deal\nNo server mutation was submitted.",
+                agent_context={"operation": "decline_deal", "mutation": False},
+            )
+
+        def cancel_deal(self, *, deal_id: str, confirm: bool) -> RenderPacket:
+            calls.append(("cancel_deal", {"deal_id": deal_id, "confirm": confirm}))
+            return RenderPacket(
+                surface="mutation",
+                player_markdown="Preview: cancel_deal\nNo server mutation was submitted.",
+                agent_context={"operation": "cancel_deal", "mutation": False},
+            )
+
+    monkeypatch.setattr(mcp_server, "_session", lambda: StubSession())
+
+    decline = asyncio.run(
+        mcp_server.mcp.call_tool(
+            "decline_deal",
+            {"deal_id": "deal_000001", "confirm": False},
+        )
+    )
+    cancel = asyncio.run(
+        mcp_server.mcp.call_tool(
+            "cancel_deal",
+            {"deal_id": "deal_000001", "confirm": False},
+        )
+    )
+
+    assert decline.structuredContent["agent_context"]["operation"] == "decline_deal"
+    assert cancel.structuredContent["agent_context"]["operation"] == "cancel_deal"
+    assert calls == [
+        ("decline_deal", {"deal_id": "deal_000001", "confirm": False}),
+        ("cancel_deal", {"deal_id": "deal_000001", "confirm": False}),
+    ]
+
+
 def test_submit_action_mcp_call_passes_confirmation_to_session(monkeypatch):
     packet = RenderPacket(
         surface="mutation",
@@ -756,6 +799,8 @@ def test_public_mcp_tools_do_not_expose_local_path_overrides():
         "inspect_artifact",
         "propose_deal",
         "accept_deal",
+        "decline_deal",
+        "cancel_deal",
         "transfer_artifact",
         "vote_packet_lead",
         "phase_lock",
@@ -778,6 +823,8 @@ def test_mutating_mcp_tools_require_confirm_argument():
         "inspect_artifact",
         "propose_deal",
         "accept_deal",
+        "decline_deal",
+        "cancel_deal",
         "transfer_artifact",
         "vote_packet_lead",
         "phase_lock",

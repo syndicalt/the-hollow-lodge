@@ -637,6 +637,34 @@ class FakeApi:
             ],
         }
 
+    def decline_deal(self, *, deal_id: str, idempotency_key: str):
+        self.calls.append(("decline_deal", {"deal_id": deal_id, "idempotency_key": idempotency_key}))
+        return {
+            "deal_id": deal_id,
+            "contract_id": "contract_false_finger",
+            "proposer_crew_id": "crew_0001",
+            "recipient_crew_id": "crew_0002",
+            "status": "declined",
+            "offered_artifact_ids": ["artifact_ledger_rubric"],
+            "requested_artifact_ids": ["artifact_chapel_debt_mark"],
+            "soft_terms": [],
+            "expires_phase": None,
+        }
+
+    def cancel_deal(self, *, deal_id: str, idempotency_key: str):
+        self.calls.append(("cancel_deal", {"deal_id": deal_id, "idempotency_key": idempotency_key}))
+        return {
+            "deal_id": deal_id,
+            "contract_id": "contract_false_finger",
+            "proposer_crew_id": "crew_0001",
+            "recipient_crew_id": "crew_0002",
+            "status": "canceled",
+            "offered_artifact_ids": ["artifact_ledger_rubric"],
+            "requested_artifact_ids": ["artifact_chapel_debt_mark"],
+            "soft_terms": [],
+            "expires_phase": None,
+        }
+
     def transfer_artifact(
         self,
         *,
@@ -1602,6 +1630,45 @@ def test_codex_session_accept_deal_preview_shows_consequences_without_accepting(
     assert fake_api.calls == ["visible_events", "deals"]
 
 
+def test_codex_session_deal_decline_and_cancel_preview_without_mutation(tmp_path):
+    config_path = tmp_path / "config.json"
+    log_path = tmp_path / "local.jsonl"
+    fake_api = FakeApi()
+    save_config(
+        config_path,
+        ClientConfig(
+            server_url="http://testserver",
+            player_id="player_0001",
+            token="token",
+            active_crew_id="crew_0001",
+        ),
+    )
+    session = CodexGameSession(config_path=config_path, local_log_path=log_path, api=fake_api)
+
+    decline = session.decline_deal(deal_id="deal_000001", confirm=False)
+    cancel = session.cancel_deal(deal_id="deal_000001", confirm=False)
+
+    assert decline.surface == "mutation"
+    assert "Preview: decline_deal" in decline.player_markdown
+    assert "- deal_id: deal_000001" in decline.player_markdown
+    assert decline.agent_context == {
+        "operation": "decline_deal",
+        "mutation": False,
+        "confirmed": False,
+        "preview": {"deal_id": "deal_000001"},
+    }
+    assert cancel.surface == "mutation"
+    assert "Preview: cancel_deal" in cancel.player_markdown
+    assert "- deal_id: deal_000001" in cancel.player_markdown
+    assert cancel.agent_context == {
+        "operation": "cancel_deal",
+        "mutation": False,
+        "confirmed": False,
+        "preview": {"deal_id": "deal_000001"},
+    }
+    assert fake_api.calls == []
+
+
 def test_codex_session_send_message_preview_does_not_mutate(tmp_path):
     config_path = tmp_path / "config.json"
     log_path = tmp_path / "local.jsonl"
@@ -1803,6 +1870,8 @@ def test_codex_session_confirmed_mutations_use_expected_api_calls(tmp_path, monk
             confirm=True,
         ),
         session.accept_deal(deal_id="deal_000001", confirm=True),
+        session.decline_deal(deal_id="deal_000001", confirm=True),
+        session.cancel_deal(deal_id="deal_000001", confirm=True),
         session.transfer_artifact(
             artifact_id="artifact_ledger_rubric",
             recipient_player_id="player_0002",
@@ -1831,6 +1900,8 @@ def test_codex_session_confirmed_mutations_use_expected_api_calls(tmp_path, monk
     assert packets[5].agent_context["result"]["recipient_received_artifact_ids"] == [
         "artifact_ledger_rubric.dealcopy.deal_000001.crew_0002.1"
     ]
+    assert packets[6].agent_context["result"]["status"] == "declined"
+    assert packets[7].agent_context["result"]["status"] == "canceled"
     assert keys == [
         "dossier-contribute",
         "dossier-cite-artifact",
@@ -1838,6 +1909,8 @@ def test_codex_session_confirmed_mutations_use_expected_api_calls(tmp_path, monk
         "dossier-framing",
         "deal-propose",
         "deal-accept",
+        "deal-decline",
+        "deal-cancel",
         "artifact-transfer",
         "packet-lead-vote",
     ]
@@ -1899,6 +1972,10 @@ def test_codex_session_confirmed_mutations_use_expected_api_calls(tmp_path, monk
         ),
         "visible_events",
         ("accept_deal", {"deal_id": "deal_000001", "idempotency_key": "deal-accept.fixed"}),
+        "visible_events",
+        ("decline_deal", {"deal_id": "deal_000001", "idempotency_key": "deal-decline.fixed"}),
+        "visible_events",
+        ("cancel_deal", {"deal_id": "deal_000001", "idempotency_key": "deal-cancel.fixed"}),
         "visible_events",
         (
             "transfer_artifact",
