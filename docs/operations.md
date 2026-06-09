@@ -178,6 +178,35 @@ returning operational status. Projection diagnostics also include the current
 projection schema version, migration count, and latest applied migration so
 operators can verify schema drift before enabling projection reads.
 
+## Operational Database
+
+The authoritative game record remains the append-only Eventloom log, and
+projections remain rebuildable read models. Operational state is separate:
+short-lived secrets needed to replay idempotent registration and invite
+creation responses are not game truth and must not be written into the event
+log.
+
+By default, those replay secrets remain in the local data directory as
+permission-restricted sidecar files for local development compatibility. A
+database-backed operational store can be enabled with:
+
+```sh
+HOLLOW_LODGE_OPERATIONAL_DATABASE_URL=sqlite:////data/server-operational.sqlite3
+```
+
+or:
+
+```sh
+HOLLOW_LODGE_OPERATIONAL_DATABASE_URL=postgresql://user:password@host:5432/database
+```
+
+The operational store currently owns only identity replay secrets: registration
+tokens and generated invite codes keyed by idempotency key and bounded by their
+existing replay TTLs. It does not replace player, invite, crew, contract,
+artifact, deal, proof, heat, or oracle events. `/diagnostics` reports
+`data.identity_replay_store` with the selected backend and redacted database
+URL when applicable.
+
 Projection-backed read readiness compares projection lag against the
 authoritative event-log diagnostics chain head. In Postgres event-log mode,
 that means ordinary projected reads can prove freshness from metadata-only

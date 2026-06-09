@@ -33,6 +33,7 @@ from hollow_lodge.server.runtime_services import (
     projection_refresh_diagnostics,
     record_projection_refresh_success,
 )
+from hollow_lodge.server.identity_replay_store import identity_replay_store_from_env
 from hollow_lodge.server.services import (
     ActionService,
     ChatService,
@@ -69,6 +70,7 @@ def create_app(
     root = Path(data_dir) if data_dir is not None else Path(configured_data_dir or ".hollow-lodge")
     event_store = event_store_from_env(root)
     projection_store = projection_store_from_env(root)
+    identity_replay_store = identity_replay_store_from_env(root)
     resolved_oracle = resolution_oracle if resolution_oracle is not None else resolution_oracle_from_env()
     app.state.event_store = event_store
     app.state.projection_store = projection_store
@@ -78,6 +80,7 @@ def create_app(
             invite_codes=invite_codes or [],
             event_store=event_store,
             replay_dir=root,
+            replay_store=identity_replay_store,
         )
     except Exception as exc:
         raise _startup_bootstrap_error(
@@ -186,6 +189,7 @@ def create_app(
                     **projection_guard_diagnostics(),
                 },
                 "maintenance": _maintenance_diagnostics(app),
+                "identity_replay_store": app.state.identity_service.replay_store.diagnostics(),
             },
         }
 

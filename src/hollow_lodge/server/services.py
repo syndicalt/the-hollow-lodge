@@ -1,8 +1,6 @@
 from __future__ import annotations
 
 import hashlib
-import json
-import os
 import re
 import secrets
 import threading
@@ -41,6 +39,10 @@ from hollow_lodge.server.projections import (
 )
 from hollow_lodge.server.proof_seed import STARTER_FRAGMENT
 from hollow_lodge.server.contract_seed import ContractSeed, PhaseFollowUp, PhaseReward
+from hollow_lodge.server.identity_replay_store import (
+    IdentityReplayStore,
+    JsonFileIdentityReplayStore,
+)
 from hollow_lodge.server.seed_data import STARTER_CAMPAIGN, STARTER_CONTRACT, STARTER_HIDDEN_TRUTH
 from hollow_lodge.server.auth import authenticate_token
 from hollow_lodge.server.rumors import visible_rumors_for_crew
@@ -79,6 +81,7 @@ class IdentityService:
         invite_codes: list[str],
         event_store: EventStore,
         replay_dir: str | Path | None = None,
+        replay_store: IdentityReplayStore | None = None,
     ):
         self._unused_invites = set(invite_codes)
         self._used_invites: set[str] = set()
@@ -88,13 +91,9 @@ class IdentityService:
         self._key_requests: dict[str, AccessKeyRequest] = {}
         self._registration_replays: dict[str, tuple[Player, str]] = {}
         self._event_store = event_store
-        resolved_replay_dir = (
-            Path(replay_dir)
-            if replay_dir is not None
-            else _event_store_replay_dir(event_store)
+        self.replay_store = replay_store or JsonFileIdentityReplayStore(
+            Path(replay_dir) if replay_dir is not None else _event_store_replay_dir(event_store)
         )
-        self._registration_replay_path = resolved_replay_dir / "server-events.registration-replays.json"
-        self._invite_replay_path = resolved_replay_dir / "server-events.invite-replays.json"
         self._lock = threading.RLock()
         self._rebuild_from_events()
 
@@ -331,8 +330,14 @@ class IdentityService:
             return player_id in self._players
 
     def _rebuild_from_events(self) -> None:
-        replay_tokens = self._load_registration_replay_tokens(now=datetime.now(UTC))
-        replay_invites = self._load_invite_replay_codes(now=datetime.now(UTC))
+        replay_tokens = self.replay_store.load_registration_tokens(
+            now=datetime.now(UTC),
+            ttl=REGISTRATION_REPLAY_TTL,
+        )
+        replay_invites = self.replay_store.load_invite_codes(
+            now=datetime.now(UTC),
+            ttl=INVITE_REPLAY_TTL,
+        )
         for event in self._event_store.read():
             if event.type == "identity.player.registered":
                 invite_hash = event.payload.get("invite_hash")
@@ -474,63 +479,21 @@ class IdentityService:
         token: str,
     ) -> None:
         self._registration_replays[idempotency_key] = (player, token)
-        now = datetime.now(UTC)
-        replay_tokens = self._load_registration_replay_tokens(now=now)
-        replay_tokens[idempotency_key] = {
-            "created_at": now.isoformat().replace("+00:00", "Z"),
-            "token": token,
-        }
-        self._registration_replay_path.parent.mkdir(parents=True, exist_ok=True)
-        flags = os.O_WRONLY | os.O_CREAT | os.O_TRUNC
-        fd = os.open(self._registration_replay_path, flags, 0o600)
-        with os.fdopen(fd, "w", encoding="utf-8") as handle:
-            json.dump(replay_tokens, handle, sort_keys=True)
-            handle.write("\n")
-        os.chmod(self._registration_replay_path, 0o600)
-
-    def _load_registration_replay_tokens(self, *, now: datetime) -> dict[str, str]:
-        if not self._registration_replay_path.exists():
-            return {}
-        with self._registration_replay_path.open(encoding="utf-8") as handle:
-            raw = json.load(handle)
-        valid: dict[str, str] = {}
-        for key, value in raw.items():
-            if not isinstance(value, dict):
-                continue
-            created_at = datetime.fromisoformat(str(value["created_at"]).replace("Z", "+00:00"))
-            if now - created_at <= REGISTRATION_REPLAY_TTL:
-                valid[str(key)] = str(value["token"])
-        return valid
+        self.replay_store.remember_registration_token(
+            idempotency_key=idempotency_key,
+            token=token,
+            created_at=datetime.now(UTC),
+            ttl=REGISTRATION_REPLAY_TTL,
+        )
 
     def _remember_invite_replay(self, idempotency_key: str, invite_code: str) -> None:
         self._invite_replays[idempotency_key] = invite_code
-        now = datetime.now(UTC)
-        replay_invites = self._load_invite_replay_codes(now=now)
-        replay_invites[idempotency_key] = {
-            "created_at": now.isoformat().replace("+00:00", "Z"),
-            "invite_code": invite_code,
-        }
-        self._invite_replay_path.parent.mkdir(parents=True, exist_ok=True)
-        flags = os.O_WRONLY | os.O_CREAT | os.O_TRUNC
-        fd = os.open(self._invite_replay_path, flags, 0o600)
-        with os.fdopen(fd, "w", encoding="utf-8") as handle:
-            json.dump(replay_invites, handle, sort_keys=True)
-            handle.write("\n")
-        os.chmod(self._invite_replay_path, 0o600)
-
-    def _load_invite_replay_codes(self, *, now: datetime) -> dict[str, str]:
-        if not self._invite_replay_path.exists():
-            return {}
-        with self._invite_replay_path.open(encoding="utf-8") as handle:
-            raw = json.load(handle)
-        valid: dict[str, str] = {}
-        for key, value in raw.items():
-            if not isinstance(value, dict):
-                continue
-            created_at = datetime.fromisoformat(str(value["created_at"]).replace("Z", "+00:00"))
-            if now - created_at <= INVITE_REPLAY_TTL:
-                valid[str(key)] = str(value["invite_code"])
-        return valid
+        self.replay_store.remember_invite_code(
+            idempotency_key=idempotency_key,
+            invite_code=invite_code,
+            created_at=datetime.now(UTC),
+            ttl=INVITE_REPLAY_TTL,
+        )
 
 
 class CrewService:

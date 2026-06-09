@@ -133,6 +133,39 @@ def test_register_replay_survives_app_recreation_from_event_log(tmp_path):
     assert replay.json() == first.json()
 
 
+def test_register_replay_can_use_operational_sqlite_store(tmp_path, monkeypatch):
+    operational_db = tmp_path / "operational.sqlite3"
+    monkeypatch.setenv(
+        "HOLLOW_LODGE_OPERATIONAL_DATABASE_URL",
+        f"sqlite:///{operational_db}",
+    )
+    first_client = TestClient(create_app(data_dir=tmp_path, invite_codes=["alpha-code"]))
+    first = first_client.post(
+        "/identity/register",
+        json={"invite_code": "alpha-code", "display_name": "Ada"},
+        headers={"Idempotency-Key": "register-ada"},
+    )
+
+    second_client = TestClient(create_app(data_dir=tmp_path, invite_codes=["alpha-code"]))
+    replay = second_client.post(
+        "/identity/register",
+        json={"invite_code": "alpha-code", "display_name": "Ada"},
+        headers={"Idempotency-Key": "register-ada"},
+    )
+    diagnostics = second_client.get("/diagnostics")
+
+    assert first.status_code == 201
+    assert replay.status_code == 201
+    assert replay.json() == first.json()
+    assert operational_db.exists()
+    assert not (tmp_path / "server-events.registration-replays.json").exists()
+    assert diagnostics.json()["data"]["identity_replay_store"] == {
+        "backend": "sqlite",
+        "path": str(operational_db),
+        "database_url_env": "HOLLOW_LODGE_OPERATIONAL_DATABASE_URL",
+    }
+
+
 def test_expired_registration_replay_cache_does_not_return_token(tmp_path):
     first_client = TestClient(create_app(data_dir=tmp_path, invite_codes=["alpha-code"]))
     first = first_client.post(
@@ -300,6 +333,39 @@ def test_admin_invite_creation_replays_by_idempotency_key(tmp_path, monkeypatch)
     assert first.status_code == 201
     assert replay.status_code == 201
     assert replay.json() == first.json()
+
+
+def test_admin_invite_creation_replay_can_use_operational_sqlite_store(
+    tmp_path,
+    monkeypatch,
+):
+    monkeypatch.setenv("HOLLOW_LODGE_ADMIN_TOKEN", "admin-secret")
+    monkeypatch.setenv(
+        "HOLLOW_LODGE_OPERATIONAL_DATABASE_URL",
+        f"sqlite:///{tmp_path / 'operational.sqlite3'}",
+    )
+    first_client = TestClient(create_app(data_dir=tmp_path, invite_codes=[]))
+
+    first = first_client.post(
+        "/identity/admin/invites",
+        headers={
+            "Idempotency-Key": "invite-create-1",
+            "X-Hollow-Lodge-Admin-Token": "admin-secret",
+        },
+    )
+    second_client = TestClient(create_app(data_dir=tmp_path, invite_codes=[]))
+    replay = second_client.post(
+        "/identity/admin/invites",
+        headers={
+            "Idempotency-Key": "invite-create-1",
+            "X-Hollow-Lodge-Admin-Token": "admin-secret",
+        },
+    )
+
+    assert first.status_code == 201
+    assert replay.status_code == 201
+    assert replay.json() == first.json()
+    assert not (tmp_path / "server-events.invite-replays.json").exists()
 
 
 def test_admin_can_list_invite_inventory_without_raw_codes(tmp_path, monkeypatch):

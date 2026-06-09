@@ -3042,6 +3042,30 @@ Expected verification:
 - `pytest tests/test_mcp_server.py::test_edit_action_mcp_call_passes_confirmation_to_session tests/test_mcp_server.py::test_cancel_action_mcp_call_passes_confirmation_to_session tests/test_mcp_server.py::test_public_mcp_tools_do_not_expose_local_path_overrides tests/test_mcp_server.py::test_mutating_mcp_tools_require_confirm_argument -q`
 - `pytest tests/client/test_codex_session.py tests/client/test_render_packets.py tests/test_mcp_server.py -q`
 
+### Slice 121: Operational Identity Replay Store
+
+Status: completed.
+
+Introduce the first operational database boundary without changing the
+authoritative game-truth model. Registration tokens and generated invite codes
+must be replayable for idempotent retries, but they are short-lived operational
+secrets rather than durable game events. This slice moves that storage behind
+an `IdentityReplayStore` interface with the existing permission-restricted JSON
+sidecars as the local default and SQLite/Postgres database adapters selected by
+`HOLLOW_LODGE_OPERATIONAL_DATABASE_URL`.
+
+The FastAPI app now constructs the replay store during startup and reports
+`data.identity_replay_store` from `/diagnostics`. The database-backed path
+stores only scoped replay secrets keyed by idempotency key and TTL; it does not
+replace players, invites, crews, contracts, artifacts, deals, proof, heat, or
+oracle audit events.
+
+Expected verification:
+
+- `pytest tests/server/test_identity_routes.py::test_register_replay_can_use_operational_sqlite_store tests/server/test_identity_routes.py::test_admin_invite_creation_replay_can_use_operational_sqlite_store -q`
+- `pytest tests/server/test_identity_routes.py tests/server/test_app_config.py -q`
+- `pytest -q`
+
 ## Completion Standard
 
 Each slice must:
