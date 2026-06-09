@@ -206,6 +206,66 @@ def test_packet_lead_can_be_replaced_back_to_prior_lead_and_persist(tmp_path):
     assert current.json()["packet_lead_player_id"] == linus["player_id"]
 
 
+def test_dossier_exposes_safe_packet_lead_vote_and_replacement_history(tmp_path):
+    client, crew, ada, grace, linus = setup_three_player_crew(tmp_path)
+    client.post(
+        f"/proofs/dossiers/{crew['crew_id']}/packet-lead/votes",
+        headers=command_auth(grace["token"], "vote-grace-linus"),
+        json={"candidate_player_id": linus["player_id"]},
+    )
+    client.post(
+        f"/proofs/dossiers/{crew['crew_id']}/packet-lead/votes",
+        headers=command_auth(linus["token"], "vote-linus-linus"),
+        json={"candidate_player_id": linus["player_id"]},
+    )
+
+    current = client.get(
+        f"/proofs/dossiers/{crew['crew_id']}",
+        headers=auth(ada["token"]),
+    )
+
+    assert current.status_code == 200
+    body = current.json()
+    assert body["packet_lead_player_id"] == linus["player_id"]
+    assert [
+        {
+            "voter_player_id": vote["voter_player_id"],
+            "candidate_player_id": vote["candidate_player_id"],
+        }
+        for vote in body["packet_lead_votes"]
+    ] == [
+        {
+            "voter_player_id": grace["player_id"],
+            "candidate_player_id": linus["player_id"],
+        },
+        {
+            "voter_player_id": linus["player_id"],
+            "candidate_player_id": linus["player_id"],
+        },
+    ]
+    assert all(isinstance(vote["sequence"], int) for vote in body["packet_lead_votes"])
+    assert [
+        {
+            "previous_packet_lead_player_id": replacement[
+                "previous_packet_lead_player_id"
+            ],
+            "packet_lead_player_id": replacement["packet_lead_player_id"],
+        }
+        for replacement in body["packet_lead_replacements"]
+    ] == [
+        {
+            "previous_packet_lead_player_id": ada["player_id"],
+            "packet_lead_player_id": linus["player_id"],
+        }
+    ]
+    assert all(
+        isinstance(replacement["sequence"], int)
+        for replacement in body["packet_lead_replacements"]
+    )
+    assert "idempotency" not in str(body)
+    assert "join_code" not in str(body)
+
+
 def test_dossier_idempotency_key_rejects_different_payload_or_crew(tmp_path):
     client, crew, ada, _, _ = setup_three_player_crew(tmp_path)
     second = client.post(

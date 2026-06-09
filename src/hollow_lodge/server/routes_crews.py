@@ -254,6 +254,8 @@ def _crew_board_dossier(dossier: dict) -> dict:
             "claim",
             "evidence_ids",
             "artifact_citations",
+            "packet_lead_votes",
+            "packet_lead_replacements",
             "reasoning",
             "weaknesses",
             "provenance_concerns",
@@ -268,6 +270,30 @@ def _crew_board_dossier(dossier: dict) -> dict:
         }
         for contribution in dossier.get("member_contributions", [])
     ]
+    packet_lead_votes = [
+        {
+            key: vote[key]
+            for key in ("sequence", "voter_player_id", "candidate_player_id")
+            if key in vote
+        }
+        for vote in dossier.get("packet_lead_votes", [])
+    ]
+    if packet_lead_votes:
+        shaped["packet_lead_votes"] = packet_lead_votes
+    packet_lead_replacements = [
+        {
+            key: replacement[key]
+            for key in (
+                "sequence",
+                "previous_packet_lead_player_id",
+                "packet_lead_player_id",
+            )
+            if key in replacement
+        }
+        for replacement in dossier.get("packet_lead_replacements", [])
+    ]
+    if packet_lead_replacements:
+        shaped["packet_lead_replacements"] = packet_lead_replacements
     return shaped
 
 

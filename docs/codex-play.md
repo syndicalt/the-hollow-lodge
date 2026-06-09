@@ -69,7 +69,9 @@ When a player says "what's happening" or starts a play session:
 4. If proof, heat, packet lead, or crew status matters, call `render_crew_board`
    or `render_dossier`.
 5. If the player asks what changed for the crew, call `render_crew_activity`.
-6. Summarize the most important visible changes and offer 2-4 concrete next
+6. Review Packet Lead vote and replacement history before advising who can
+   edit dossier framing.
+7. Summarize the most important visible changes and offer 2-4 concrete next
    actions.
 
 ## Visibility

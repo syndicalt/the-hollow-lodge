@@ -1526,6 +1526,26 @@ Expected verification:
 - `pytest tests/client/test_render_packets.py tests/client/test_codex_session.py tests/test_mcp_server.py tests/e2e/test_full_game_loop_with_escrow.py -q`
 - `pytest -q`
 
+### Slice 60: Packet Lead History Visibility
+
+Status: completed.
+
+Make Packet Lead control legible in Codex. Dossier responses now include safe
+`packet_lead_votes` and `packet_lead_replacements` histories derived from
+crew-visible packet-lead events, with only event sequence, voter, candidate,
+previous lead, and current lead fields. Crew boards and dossier packets render
+that history beside the current Packet Lead while stripping idempotency keys,
+join codes, server notes, and other upstream command metadata. The full-loop
+smoke now replaces the Gilt crew Packet Lead and verifies the final Codex
+dossier packet contains vote and replacement history.
+
+Expected verification:
+
+- `pytest tests/server/test_packet_lead.py::test_dossier_exposes_safe_packet_lead_vote_and_replacement_history tests/client/test_render_packets.py::test_dossier_packet_renders_claim_citations_contributions_without_hidden_fields tests/client/test_render_packets.py::test_crew_board_packet_shows_packet_lead_and_dossier_status tests/e2e/test_full_game_loop_with_escrow.py -q`
+- `python scripts/mock_full_game_loop.py`
+- `pytest tests/server/test_packet_lead.py tests/client/test_render_packets.py tests/e2e/test_full_game_loop_with_escrow.py -q`
+- `pytest -q`
+
 ## Completion Standard
 
 Each slice must:

@@ -42,6 +42,8 @@ def test_full_game_loop_with_escrow_trade(tmp_path):
     assert "Visible artifacts:" in "\n".join(result["lines"])
     assert "Phase result:" in "\n".join(result["lines"])
     assert "What Now: Ada Corelumen" in "\n".join(result["lines"])
+    assert result["final_dossier"]["agent_context"]["dossier"]["packet_lead_votes"]
+    assert result["final_dossier"]["agent_context"]["dossier"]["packet_lead_replacements"]
     assert result["final_what_now"]["surface"] == "what_now"
     assert (
         result["final_what_now"]["agent_context"]["summary_counts"]["active_contracts"]

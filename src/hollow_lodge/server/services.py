@@ -2158,7 +2158,9 @@ class ProofService:
     def dossier_for_crew(self, *, crew_id: str, player_id: str) -> dict:
         if not self._crew_service.is_member(crew_id=crew_id, player_id=player_id):
             raise PermissionError("not a crew member")
-        return self._current_dossier(crew_id).model_dump(mode="json")
+        dossier = self._current_dossier(crew_id).model_dump(mode="json")
+        dossier.update(self._packet_lead_history(crew_id))
+        return dossier
 
     def update_dossier_framing(
         self,
@@ -2390,6 +2392,48 @@ class ProofService:
             for event in self._event_store.read_for_principal(Principal.crew(crew_id))
             if event.type == "proof.packet_lead.replaced"
         )
+
+    def _packet_lead_history(self, crew_id: str) -> dict:
+        votes: list[dict] = []
+        replacements: list[dict] = []
+        current_lead: str | None = None
+        for event in self._event_store.read_for_principal(Principal.crew(crew_id)):
+            if (
+                event.type == "crew.created"
+                and event.payload["crew_id"] == crew_id
+                and current_lead is None
+            ):
+                current_lead = event.payload["owner_id"]
+            elif (
+                event.type == "proof.packet_lead.vote.cast"
+                and event.payload["crew_id"] == crew_id
+            ):
+                votes.append(
+                    {
+                        "sequence": event.sequence,
+                        "voter_player_id": event.payload["voter_player_id"],
+                        "candidate_player_id": event.payload["candidate_player_id"],
+                    }
+                )
+            elif event.type == "proof.packet_lead.replaced":
+                dossier = event.payload["dossier"]
+                if dossier["crew_id"] != crew_id:
+                    continue
+                next_lead = dossier["packet_lead_player_id"]
+                replacements.append(
+                    {
+                        "sequence": event.sequence,
+                        "previous_packet_lead_player_id": current_lead,
+                        "packet_lead_player_id": next_lead,
+                    }
+                )
+                current_lead = next_lead
+        history: dict[str, list[dict]] = {}
+        if votes:
+            history["packet_lead_votes"] = votes
+        if replacements:
+            history["packet_lead_replacements"] = replacements
+        return history
 
     def _auction_preview_locked(self) -> bool:
         return any(

@@ -19,11 +19,15 @@ def main() -> None:
 
 
 def run_mock(data_dir: str) -> dict[str, Any]:
-    client = TestClient(create_app(data_dir=data_dir, invite_codes=["ada", "bela"]))
+    client = TestClient(
+        create_app(data_dir=data_dir, invite_codes=["ada", "bela", "grace"])
+    )
     ada = _register(client, "ada", "Ada Corelumen")
     bela = _register(client, "bela", "Bela Moth")
+    grace = _register(client, "grace", "Grace Ledger")
     gilt = _create_crew(client, ada, "The Gilt Knives", "crew-gilt")
     moth = _create_crew(client, bela, "The Moth Lanterns", "crew-moth")
+    _join_crew(client, grace, gilt, "crew-join-grace-gilt")
     ada_headers = _auth(ada["token"])
     bela_headers = _auth(bela["token"])
     ada_session = _codex_session(
@@ -132,6 +136,20 @@ def run_mock(data_dir: str) -> dict[str, Any]:
             "provenance_concerns": "Received copy requires independent verification.",
         },
     )
+    _post(
+        client,
+        f"/proofs/dossiers/{gilt['crew_id']}/packet-lead/votes",
+        headers=_command_auth(grace["token"], "vote-grace-grace-lead"),
+        json={"candidate_player_id": grace["player_id"]},
+        expected_status=200,
+    )
+    _post(
+        client,
+        f"/proofs/dossiers/{gilt['crew_id']}/packet-lead/votes",
+        headers=_command_auth(ada["token"], "vote-ada-grace-lead"),
+        json={"candidate_player_id": grace["player_id"]},
+        expected_status=200,
+    )
 
     gilt_action = _post(
         client,
@@ -234,6 +252,7 @@ def run_mock(data_dir: str) -> dict[str, Any]:
         "reveal": reveal,
         "timeline": timeline,
         "codex_packets": [packet.surface for packet in codex_packets],
+        "final_dossier": final_dossier_packet.model_dump(mode="json"),
         "final_what_now": final_what_now_packet.model_dump(mode="json"),
         "final_crew_activity": final_crew_activity_packet.model_dump(mode="json"),
         "final_activity": final_activity_packet.model_dump(mode="json"),
@@ -323,6 +342,21 @@ def _create_crew(client: TestClient, player: dict[str, Any], name: str, key: str
         json={"name": name},
         headers=_command_auth(player["token"], key),
         expected_status=201,
+    )
+
+
+def _join_crew(
+    client: TestClient,
+    player: dict[str, Any],
+    crew: dict[str, Any],
+    key: str,
+) -> dict[str, Any]:
+    return _post(
+        client,
+        f"/crews/{crew['crew_id']}/join",
+        json={"join_code": crew["join_code"]},
+        headers=_command_auth(player["token"], key),
+        expected_status=200,
     )
 
 

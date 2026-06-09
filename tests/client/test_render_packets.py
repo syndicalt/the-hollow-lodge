@@ -836,6 +836,22 @@ def test_crew_board_packet_shows_packet_lead_and_dossier_status():
                 "dossier_id": "dossier_crew_0001",
                 "crew_id": "crew_0001",
                 "packet_lead_player_id": "player_0001",
+                "packet_lead_votes": [
+                    {
+                        "sequence": 10,
+                        "voter_player_id": "player_0002",
+                        "candidate_player_id": "player_0001",
+                        "idempotency_key": "hidden",
+                    }
+                ],
+                "packet_lead_replacements": [
+                    {
+                        "sequence": 11,
+                        "previous_packet_lead_player_id": "player_0002",
+                        "packet_lead_player_id": "player_0001",
+                        "server_notes": "hidden",
+                    }
+                ],
                 "claim": "",
                 "evidence_ids": [],
                 "artifact_citations": [
@@ -920,6 +936,10 @@ def test_crew_board_packet_shows_packet_lead_and_dossier_status():
     assert packet.surface == "crew_board"
     assert "Crew Board: The Gilt Knives" in packet.player_markdown
     assert "Packet Lead: player_0001" in packet.player_markdown
+    assert "Packet Lead votes:" in packet.player_markdown
+    assert "- 10 player_0002 -> player_0001" in packet.player_markdown
+    assert "Packet Lead replacements:" in packet.player_markdown
+    assert "- 11 player_0002 -> player_0001" in packet.player_markdown
     assert "Artifact citations:" in packet.player_markdown
     assert "- artifact_ledger_rubric: The ledger contradicts the public lot card." in packet.player_markdown
     assert "Artifacts:" in packet.player_markdown
@@ -940,6 +960,20 @@ def test_crew_board_packet_shows_packet_lead_and_dossier_status():
     assert "join_code" not in packet.agent_context["crew"]
     assert "hidden_truth" not in packet.agent_context["active_contracts"][0]
     assert "server_notes" not in packet.agent_context["dossier"]
+    assert packet.agent_context["dossier"]["packet_lead_votes"] == [
+        {
+            "sequence": 10,
+            "voter_player_id": "player_0002",
+            "candidate_player_id": "player_0001",
+        }
+    ]
+    assert packet.agent_context["dossier"]["packet_lead_replacements"] == [
+        {
+            "sequence": 11,
+            "previous_packet_lead_player_id": "player_0002",
+            "packet_lead_player_id": "player_0001",
+        }
+    ]
     assert packet.agent_context["dossier"]["artifact_citations"] == [
         {
             "player_id": "player_0001",
@@ -1012,6 +1046,22 @@ def test_dossier_packet_renders_claim_citations_contributions_without_hidden_fie
             "dossier_id": "dossier_crew_0001",
             "crew_id": "crew_0001",
             "packet_lead_player_id": "player_0001",
+            "packet_lead_votes": [
+                {
+                    "sequence": 7,
+                    "voter_player_id": "player_0002",
+                    "candidate_player_id": "player_0001",
+                    "private_note": "hidden",
+                }
+            ],
+            "packet_lead_replacements": [
+                {
+                    "sequence": 8,
+                    "previous_packet_lead_player_id": "player_0002",
+                    "packet_lead_player_id": "player_0001",
+                    "server_note": "hidden",
+                }
+            ],
             "claim": "The reliquary finger is a later devotional forgery.",
             "evidence_ids": ["fragment_ledger_hand", "artifact_lot_card"],
             "artifact_citations": [
@@ -1042,6 +1092,10 @@ def test_dossier_packet_renders_claim_citations_contributions_without_hidden_fie
     assert "Proof Dossier: crew_0001" in packet.player_markdown
     assert "Dossier ID: dossier_crew_0001" in packet.player_markdown
     assert "Packet Lead: player_0001" in packet.player_markdown
+    assert "Packet Lead votes:" in packet.player_markdown
+    assert "- 7 player_0002 -> player_0001" in packet.player_markdown
+    assert "Packet Lead replacements:" in packet.player_markdown
+    assert "- 8 player_0002 -> player_0001" in packet.player_markdown
     assert "Claim: The reliquary finger is a later devotional forgery." in packet.player_markdown
     assert "- fragment_ledger_hand" in packet.player_markdown
     assert "- artifact_ledger_rubric: The ledger contradicts the public lot card." in packet.player_markdown
@@ -1057,6 +1111,20 @@ def test_dossier_packet_renders_claim_citations_contributions_without_hidden_fie
             "artifact_id": "artifact_ledger_rubric",
             "claim": "The ledger contradicts the public lot card.",
             "quote": "The last hand is redder and later than the binding.",
+        }
+    ]
+    assert packet.agent_context["dossier"]["packet_lead_votes"] == [
+        {
+            "sequence": 7,
+            "voter_player_id": "player_0002",
+            "candidate_player_id": "player_0001",
+        }
+    ]
+    assert packet.agent_context["dossier"]["packet_lead_replacements"] == [
+        {
+            "sequence": 8,
+            "previous_packet_lead_player_id": "player_0002",
+            "packet_lead_player_id": "player_0001",
         }
     ]
     assert packet.agent_context["evidence_count"] == 2

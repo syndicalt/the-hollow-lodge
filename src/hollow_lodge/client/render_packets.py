@@ -1192,6 +1192,26 @@ def _shape_artifact_citation(citation: dict[str, Any]) -> dict[str, Any]:
     }
 
 
+def _shape_packet_lead_vote(vote: dict[str, Any]) -> dict[str, Any]:
+    return {
+        key: vote[key]
+        for key in ("sequence", "voter_player_id", "candidate_player_id")
+        if key in vote
+    }
+
+
+def _shape_packet_lead_replacement(replacement: dict[str, Any]) -> dict[str, Any]:
+    return {
+        key: replacement[key]
+        for key in (
+            "sequence",
+            "previous_packet_lead_player_id",
+            "packet_lead_player_id",
+        )
+        if key in replacement
+    }
+
+
 def _shape_dossier(dossier: dict[str, Any]) -> dict[str, Any]:
     shaped = {
         key: dossier[key]
@@ -1216,7 +1236,53 @@ def _shape_dossier(dossier: dict[str, Any]) -> dict[str, Any]:
         _shape_artifact_citation(citation)
         for citation in dossier.get("artifact_citations", [])
     ]
+    packet_lead_votes = [
+        _shape_packet_lead_vote(vote)
+        for vote in dossier.get("packet_lead_votes", [])
+    ]
+    if packet_lead_votes:
+        shaped["packet_lead_votes"] = packet_lead_votes
+    packet_lead_replacements = [
+        _shape_packet_lead_replacement(replacement)
+        for replacement in dossier.get("packet_lead_replacements", [])
+    ]
+    if packet_lead_replacements:
+        shaped["packet_lead_replacements"] = packet_lead_replacements
     return shaped
+
+
+def _render_packet_lead_history_lines(dossier: dict[str, Any]) -> list[str]:
+    if (
+        not dossier.get("packet_lead_votes")
+        and not dossier.get("packet_lead_replacements")
+    ):
+        return []
+    lines = ["Packet Lead votes:"]
+    votes = dossier.get("packet_lead_votes", [])
+    if votes:
+        lines.extend(
+            (
+                f"- {vote.get('sequence')} {vote.get('voter_player_id')} -> "
+                f"{vote.get('candidate_player_id')}"
+            )
+            for vote in votes
+        )
+    else:
+        lines.append("- none")
+    lines.append("Packet Lead replacements:")
+    replacements = dossier.get("packet_lead_replacements", [])
+    if replacements:
+        lines.extend(
+            (
+                f"- {replacement.get('sequence')} "
+                f"{replacement.get('previous_packet_lead_player_id')} -> "
+                f"{replacement.get('packet_lead_player_id')}"
+            )
+            for replacement in replacements
+        )
+    else:
+        lines.append("- none")
+    return lines
 
 
 def build_dossier_packet(dossier: dict[str, Any]) -> RenderPacket:
@@ -1226,6 +1292,8 @@ def build_dossier_packet(dossier: dict[str, Any]) -> RenderPacket:
         f"Dossier ID: {shaped['dossier_id']}",
         f"Packet Lead: {shaped['packet_lead_player_id']}",
         f"Claim: {shaped.get('claim') or 'not set'}",
+        "",
+        *_render_packet_lead_history_lines(shaped),
         "",
         "Evidence:",
     ]
@@ -1466,6 +1534,7 @@ def build_crew_board_packet(board: dict[str, Any]) -> RenderPacket:
         f"Crew ID: {crew['crew_id']}",
         f"Member Count: {crew['member_count']}",
         f"Packet Lead: {dossier['packet_lead_player_id']}",
+        *_render_packet_lead_history_lines(_shape_dossier(dossier)),
         "",
         *_render_pending_decisions(pending_decisions),
         "",
