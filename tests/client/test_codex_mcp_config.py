@@ -2,7 +2,10 @@ from __future__ import annotations
 
 from pathlib import Path
 
-from hollow_lodge.client.codex_mcp_config import install_codex_mcp_server
+from hollow_lodge.client.codex_mcp_config import (
+    codex_mcp_server_registered,
+    install_codex_mcp_server,
+)
 
 
 def test_install_codex_mcp_server_adds_config_section(tmp_path):
@@ -30,3 +33,13 @@ def test_install_codex_mcp_server_is_idempotent(tmp_path):
     first = config.read_text(encoding="utf-8")
     assert install_codex_mcp_server(config) is False
     assert config.read_text(encoding="utf-8") == first
+
+
+def test_codex_mcp_server_registered_reads_existing_config(tmp_path):
+    config = tmp_path / "config.toml"
+
+    assert codex_mcp_server_registered(config) is False
+
+    install_codex_mcp_server(config)
+
+    assert codex_mcp_server_registered(config) is True

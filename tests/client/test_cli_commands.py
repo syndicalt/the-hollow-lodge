@@ -56,6 +56,10 @@ class FakeApi:
             "status": "pending",
         }
 
+    def health(self):
+        self.calls.append(("health", {}))
+        return {"status": "ok"}
+
     def create_invite(self, *, admin_token: str, idempotency_key: str):
         self.calls.append(
             (
@@ -757,6 +761,134 @@ def test_onboard_defaults_to_official_server_for_access_request(tmp_path, monkey
     assert result.exit_code == 0
     assert cli.DEFAULT_SERVER_URL == "https://server.thehollowlodge.com"
     assert created_clients[0].server_url == cli.DEFAULT_SERVER_URL
+
+
+def test_doctor_reports_registered_player_and_mcp_without_secret_material(
+    tmp_path,
+    monkeypatch,
+):
+    runner = CliRunner()
+    created_clients: list[FakeApi] = []
+
+    def fake_client(**kwargs):
+        client = FakeApi(**kwargs)
+        created_clients.append(client)
+        return client
+
+    monkeypatch.setattr(cli, "HollowLodgeApi", fake_client)
+    config_path = tmp_path / "config.json"
+    onboarding_path = tmp_path / "onboarding.json"
+    codex_config = tmp_path / "codex.toml"
+    codex_config.write_text(
+        '[mcp_servers."the-hollow-lodge"]\ncommand = "hollow-lodge-mcp"\n',
+        encoding="utf-8",
+    )
+    save_config(
+        config_path,
+        ClientConfig(
+            server_url="http://testserver",
+            player_id="player_0001",
+            token="secret-token",
+            display_name="Ada",
+            active_crew_id="crew_0001",
+        ),
+    )
+
+    result = runner.invoke(
+        cli.app,
+        [
+            "doctor",
+            "--config",
+            str(config_path),
+            "--onboarding-state",
+            str(onboarding_path),
+            "--codex-config",
+            str(codex_config),
+        ],
+    )
+
+    assert result.exit_code == 0
+    assert "cli: The Hollow Lodge" in result.output
+    assert "server: ok http://testserver" in result.output
+    assert "player: registered player_0001 display=Ada active_crew=crew_0001" in result.output
+    assert f"mcp: registered {codex_config}" in result.output
+    assert "secret-token" not in result.output
+    assert created_clients[0].calls == [("health", {})]
+
+
+def test_doctor_reports_pending_onboarding_without_contact(tmp_path, monkeypatch):
+    runner = CliRunner()
+    created_clients: list[FakeApi] = []
+
+    def fake_client(**kwargs):
+        client = FakeApi(**kwargs)
+        created_clients.append(client)
+        return client
+
+    monkeypatch.setattr(cli, "HollowLodgeApi", fake_client)
+    config_path = tmp_path / "missing-config.json"
+    onboarding_path = tmp_path / "onboarding.json"
+    codex_config = tmp_path / "codex.toml"
+    onboarding_path.write_text(
+        (
+            '{"server_url":"http://pending-server","display_name":"Ada",'
+            '"contact":"ada@example.com","request_id":"key_request_0001",'
+            '"status":"pending"}\n'
+        ),
+        encoding="utf-8",
+    )
+
+    result = runner.invoke(
+        cli.app,
+        [
+            "doctor",
+            "--config",
+            str(config_path),
+            "--onboarding-state",
+            str(onboarding_path),
+            "--codex-config",
+            str(codex_config),
+        ],
+    )
+
+    assert result.exit_code == 0
+    assert "server: ok http://pending-server" in result.output
+    assert "player: pending key_request_0001 status=pending display=Ada" in result.output
+    assert f"mcp: missing {codex_config}" in result.output
+    assert "ada@example.com" not in result.output
+    assert created_clients[0].calls == [("health", {})]
+
+
+def test_doctor_reports_unconfigured_install_and_unreachable_server(tmp_path, monkeypatch):
+    runner = CliRunner()
+
+    class FailingApi(FakeApi):
+        def health(self):
+            self.calls.append(("health", {}))
+            raise RuntimeError("connection failed with secret-token")
+
+    monkeypatch.setattr(cli, "HollowLodgeApi", FailingApi)
+
+    result = runner.invoke(
+        cli.app,
+        [
+            "doctor",
+            "--server",
+            "http://downstream",
+            "--config",
+            str(tmp_path / "missing-config.json"),
+            "--onboarding-state",
+            str(tmp_path / "missing-onboarding.json"),
+            "--codex-config",
+            str(tmp_path / "missing-codex.toml"),
+        ],
+    )
+
+    assert result.exit_code == 0
+    assert "server: unreachable http://downstream" in result.output
+    assert "player: not configured" in result.output
+    assert "mcp: missing" in result.output
+    assert "secret-token" not in result.output
 
 
 def test_admin_invite_create_command_uses_admin_token_without_player_auth(tmp_path, monkeypatch):

@@ -15,7 +15,9 @@ hollow-lodge codex install-mcp
 
 if [ "${HOLLOW_LODGE_SKIP_ONBOARD:-0}" = "1" ]; then
   printf '%s\n' "Installed hollow-lodge. Run 'hollow-lodge onboard' when ready."
+  printf '%s\n' "Run 'hollow-lodge doctor' to verify server, onboarding, and MCP status."
   exit 0
 fi
 
 hollow-lodge onboard "$@"
+printf '%s\n' "Run 'hollow-lodge doctor' to verify server, onboarding, and MCP status."

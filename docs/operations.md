@@ -208,3 +208,12 @@ The installer installs the CLI, registers the Codex MCP server, and launches
 `hollow-lodge onboard`. Players with an invite can register immediately.
 Players without an invite remain in pending onboarding state until an admin
 approves their access request and sends them the generated invite code.
+
+Verify the local install without exposing token or invite material:
+
+```sh
+hollow-lodge doctor
+```
+
+The doctor reports CLI version, selected server health, registered or pending
+player state, and whether the Codex MCP server is registered.

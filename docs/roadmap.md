@@ -1790,6 +1790,25 @@ Expected verification:
 - `pytest tests/client/test_api.py tests/client/test_cli_commands.py tests/server/test_resolution_oracle.py -q`
 - `pytest -q`
 
+### Slice 72: Clean Install Doctor
+
+Status: completed.
+
+Add a first-party local readiness check for the Milestone 5 clean-machine proof
+gate. `hollow-lodge doctor` now reports the installed CLI version, selected
+server health, registered or pending onboarding state, and whether the Codex MCP
+server is registered. The command selects the server from saved player config,
+pending onboarding state, or the official default, and it intentionally omits
+tokens, invite material, contact handles, and exception details. The public
+installer now points users to `hollow-lodge doctor` after install or skipped
+onboarding so they can verify server, onboarding, and MCP status.
+
+Expected verification:
+
+- `pytest tests/client/test_api.py::test_api_gets_health_without_auth_headers tests/client/test_codex_mcp_config.py::test_codex_mcp_server_registered_reads_existing_config tests/client/test_cli_commands.py::test_doctor_reports_registered_player_and_mcp_without_secret_material tests/client/test_cli_commands.py::test_doctor_reports_pending_onboarding_without_contact tests/client/test_cli_commands.py::test_doctor_reports_unconfigured_install_and_unreachable_server tests/client/test_installer_script.py::test_install_script_bootstraps_cli_and_runs_onboarding -q`
+- `pytest tests/client/test_api.py tests/client/test_cli_commands.py tests/client/test_codex_mcp_config.py tests/client/test_installer_script.py -q`
+- `pytest -q`
+
 ## Completion Standard
 
 Each slice must:

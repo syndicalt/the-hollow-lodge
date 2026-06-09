@@ -20,3 +20,9 @@ def install_codex_mcp_server(config_path: Path) -> bool:
         prefix += "\n"
     config_path.write_text(f"{prefix}{CODEX_MCP_BLOCK}", encoding="utf-8")
     return True
+
+
+def codex_mcp_server_registered(config_path: Path) -> bool:
+    if not config_path.exists():
+        return False
+    return CODEX_MCP_SECTION in config_path.read_text(encoding="utf-8")

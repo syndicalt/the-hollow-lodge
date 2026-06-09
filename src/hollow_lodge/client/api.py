@@ -43,6 +43,15 @@ class HollowLodgeApi:
             authenticated=False,
         )
 
+    def health(self) -> dict[str, Any]:
+        response = httpx.get(
+            f"{self.server_url}/health",
+            headers={},
+            timeout=10,
+        )
+        response.raise_for_status()
+        return response.json()
+
     def create_invite(self, *, admin_token: str, idempotency_key: str) -> dict[str, Any]:
         response = httpx.post(
             f"{self.server_url}/identity/admin/invites",

@@ -9,11 +9,15 @@ from hollow_lodge.client.artifact_render import (
     build_artifact_graph_packet,
     build_artifact_packet,
 )
-from hollow_lodge.client.codex_mcp_config import install_codex_mcp_server
+from hollow_lodge.client.codex_mcp_config import (
+    codex_mcp_server_registered,
+    install_codex_mcp_server,
+)
 from hollow_lodge.client.config import (
     ClientConfig,
     OnboardingConfig,
     load_config,
+    load_onboarding_config,
     save_config,
     save_onboarding_config,
 )
@@ -160,6 +164,62 @@ def onboard(
         ),
     )
     typer.echo(f"pending {response['request_id']}")
+
+
+@app.command()
+def doctor(
+    server: str | None = typer.Option(
+        None,
+        "--server",
+        help="Server URL to check. Defaults to saved config, pending onboarding, then official Lodge.",
+    ),
+    config: Path = typer.Option(DEFAULT_CONFIG_PATH, "--config", help="Local config path."),
+    onboarding_state: Path = typer.Option(
+        DEFAULT_ONBOARDING_STATE_PATH,
+        "--onboarding-state",
+        help="Pending onboarding state path.",
+    ),
+    codex_config: Path = typer.Option(
+        Path.home() / ".codex" / "config.toml",
+        "--codex-config",
+        help="Codex config.toml path.",
+    ),
+) -> None:
+    """Check local install, onboarding, MCP, and server reachability."""
+    registered_config: ClientConfig | None = None
+    pending_config: OnboardingConfig | None = None
+    if config.exists():
+        registered_config = load_config(config)
+    elif onboarding_state.exists():
+        pending_config = load_onboarding_config(onboarding_state)
+
+    resolved_server = (
+        server
+        or (registered_config.server_url if registered_config is not None else None)
+        or (pending_config.server_url if pending_config is not None else None)
+        or DEFAULT_SERVER_URL
+    )
+
+    typer.echo(f"cli: The Hollow Lodge {__version__}")
+    typer.echo(f"server: {_server_health_status(resolved_server)} {resolved_server}")
+
+    if registered_config is not None:
+        display_name = registered_config.display_name or "-"
+        active_crew = registered_config.active_crew_id or "-"
+        typer.echo(
+            f"player: registered {registered_config.player_id} "
+            f"display={display_name} active_crew={active_crew}"
+        )
+    elif pending_config is not None:
+        typer.echo(
+            f"player: pending {pending_config.request_id} "
+            f"status={pending_config.status} display={pending_config.display_name}"
+        )
+    else:
+        typer.echo("player: not configured")
+
+    mcp_status = "registered" if codex_mcp_server_registered(codex_config) else "missing"
+    typer.echo(f"mcp: {mcp_status} {codex_config}")
 
 
 @admin_app.command("invite-create")
@@ -1074,6 +1134,16 @@ def packet_lead_vote(
 
 def _api_from_config(config: ClientConfig) -> HollowLodgeApi:
     return HollowLodgeApi(server_url=config.server_url, token=config.token)
+
+
+def _server_health_status(server_url: str) -> str:
+    try:
+        response = HollowLodgeApi(server_url=server_url).health()
+    except Exception:
+        return "unreachable"
+    if response == {"status": "ok"}:
+        return "ok"
+    return "unexpected"
 
 
 def _target_crew_id(config: ClientConfig, crew_id: str | None) -> str:
