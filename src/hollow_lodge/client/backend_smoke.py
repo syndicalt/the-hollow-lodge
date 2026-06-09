@@ -32,6 +32,7 @@ def run_backend_smoke(
     event_log_manifest: Path | None = None,
     require_postgres_event_log_guard: bool = False,
     require_postgres_projection_guard: bool = False,
+    require_projection_refresh_ok: bool = False,
 ) -> dict[str, Any]:
     manifest = (
         load_event_log_manifest(event_log_manifest)
@@ -60,6 +61,7 @@ def run_backend_smoke(
             event_log_manifest=manifest,
             require_postgres_event_log_guard=require_postgres_event_log_guard,
             require_postgres_projection_guard=require_postgres_projection_guard,
+            require_projection_refresh_ok=require_projection_refresh_ok,
         )
 
 
@@ -75,6 +77,7 @@ def validate_backend_diagnostics(
     event_log_manifest: dict[str, Any] | None = None,
     require_postgres_event_log_guard: bool = False,
     require_postgres_projection_guard: bool = False,
+    require_projection_refresh_ok: bool = False,
 ) -> dict[str, Any]:
     data = diagnostics.get("data", {})
     if not isinstance(data, dict):
@@ -106,6 +109,21 @@ def validate_backend_diagnostics(
         and storage_guards.get("require_postgres_projection") is not True
     ):
         errors.append("Postgres projection startup guard is not enabled")
+
+    projection_refresh = data.get("projection_refresh")
+    if require_projection_refresh_ok:
+        if not isinstance(projection_refresh, dict):
+            errors.append("diagnostics response did not include data.projection_refresh")
+            projection_refresh = {}
+        refresh_status = projection_refresh.get("status")
+        if refresh_status != "ok":
+            errors.append(
+                "projection refresh status is "
+                f"{refresh_status or 'missing'}; expected ok"
+                f"{_projection_refresh_failure_suffix(projection_refresh)}"
+            )
+    elif not isinstance(projection_refresh, dict):
+        projection_refresh = None
 
     event_backend = event_log.get("backend")
     if expected_event_backend is not None and event_backend != expected_event_backend:
@@ -289,6 +307,7 @@ def validate_backend_diagnostics(
         "projection_reads": projection_reads,
         "projection_read_surfaces": projection_read_surfaces,
         "storage_guards": storage_guards,
+        "projection_refresh": projection_refresh,
     }
 
 
@@ -303,6 +322,7 @@ def validate_projection_diagnostics(
     event_log_manifest: dict[str, Any] | None = None,
     require_postgres_event_log_guard: bool = False,
     require_postgres_projection_guard: bool = False,
+    require_projection_refresh_ok: bool = False,
 ) -> dict[str, Any]:
     if not isinstance(diagnostics.get("data"), dict):
         diagnostics = {"data": {"event_log": {"backend": None, "status": "not_created"}}}
@@ -324,6 +344,7 @@ def validate_projection_diagnostics(
         event_log_manifest=event_log_manifest,
         require_postgres_event_log_guard=require_postgres_event_log_guard,
         require_postgres_projection_guard=require_postgres_projection_guard,
+        require_projection_refresh_ok=require_projection_refresh_ok,
     )
     projection = result["projection"]
     return {
@@ -338,6 +359,7 @@ def validate_projection_diagnostics(
         "projection_reads": result["projection_reads"],
         "projection_read_surfaces": result["projection_read_surfaces"],
         "storage_guards": result["storage_guards"],
+        "projection_refresh": result["projection_refresh"],
     }
 
 
@@ -363,3 +385,19 @@ def _optional_str(value: Any) -> str | None:
     if value is None:
         return None
     return str(value)
+
+
+def _projection_refresh_failure_suffix(projection_refresh: dict[str, Any]) -> str:
+    failure = projection_refresh.get("last_failure")
+    if not isinstance(failure, dict):
+        return ""
+    context = _optional_str(failure.get("context"))
+    error_type = _optional_str(failure.get("error_type"))
+    parts = []
+    if context:
+        parts.append(f"context={context}")
+    if error_type:
+        parts.append(f"error_type={error_type}")
+    if not parts:
+        return ""
+    return " (" + ", ".join(parts) + ")"

@@ -2233,6 +2233,29 @@ Expected verification:
 - `pytest tests/server/test_app_config.py tests/server/test_projection_store.py tests/server/test_contract_seed.py tests/server/test_action_routes.py tests/server/test_chat_routes.py tests/server/test_deal_routes.py tests/server/test_proof_routes.py tests/server/test_crew_routes.py tests/server/test_artifact_routes.py tests/server/test_identity_routes.py -q`
 - `pytest -q`
 
+### Slice 89: Projection Refresh Readiness Smoke
+
+Status: completed.
+
+Make projection refresh diagnostics actionable during hosted database cutover.
+`scripts/smoke_projection_backend.py` and
+`hollow-lodge admin backend-smoke` now accept
+`--require-projection-refresh-ok`, which requires
+`/diagnostics.data.projection_refresh.status` to be `ok`. Failed refresh
+readiness reports include only bounded, safe metadata: refresh status, failure
+context, and exception type. Raw exception messages, connection strings,
+payloads, and auth material remain out of smoke output.
+
+This closes the operational loop from Slice 88: production can now fail a
+readiness gate when authoritative writes have succeeded but projection-backed
+reads may be stale after a failed refresh.
+
+Expected verification:
+
+- `pytest tests/e2e/test_projection_backend_smoke.py::test_backend_smoke_accepts_event_and_projection_backends tests/e2e/test_projection_backend_smoke.py::test_backend_smoke_rejects_failed_projection_refresh tests/client/test_cli_commands.py::test_admin_backend_smoke_command_reports_safe_backend_status tests/client/test_cli_commands.py::test_admin_backend_smoke_command_rejects_failed_projection_refresh -q`
+- `pytest tests/e2e/test_projection_backend_smoke.py tests/client/test_cli_commands.py tests/server/test_app_config.py -q`
+- `pytest -q`
+
 ## Completion Standard
 
 Each slice must:

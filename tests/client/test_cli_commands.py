@@ -101,6 +101,13 @@ class FakeApi:
                     "require_postgres_event_log": False,
                     "require_postgres_projection": False,
                 },
+                "projection_refresh": {
+                    "status": "ok",
+                    "last_context": "startup",
+                    "last_success_sequence": 12,
+                    "failure_count": 0,
+                    "last_failure": None,
+                },
             }
         }
 
@@ -1637,6 +1644,7 @@ def test_admin_backend_smoke_command_reports_safe_backend_status(monkeypatch):
             "--require-current-projection-read-surfaces",
             "--require-current-projection-schema",
             "--require-sequence-alignment",
+            "--require-projection-refresh-ok",
         ],
     )
 
@@ -1649,6 +1657,48 @@ def test_admin_backend_smoke_command_reports_safe_backend_status(monkeypatch):
     ) in result.output
     assert "secret" not in result.output
     assert created_clients[0].calls == [("health", {}), ("diagnostics", {})]
+
+
+def test_admin_backend_smoke_command_rejects_failed_projection_refresh(monkeypatch):
+    class FailedRefreshApi(FakeApi):
+        def diagnostics(self):
+            payload = super().diagnostics()
+            payload["data"]["projection_refresh"] = {
+                "status": "failed",
+                "last_context": "contracts",
+                "last_success_sequence": 11,
+                "failure_count": 1,
+                "last_failure": {
+                    "context": "contracts",
+                    "error_type": "OperationalError",
+                    "message": "password=secret raw database failure",
+                },
+            }
+            return payload
+
+    monkeypatch.setattr(cli, "HollowLodgeApi", FailedRefreshApi)
+    runner = CliRunner()
+
+    result = runner.invoke(
+        cli.app,
+        [
+            "admin",
+            "backend-smoke",
+            "--server",
+            "http://testserver",
+            "--expected-backend",
+            "postgres",
+            "--require-projection-refresh-ok",
+        ],
+    )
+
+    assert result.exit_code != 0
+    assert (
+        "projection refresh status is failed; expected ok "
+        "(context=contracts, error_type=OperationalError)"
+    ) in result.output
+    assert "password=secret" not in result.output
+    assert "raw database failure" not in result.output
 
 
 def test_admin_backend_smoke_command_verifies_event_log_manifest(

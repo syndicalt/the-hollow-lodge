@@ -54,6 +54,13 @@ def test_projection_backend_smoke_accepts_available_zero_lag_backend():
                     "require_postgres_event_log": True,
                     "require_postgres_projection": True,
                 },
+                "projection_refresh": {
+                    "status": "ok",
+                    "last_context": "startup",
+                    "last_success_sequence": 23,
+                    "failure_count": 0,
+                    "last_failure": None,
+                },
             },
         },
         expected_backend="postgres",
@@ -106,6 +113,13 @@ def test_backend_smoke_accepts_event_and_projection_backends():
                     "require_postgres_event_log": True,
                     "require_postgres_projection": True,
                 },
+                "projection_refresh": {
+                    "status": "ok",
+                    "last_context": "startup",
+                    "last_success_sequence": 23,
+                    "failure_count": 0,
+                    "last_failure": None,
+                },
             },
         },
         expected_backend="postgres",
@@ -116,6 +130,7 @@ def test_backend_smoke_accepts_event_and_projection_backends():
         require_sequence_alignment=True,
         require_postgres_event_log_guard=True,
         require_postgres_projection_guard=True,
+        require_projection_refresh_ok=True,
     )
 
     assert result["event_log"] == {
@@ -132,6 +147,61 @@ def test_backend_smoke_accepts_event_and_projection_backends():
         "require_postgres_event_log": True,
         "require_postgres_projection": True,
     }
+    assert result["projection_refresh"]["status"] == "ok"
+
+
+def test_backend_smoke_rejects_failed_projection_refresh():
+    smoke = _load_smoke_module()
+
+    try:
+        smoke.validate_backend_diagnostics(
+            {
+                "server": {"version": "0.1.0"},
+                "data": {
+                    "event_log": {
+                        "backend": "postgres",
+                        "database_url": "postgresql://event:***@host:5432/db",
+                        "status": "available",
+                        "event_count": 23,
+                        "last_sequence": 23,
+                        "last_event_hash": "event-hash-23",
+                    },
+                    "projection_db": {
+                        "backend": "postgres",
+                        "database_url": "postgresql://projection:***@host:5432/db",
+                        "status": "available",
+                        "lag": 0,
+                        "last_sequence": 23,
+                        "authoritative_last_sequence": 23,
+                    },
+                    "projection_refresh": {
+                        "status": "failed",
+                        "last_context": "contracts",
+                        "last_success_sequence": 22,
+                        "failure_count": 1,
+                        "last_failure": {
+                            "context": "contracts",
+                            "error_type": "OperationalError",
+                            "message": "password=secret raw database error",
+                        },
+                    },
+                },
+            },
+            expected_backend="postgres",
+            expected_event_backend="postgres",
+            require_projection_refresh_ok=True,
+        )
+    except RuntimeError as exc:
+        message = str(exc)
+    else:
+        raise AssertionError("failed projection refresh should fail readiness smoke")
+
+    assert (
+        "projection refresh status is failed; expected ok "
+        "(context=contracts, error_type=OperationalError)"
+    ) in message
+    assert "password=secret" not in message
+    assert "raw database error" not in message
 
 
 def test_backend_smoke_rejects_missing_required_storage_guards():

@@ -67,6 +67,11 @@ def main() -> None:
         action="store_true",
         help="Require the deployed server to enforce Postgres projection startup.",
     )
+    parser.add_argument(
+        "--require-projection-refresh-ok",
+        action="store_true",
+        help="Require the latest projection refresh diagnostic status to be ok.",
+    )
     args = parser.parse_args()
 
     result = run_smoke(
@@ -82,6 +87,7 @@ def main() -> None:
         event_log_manifest=args.event_log_manifest,
         require_postgres_event_log_guard=args.require_postgres_event_log_guard,
         require_postgres_projection_guard=args.require_postgres_projection_guard,
+        require_projection_refresh_ok=args.require_projection_refresh_ok,
     )
     print(
         "backend readiness ok: "
@@ -109,6 +115,7 @@ def run_smoke(
     event_log_manifest: Path | None = None,
     require_postgres_event_log_guard: bool = False,
     require_postgres_projection_guard: bool = False,
+    require_projection_refresh_ok: bool = False,
 ) -> dict[str, Any]:
     return run_backend_smoke(
         server_url=server_url,
@@ -121,6 +128,7 @@ def run_smoke(
         event_log_manifest=event_log_manifest,
         require_postgres_event_log_guard=require_postgres_event_log_guard,
         require_postgres_projection_guard=require_postgres_projection_guard,
+        require_projection_refresh_ok=require_projection_refresh_ok,
     )
 
 

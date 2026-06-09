@@ -143,7 +143,8 @@ python scripts/smoke_projection_backend.py \
   --expected-event-backend jsonl \
   --require-current-projection-read-surfaces \
   --require-current-projection-schema \
-  --require-sequence-alignment
+  --require-sequence-alignment \
+  --require-projection-refresh-ok
 ```
 
 Installed clients can run the same readiness gate without checking out the
@@ -156,7 +157,8 @@ hollow-lodge admin backend-smoke \
   --expected-event-backend jsonl \
   --require-current-projection-read-surfaces \
   --require-current-projection-schema \
-  --require-sequence-alignment
+  --require-sequence-alignment \
+  --require-projection-refresh-ok
 ```
 
 After configuring `HOLLOW_LODGE_PROJECTION_DATABASE_URL`, or attaching a
@@ -170,7 +172,8 @@ python scripts/smoke_projection_backend.py \
   --expected-event-backend jsonl \
   --require-current-projection-read-surfaces \
   --require-current-projection-schema \
-  --require-sequence-alignment
+  --require-sequence-alignment \
+  --require-projection-refresh-ok
 ```
 
 If you intentionally set `HOLLOW_LODGE_EVENT_DATABASE_URL`, verify both
@@ -184,7 +187,8 @@ python scripts/smoke_projection_backend.py \
   --event-log-manifest backups/hollow-lodge-events.manifest.json \
   --require-current-projection-read-surfaces \
   --require-current-projection-schema \
-  --require-sequence-alignment
+  --require-sequence-alignment \
+  --require-projection-refresh-ok
 ```
 
 `--event-log-manifest` compares the hosted event-log diagnostics with the
@@ -207,6 +211,7 @@ python scripts/smoke_projection_backend.py \
   --require-current-projection-read-surfaces \
   --require-current-projection-schema \
   --require-sequence-alignment \
+  --require-projection-refresh-ok \
   --require-postgres-event-log-guard
 ```
 
@@ -222,7 +227,8 @@ python scripts/smoke_projection_backend.py \
   --require-projection-reads \
   --require-current-projection-read-surfaces \
   --require-current-projection-schema \
-  --require-sequence-alignment
+  --require-sequence-alignment \
+  --require-projection-refresh-ok
 ```
 
 The installed-client equivalent for that projection-only path is:
@@ -235,7 +241,8 @@ hollow-lodge admin backend-smoke \
   --require-projection-reads \
   --require-current-projection-read-surfaces \
   --require-current-projection-schema \
-  --require-sequence-alignment
+  --require-sequence-alignment \
+  --require-projection-refresh-ok
 ```
 
 After the Postgres smoke passes, set `HOLLOW_LODGE_REQUIRE_POSTGRES_PROJECTION=1`
@@ -253,6 +260,7 @@ hollow-lodge admin backend-smoke \
   --require-current-projection-read-surfaces \
   --require-current-projection-schema \
   --require-sequence-alignment \
+  --require-projection-refresh-ok \
   --require-postgres-event-log-guard \
   --require-postgres-projection-guard
 ```
@@ -268,7 +276,10 @@ is set and the reported projection read surface names do not match the
 installed package, `--require-sequence-alignment` is set and the event count,
 projection last sequence, authoritative projection sequence, or projection lag
 do not agree, or `--require-projection-reads` is set and any projection read
-surface is disabled. When `--require-postgres-event-log-guard` or
+surface is disabled. When `--require-projection-refresh-ok` is set, the smoke
+also fails unless `/diagnostics.data.projection_refresh.status` is `ok`; failure
+messages include only the safe refresh context and exception type. When
+`--require-postgres-event-log-guard` or
 `--require-postgres-projection-guard` is set, the smoke also fails unless
 `/diagnostics` reports the corresponding startup guard as enabled.
 

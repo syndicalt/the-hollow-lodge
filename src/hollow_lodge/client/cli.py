@@ -596,6 +596,11 @@ def admin_backend_smoke(
         "--require-postgres-projection-guard",
         help="Require the deployed server to enforce Postgres projection startup.",
     ),
+    require_projection_refresh_ok: bool = typer.Option(
+        False,
+        "--require-projection-refresh-ok",
+        help="Require the latest projection refresh diagnostic status to be ok.",
+    ),
 ) -> None:
     """Verify hosted event-log and projection backend readiness."""
     if expected_backend not in {"sqlite", "postgres"}:
@@ -626,6 +631,7 @@ def admin_backend_smoke(
             ),
             require_postgres_event_log_guard=require_postgres_event_log_guard,
             require_postgres_projection_guard=require_postgres_projection_guard,
+            require_projection_refresh_ok=require_projection_refresh_ok,
         )
     except RuntimeError as exc:
         typer.echo(f"Error: {exc}", err=True)
