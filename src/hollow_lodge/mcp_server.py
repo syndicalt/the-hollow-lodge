@@ -267,6 +267,29 @@ def dossier_cite_artifact(
 
 
 @mcp.tool()
+def dossier_update_framing(
+    confirm: bool,
+    crew_id: str | None = None,
+    claim: str | None = None,
+    evidence_ids: list[str] | None = None,
+    reasoning: str | None = None,
+    weaknesses: str | None = None,
+    provenance_concerns: str | None = None,
+) -> CallToolResult:
+    return packet_response(
+        _session().dossier_update_framing(
+            confirm=confirm,
+            crew_id=crew_id,
+            claim=claim,
+            evidence_ids=evidence_ids,
+            reasoning=reasoning,
+            weaknesses=weaknesses,
+            provenance_concerns=provenance_concerns,
+        )
+    )
+
+
+@mcp.tool()
 def propose_deal(
     recipient_crew_id: str,
     offered_artifact_ids: list[str],

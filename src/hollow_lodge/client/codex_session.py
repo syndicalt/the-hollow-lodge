@@ -445,6 +445,53 @@ class CodexGameSession:
             result=result,
         )
 
+    def dossier_update_framing(
+        self,
+        *,
+        confirm: bool,
+        crew_id: str | None = None,
+        claim: str | None = None,
+        evidence_ids: list[str] | tuple[str, ...] | None = None,
+        reasoning: str | None = None,
+        weaknesses: str | None = None,
+        provenance_concerns: str | None = None,
+    ) -> RenderPacket:
+        target_crew_id = self._target_crew_id(crew_id)
+        preview: dict[str, Any] = {"crew_id": target_crew_id}
+        if claim is not None:
+            preview["claim"] = claim
+        if evidence_ids is not None:
+            preview["evidence_ids"] = list(evidence_ids)
+        if reasoning is not None:
+            preview["reasoning"] = reasoning
+        if weaknesses is not None:
+            preview["weaknesses"] = weaknesses
+        if provenance_concerns is not None:
+            preview["provenance_concerns"] = provenance_concerns
+        if len(preview) == 1:
+            raise ValueError("at least one dossier framing field is required")
+        if not confirm:
+            return build_mutation_result_packet(
+                operation="dossier_update_framing",
+                confirmed=False,
+                preview_fields=preview,
+            )
+        result = self.api.update_dossier_framing(
+            crew_id=target_crew_id,
+            claim=claim,
+            evidence_ids=evidence_ids,
+            reasoning=reasoning,
+            weaknesses=weaknesses,
+            provenance_concerns=provenance_concerns,
+            idempotency_key=new_command_key("dossier-framing"),
+        )
+        self.sync()
+        return build_mutation_result_packet(
+            operation="dossier_update_framing",
+            confirmed=True,
+            result=result,
+        )
+
     def propose_deal(
         self,
         *,

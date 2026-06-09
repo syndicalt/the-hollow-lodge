@@ -604,6 +604,55 @@ def test_dossier_contribute_mcp_call_passes_note_evidence_and_confirmation(monke
     assert result.structuredContent["agent_context"]["mutation"] is False
 
 
+def test_dossier_update_framing_mcp_call_passes_fields_and_confirmation(monkeypatch):
+    packet = RenderPacket(
+        surface="mutation",
+        player_markdown="Preview: dossier_update_framing\nNo server mutation was submitted.",
+        agent_context={"operation": "dossier_update_framing", "mutation": False},
+    )
+
+    class StubSession:
+        def dossier_update_framing(
+            self,
+            *,
+            confirm: bool,
+            crew_id: str | None = None,
+            claim: str | None = None,
+            evidence_ids: list[str] | None = None,
+            reasoning: str | None = None,
+            weaknesses: str | None = None,
+            provenance_concerns: str | None = None,
+        ) -> RenderPacket:
+            assert confirm is False
+            assert crew_id == "crew_0001"
+            assert claim == "The finger is false."
+            assert evidence_ids == ["artifact_ledger_rubric"]
+            assert reasoning == "The ledger undermines the lot story."
+            assert weaknesses == "Material testing remains incomplete."
+            assert provenance_concerns == "Traded copy requires care."
+            return packet
+
+    monkeypatch.setattr(mcp_server, "_session", lambda: StubSession())
+
+    result = asyncio.run(
+        mcp_server.mcp.call_tool(
+            "dossier_update_framing",
+            {
+                "crew_id": "crew_0001",
+                "claim": "The finger is false.",
+                "evidence_ids": ["artifact_ledger_rubric"],
+                "reasoning": "The ledger undermines the lot story.",
+                "weaknesses": "Material testing remains incomplete.",
+                "provenance_concerns": "Traded copy requires care.",
+                "confirm": False,
+            },
+        )
+    )
+
+    assert result.content[0].text == packet.player_markdown
+    assert result.structuredContent["agent_context"]["mutation"] is False
+
+
 def test_phase_lock_mcp_call_passes_confirmation_to_session(monkeypatch):
     packet = RenderPacket(
         surface="mutation",
@@ -667,6 +716,7 @@ def test_public_mcp_tools_do_not_expose_local_path_overrides():
         "cancel_action",
         "dossier_contribute",
         "dossier_cite_artifact",
+        "dossier_update_framing",
         "propose_deal",
         "accept_deal",
         "transfer_artifact",
@@ -687,6 +737,7 @@ def test_mutating_mcp_tools_require_confirm_argument():
         "cancel_action",
         "dossier_contribute",
         "dossier_cite_artifact",
+        "dossier_update_framing",
         "propose_deal",
         "accept_deal",
         "transfer_artifact",

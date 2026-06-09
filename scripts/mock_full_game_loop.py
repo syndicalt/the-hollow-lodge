@@ -157,27 +157,37 @@ def run_mock(data_dir: str) -> dict[str, Any]:
         confirm=True,
         crew_id=moth["crew_id"],
     )
-    _patch(
-        client,
-        f"/proofs/dossiers/{gilt['crew_id']}/framing",
-        headers=_command_auth(ada["token"], "gilt-framing"),
-        json={
-            "claim": "The finger is a false relic backed by a compromised chain.",
-            "reasoning": "The chapel debt mark gives motive; the ledger undermines clean provenance.",
-            "weaknesses": "Material testing remains incomplete.",
-            "provenance_concerns": "Traded copy, but source chain names the deal provenance.",
-        },
+    gilt_framing_preview = ada_session.dossier_update_framing(
+        claim="The finger is a false relic backed by a compromised chain.",
+        reasoning="The chapel debt mark gives motive; the ledger undermines clean provenance.",
+        weaknesses="Material testing remains incomplete.",
+        provenance_concerns="Traded copy, but source chain names the deal provenance.",
+        confirm=False,
+        crew_id=gilt["crew_id"],
     )
-    _patch(
-        client,
-        f"/proofs/dossiers/{moth['crew_id']}/framing",
-        headers=_command_auth(bela["token"], "moth-framing"),
-        json={
-            "claim": "The reliquary story is unstable and politically leveraged.",
-            "reasoning": "The ledger and chapel mark support pressure around the auction.",
-            "weaknesses": "The Gilt source may have traded selectively.",
-            "provenance_concerns": "Received copy requires independent verification.",
-        },
+    gilt_framing_packet = ada_session.dossier_update_framing(
+        claim="The finger is a false relic backed by a compromised chain.",
+        reasoning="The chapel debt mark gives motive; the ledger undermines clean provenance.",
+        weaknesses="Material testing remains incomplete.",
+        provenance_concerns="Traded copy, but source chain names the deal provenance.",
+        confirm=True,
+        crew_id=gilt["crew_id"],
+    )
+    moth_framing_preview = bela_session.dossier_update_framing(
+        claim="The reliquary story is unstable and politically leveraged.",
+        reasoning="The ledger and chapel mark support pressure around the auction.",
+        weaknesses="The Gilt source may have traded selectively.",
+        provenance_concerns="Received copy requires independent verification.",
+        confirm=False,
+        crew_id=moth["crew_id"],
+    )
+    moth_framing_packet = bela_session.dossier_update_framing(
+        claim="The reliquary story is unstable and politically leveraged.",
+        reasoning="The ledger and chapel mark support pressure around the auction.",
+        weaknesses="The Gilt source may have traded selectively.",
+        provenance_concerns="Received copy requires independent verification.",
+        confirm=True,
+        crew_id=moth["crew_id"],
     )
     grace_session = _codex_session(
         client,
@@ -267,6 +277,10 @@ def run_mock(data_dir: str) -> dict[str, Any]:
         gilt_citation_packet,
         moth_citation_preview,
         moth_citation_packet,
+        gilt_framing_preview,
+        gilt_framing_packet,
+        moth_framing_preview,
+        moth_framing_packet,
         grace_vote_preview,
         grace_vote_packet,
         ada_vote_preview,
@@ -563,6 +577,41 @@ class _TestClientCodexApi:
             idempotency_key=idempotency_key,
         )
 
+    def update_dossier_framing(
+        self,
+        *,
+        crew_id: str,
+        claim: str | None = None,
+        evidence_ids: list[str] | tuple[str, ...] | None = None,
+        reasoning: str | None = None,
+        weaknesses: str | None = None,
+        provenance_concerns: str | None = None,
+        idempotency_key: str,
+    ) -> dict[str, Any]:
+        payload: dict[str, Any] = {}
+        if claim is not None:
+            payload["claim"] = claim
+        if evidence_ids is not None:
+            payload["evidence_ids"] = list(evidence_ids)
+        if reasoning is not None:
+            payload["reasoning"] = reasoning
+        if weaknesses is not None:
+            payload["weaknesses"] = weaknesses
+        if provenance_concerns is not None:
+            payload["provenance_concerns"] = provenance_concerns
+        response = self.client.patch(
+            f"/proofs/dossiers/{crew_id}/framing",
+            json=payload,
+            headers=_command_auth(self.token, idempotency_key),
+        )
+        if response.status_code != 200:
+            raise RuntimeError(
+                "PATCH "
+                f"/proofs/dossiers/{crew_id}/framing returned "
+                f"{response.status_code}: {response.text}"
+            )
+        return response.json()
+
     def vote_packet_lead(
         self,
         *,
@@ -700,19 +749,6 @@ def _post(
         raise RuntimeError(
             f"POST {path} returned {response.status_code}: {response.text}"
         )
-    return response.json()
-
-
-def _patch(
-    client: TestClient,
-    path: str,
-    *,
-    json: dict[str, Any],
-    headers: dict[str, str],
-) -> dict[str, Any]:
-    response = client.patch(path, json=json, headers=headers)
-    if response.status_code != 200:
-        raise RuntimeError(f"PATCH {path} returned {response.status_code}: {response.text}")
     return response.json()
 
 

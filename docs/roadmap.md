@@ -3228,6 +3228,30 @@ Expected verification:
 - `pytest tests/e2e/test_full_game_loop_with_escrow.py tests/client/test_codex_session.py tests/test_mcp_server.py -q`
 - `pytest -q`
 
+### Slice 129: Codex Dossier Framing Mutation
+
+Status: completed.
+
+Expose dossier framing edits through the Codex-native preview/confirm mutation
+surface. `CodexGameSession.dossier_update_framing` now wraps the existing
+server framing API with non-mutating preview, explicit confirmation, active
+crew resolution, idempotency keys, and safe mutation result shaping. The MCP
+`dossier_update_framing` tool exposes the same flow to Codex without local path
+overrides.
+
+The full two-crew mock playthrough now uses Codex preview/confirm packets for
+both crews' dossier framing instead of direct REST patches, so the Milestone 1
+proof gate covers the full packet-building workflow: cite artifacts, frame the
+claim, submit actions, resolve, and render final state.
+
+Expected verification:
+
+- `pytest tests/client/test_codex_session.py::test_codex_session_confirmed_mutations_use_expected_api_calls tests/client/test_codex_session.py::test_codex_session_dossier_update_framing_rejects_empty_update tests/client/test_render_packets.py::test_dossier_framing_mutation_result_uses_visible_shaped_result_only tests/test_mcp_server.py::test_dossier_update_framing_mcp_call_passes_fields_and_confirmation tests/test_mcp_server.py::test_mutating_mcp_tools_require_confirm_argument tests/test_mcp_server.py::test_public_mcp_tools_do_not_expose_local_path_overrides -q`
+- `pytest tests/e2e/test_full_game_loop_with_escrow.py::test_full_game_loop_with_escrow_trade -q`
+- `python scripts/mock_full_game_loop.py`
+- `pytest tests/e2e/test_full_game_loop_with_escrow.py tests/client/test_codex_session.py tests/client/test_render_packets.py tests/test_mcp_server.py -q`
+- `pytest -q`
+
 ## Completion Standard
 
 Each slice must:

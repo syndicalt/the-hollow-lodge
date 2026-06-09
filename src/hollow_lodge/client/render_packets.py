@@ -749,6 +749,7 @@ def _shape_mutation_result(operation: str, result: dict[str, Any]) -> dict[str, 
     if operation in {
         "dossier_contribute",
         "dossier_cite_artifact",
+        "dossier_update_framing",
         "vote_packet_lead",
     }:
         return _shape_dossier(result)

@@ -521,6 +521,43 @@ class FakeApi:
             ],
         }
 
+    def update_dossier_framing(
+        self,
+        *,
+        crew_id: str,
+        claim: str | None = None,
+        evidence_ids=None,
+        reasoning: str | None = None,
+        weaknesses: str | None = None,
+        provenance_concerns: str | None = None,
+        idempotency_key: str,
+    ):
+        self.calls.append(
+            (
+                "update_dossier_framing",
+                {
+                    "crew_id": crew_id,
+                    "claim": claim,
+                    "evidence_ids": list(evidence_ids or []),
+                    "reasoning": reasoning,
+                    "weaknesses": weaknesses,
+                    "provenance_concerns": provenance_concerns,
+                    "idempotency_key": idempotency_key,
+                },
+            )
+        )
+        return {
+            "dossier_id": f"dossier_{crew_id}",
+            "crew_id": crew_id,
+            "packet_lead_player_id": "player_0001",
+            "claim": claim or "",
+            "evidence_ids": list(evidence_ids or []),
+            "reasoning": reasoning or "",
+            "weaknesses": weaknesses or "",
+            "provenance_concerns": provenance_concerns or "",
+            "server_notes": "hidden",
+        }
+
     def propose_deal(
         self,
         *,
@@ -1700,6 +1737,14 @@ def test_codex_session_confirmed_mutations_use_expected_api_calls(tmp_path, monk
             quote="The last hand is later.",
             confirm=True,
         ),
+        session.dossier_update_framing(
+            claim="The finger is false.",
+            evidence_ids=["artifact_ledger_rubric"],
+            reasoning="The ledger and chapel mark undermine the lot story.",
+            weaknesses="Material testing remains incomplete.",
+            provenance_concerns="Traded copy requires source caution.",
+            confirm=True,
+        ),
         session.propose_deal(
             recipient_crew_id="crew_0002",
             offered_artifact_ids=["artifact_ledger_rubric"],
@@ -1724,12 +1769,13 @@ def test_codex_session_confirmed_mutations_use_expected_api_calls(tmp_path, monk
             "evidence_ids": ["fragment_1", "artifact_ledger_rubric"],
         }
     ]
-    assert packets[3].agent_context["result"]["recipient_received_artifact_ids"] == [
+    assert packets[4].agent_context["result"]["recipient_received_artifact_ids"] == [
         "artifact_ledger_rubric.dealcopy.deal_000001.crew_0002.1"
     ]
     assert keys == [
         "dossier-contribute",
         "dossier-cite-artifact",
+        "dossier-framing",
         "deal-propose",
         "deal-accept",
         "artifact-transfer",
@@ -1754,6 +1800,19 @@ def test_codex_session_confirmed_mutations_use_expected_api_calls(tmp_path, monk
                 "claim": "The ledger contradicts the lot card.",
                 "quote": "The last hand is later.",
                 "idempotency_key": "dossier-cite-artifact.fixed",
+            },
+        ),
+        "visible_events",
+        (
+            "update_dossier_framing",
+            {
+                "crew_id": "crew_0001",
+                "claim": "The finger is false.",
+                "evidence_ids": ["artifact_ledger_rubric"],
+                "reasoning": "The ledger and chapel mark undermine the lot story.",
+                "weaknesses": "Material testing remains incomplete.",
+                "provenance_concerns": "Traded copy requires source caution.",
+                "idempotency_key": "dossier-framing.fixed",
             },
         ),
         "visible_events",
@@ -1792,6 +1851,27 @@ def test_codex_session_confirmed_mutations_use_expected_api_calls(tmp_path, monk
         ),
         "visible_events",
     ]
+
+
+def test_codex_session_dossier_update_framing_rejects_empty_update(tmp_path):
+    config_path = tmp_path / "config.json"
+    log_path = tmp_path / "local.jsonl"
+    fake_api = FakeApi()
+    save_config(
+        config_path,
+        ClientConfig(
+            server_url="http://testserver",
+            player_id="player_0001",
+            token="token",
+            active_crew_id="crew_0001",
+        ),
+    )
+    session = CodexGameSession(config_path=config_path, local_log_path=log_path, api=fake_api)
+
+    with pytest.raises(ValueError, match="at least one dossier framing field is required"):
+        session.dossier_update_framing(confirm=True)
+
+    assert fake_api.calls == []
 
 
 def test_codex_session_phase_lock_preview_reads_board_without_mutation(tmp_path):

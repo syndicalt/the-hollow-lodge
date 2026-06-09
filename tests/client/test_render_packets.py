@@ -1000,6 +1000,40 @@ def test_mutation_result_packet_uses_visible_shaped_result_only():
     }
 
 
+def test_dossier_framing_mutation_result_uses_visible_shaped_result_only():
+    packet = build_mutation_result_packet(
+        operation="dossier_update_framing",
+        confirmed=True,
+        result={
+            "dossier_id": "dossier_crew_0001",
+            "crew_id": "crew_0001",
+            "packet_lead_player_id": "player_0001",
+            "claim": "The finger is false.",
+            "evidence_ids": ["artifact_ledger_rubric"],
+            "reasoning": "The ledger undermines the lot story.",
+            "weaknesses": "Material testing remains incomplete.",
+            "provenance_concerns": "Traded copy requires care.",
+            "server_notes": "hidden",
+        },
+    )
+
+    assert "Submitted: dossier_update_framing" in packet.player_markdown
+    assert "server_notes" not in packet.player_markdown
+    assert "server_notes" not in str(packet.agent_context)
+    assert packet.agent_context["result"] == {
+        "dossier_id": "dossier_crew_0001",
+        "crew_id": "crew_0001",
+        "packet_lead_player_id": "player_0001",
+        "claim": "The finger is false.",
+        "evidence_ids": ["artifact_ledger_rubric"],
+        "reasoning": "The ledger undermines the lot story.",
+        "weaknesses": "Material testing remains incomplete.",
+        "provenance_concerns": "Traded copy requires care.",
+        "member_contributions": [],
+        "artifact_citations": [],
+    }
+
+
 def test_submit_action_mutation_result_includes_safe_rumor_response_mode():
     packet = build_mutation_result_packet(
         operation="submit_action",
