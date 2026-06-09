@@ -418,6 +418,43 @@ def test_dossier_contribute_mcp_call_passes_note_evidence_and_confirmation(monke
     assert result.structuredContent["agent_context"]["mutation"] is False
 
 
+def test_phase_lock_mcp_call_passes_confirmation_to_session(monkeypatch):
+    packet = RenderPacket(
+        surface="mutation",
+        player_markdown="Preview: phase_lock\nNo server mutation was submitted.",
+        agent_context={"operation": "phase_lock", "mutation": False},
+    )
+
+    class StubSession:
+        def phase_lock(
+            self,
+            *,
+            contract_id: str,
+            hours_elapsed: int,
+            confirm: bool,
+        ) -> RenderPacket:
+            assert contract_id == "contract_false_finger"
+            assert hours_elapsed == 6
+            assert confirm is False
+            return packet
+
+    monkeypatch.setattr(mcp_server, "_session", lambda: StubSession())
+
+    result = asyncio.run(
+        mcp_server.mcp.call_tool(
+            "phase_lock",
+            {
+                "contract_id": "contract_false_finger",
+                "hours_elapsed": 6,
+                "confirm": False,
+            },
+        )
+    )
+
+    assert result.content[0].text == packet.player_markdown
+    assert result.structuredContent["agent_context"]["mutation"] is False
+
+
 def test_public_mcp_tools_do_not_expose_local_path_overrides():
     tools = {tool.name: tool for tool in asyncio.run(mcp_server.mcp.list_tools())}
 
@@ -443,6 +480,7 @@ def test_public_mcp_tools_do_not_expose_local_path_overrides():
         "accept_deal",
         "transfer_artifact",
         "vote_packet_lead",
+        "phase_lock",
     ):
         properties = tools[tool_name].inputSchema["properties"]
         assert "config_path" not in properties
@@ -462,6 +500,7 @@ def test_mutating_mcp_tools_require_confirm_argument():
         "accept_deal",
         "transfer_artifact",
         "vote_packet_lead",
+        "phase_lock",
     ):
         schema = tools[tool_name].inputSchema
         assert schema["properties"]["confirm"]["type"] == "boolean"

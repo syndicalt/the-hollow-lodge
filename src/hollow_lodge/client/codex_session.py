@@ -388,6 +388,43 @@ class CodexGameSession:
             result=result,
         )
 
+    def phase_lock(
+        self,
+        *,
+        contract_id: str = "contract_false_finger",
+        hours_elapsed: int = 6,
+        confirm: bool,
+    ) -> RenderPacket:
+        if not confirm:
+            contract = _contract_for_preview(self.api.contracts(), contract_id)
+            phase = contract.get("phase", {})
+            return build_mutation_result_packet(
+                operation="phase_lock",
+                confirmed=False,
+                preview_fields={
+                    "contract_id": contract.get("contract_id", contract_id),
+                    "title": contract.get("title"),
+                    "phase": phase.get("name", "Auction Preview"),
+                    "remaining_hours": phase.get("remaining_hours"),
+                    "hours_elapsed": hours_elapsed,
+                },
+            )
+        result = self.api.lock_auction_preview_phase(
+            contract_id=contract_id,
+            hours_elapsed=hours_elapsed,
+            idempotency_key=new_command_key("phase-lock"),
+        )
+        self.sync()
+        return build_mutation_result_packet(
+            operation="phase_lock",
+            confirmed=True,
+            result={
+                **result,
+                "contract_id": contract_id,
+                "phase": result.get("phase", "auction-preview"),
+            },
+        )
+
     def _refresh_display_name(self) -> None:
         if self.config.display_name or not hasattr(self.api, "me"):
             return
@@ -412,3 +449,13 @@ class CodexGameSession:
             for event in self.local_log.read()
             if event.get("origin") == "server"
         ]
+
+
+def _contract_for_preview(board: dict[str, Any], contract_id: str) -> dict[str, Any]:
+    contracts = board.get("contracts", [])
+    for contract in contracts:
+        if contract.get("contract_id") == contract_id:
+            return contract
+    if len(contracts) == 1:
+        return contracts[0]
+    raise ValueError("contract not found")

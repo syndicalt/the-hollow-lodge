@@ -112,7 +112,16 @@ class FakeApi:
 
     def contracts(self):
         self.calls.append("contracts")
-        return {"campaign": {"title": "Saints & Ledgers"}, "contracts": []}
+        return {
+            "campaign": {"title": "Saints & Ledgers"},
+            "contracts": [
+                {
+                    "contract_id": "contract_false_finger",
+                    "title": "The Saint's False Finger",
+                    "phase": {"name": "Auction Preview", "remaining_hours": 6},
+                }
+            ],
+        }
 
     def crew_board(self, *, crew_id: str):
         self.calls.append(f"crew_board:{crew_id}")
@@ -453,6 +462,30 @@ class FakeApi:
             "packet_lead_player_id": player_id,
             "member_contributions": [],
             "artifact_citations": [],
+        }
+
+    def lock_auction_preview_phase(
+        self,
+        *,
+        contract_id: str,
+        hours_elapsed: int,
+        idempotency_key: str,
+    ):
+        self.calls.append(
+            (
+                "lock_auction_preview_phase",
+                {
+                    "contract_id": contract_id,
+                    "hours_elapsed": hours_elapsed,
+                    "idempotency_key": idempotency_key,
+                },
+            )
+        )
+        return {
+            "status": "resolved",
+            "standings": [{"crew_id": "crew_0001", "standing": "Strong lead", "score": 82}],
+            "contract_state": ["Auction house provenance is now suspect."],
+            "hidden_truth_summary": "hidden",
         }
 
 
@@ -1143,6 +1176,90 @@ def test_codex_session_confirmed_mutations_use_expected_api_calls(tmp_path, monk
                 "crew_id": "crew_0001",
                 "player_id": "player_0002",
                 "idempotency_key": "packet-lead-vote.fixed",
+            },
+        ),
+        "visible_events",
+    ]
+
+
+def test_codex_session_phase_lock_preview_reads_board_without_mutation(tmp_path):
+    config_path = tmp_path / "config.json"
+    log_path = tmp_path / "local.jsonl"
+    fake_api = FakeApi()
+    save_config(
+        config_path,
+        ClientConfig(
+            server_url="http://testserver",
+            player_id="player_0001",
+            token="token",
+            active_crew_id="crew_0001",
+        ),
+    )
+    session = CodexGameSession(config_path=config_path, local_log_path=log_path, api=fake_api)
+
+    packet = session.phase_lock(
+        contract_id="contract_false_finger",
+        hours_elapsed=6,
+        confirm=False,
+    )
+
+    assert packet.surface == "mutation"
+    assert "Preview: phase_lock" in packet.player_markdown
+    assert "No server mutation was submitted." in packet.player_markdown
+    assert packet.agent_context["mutation"] is False
+    assert packet.agent_context["preview"] == {
+        "contract_id": "contract_false_finger",
+        "title": "The Saint's False Finger",
+        "phase": "Auction Preview",
+        "remaining_hours": 6,
+        "hours_elapsed": 6,
+    }
+    assert fake_api.calls == ["contracts"]
+
+
+def test_codex_session_phase_lock_confirm_calls_api_and_syncs(tmp_path, monkeypatch):
+    config_path = tmp_path / "config.json"
+    log_path = tmp_path / "local.jsonl"
+    fake_api = FakeApi()
+    save_config(
+        config_path,
+        ClientConfig(
+            server_url="http://testserver",
+            player_id="player_0001",
+            token="token",
+            active_crew_id="crew_0001",
+        ),
+    )
+    monkeypatch.setattr(
+        "hollow_lodge.client.codex_session.new_command_key",
+        lambda prefix: f"{prefix}.fixed",
+    )
+    session = CodexGameSession(config_path=config_path, local_log_path=log_path, api=fake_api)
+
+    packet = session.phase_lock(
+        contract_id="contract_false_finger",
+        hours_elapsed=6,
+        confirm=True,
+    )
+
+    assert packet.surface == "mutation"
+    assert "Submitted: phase_lock" in packet.player_markdown
+    assert packet.agent_context["mutation"] is True
+    assert packet.agent_context["result"] == {
+        "status": "resolved",
+        "contract_id": "contract_false_finger",
+        "phase": "auction-preview",
+        "standings": [{"crew_id": "crew_0001", "standing": "Strong lead", "score": 82}],
+        "contract_state": ["Auction house provenance is now suspect."],
+    }
+    assert "hidden_truth_summary" not in str(packet.agent_context)
+    assert fake_api.calls == [
+        (
+            "lock_auction_preview_phase",
+            {
+                "contract_id": "contract_false_finger",
+                "hours_elapsed": 6,
+                "idempotency_key": "phase-lock.fixed",
             },
         ),
         "visible_events",

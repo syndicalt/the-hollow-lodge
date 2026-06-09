@@ -845,6 +845,43 @@ def test_submit_action_mutation_result_includes_safe_rumor_response_mode():
     assert "msg_private_000001" not in str(packet.agent_context)
 
 
+def test_phase_lock_mutation_result_shapes_safe_resolution_fields_only():
+    packet = build_mutation_result_packet(
+        operation="phase_lock",
+        confirmed=True,
+        result={
+            "status": "resolved",
+            "contract_id": "contract_false_finger",
+            "phase": "auction-preview",
+            "standings": [
+                {"crew_id": "crew_0001", "standing": "Strong lead", "score": 82}
+            ],
+            "contract_state": ["Auction house provenance is now suspect."],
+            "hidden_truth_summary": "The server-only truth.",
+            "accepted_output": {"raw": "hidden"},
+        },
+    )
+
+    assert "Submitted: phase_lock" in packet.player_markdown
+    assert "Result: resolved" in packet.player_markdown
+    assert packet.agent_context == {
+        "operation": "phase_lock",
+        "mutation": True,
+        "confirmed": True,
+        "result": {
+            "status": "resolved",
+            "contract_id": "contract_false_finger",
+            "phase": "auction-preview",
+            "standings": [
+                {"crew_id": "crew_0001", "standing": "Strong lead", "score": 82}
+            ],
+            "contract_state": ["Auction house provenance is now suspect."],
+        },
+    }
+    assert "hidden_truth_summary" not in str(packet.agent_context)
+    assert "accepted_output" not in str(packet.agent_context)
+
+
 def test_accept_deal_mutation_packet_renders_received_artifacts():
     packet = build_mutation_result_packet(
         operation="accept_deal",

@@ -2972,6 +2972,31 @@ Expected verification:
 - `pytest tests/client/test_cli_commands.py::test_admin_backend_smoke_command_accepts_required_maintenance_read_write tests/client/test_cli_commands.py::test_admin_backend_smoke_command_rejects_frozen_required_read_write tests/client/test_cli_commands.py::test_admin_backend_smoke_command_rejects_conflicting_maintenance_requirements tests/client/test_cli_commands.py::test_admin_backend_smoke_command_accepts_production_postgres_preset -q`
 - `python scripts/smoke_projection_backend.py --server-url https://server.thehollowlodge.com --production-postgres --event-log-manifest backups/hollow-lodge-events-2026-06-09-frozen.manifest.json`
 
+### Slice 118: Codex Phase Lock Tool
+
+Status: completed.
+
+Expose contract phase resolution through the Codex-native MCP surface. The
+server already supports oracle-backed Auction Preview locking, audit events,
+phase rewards, and board rendering; this slice makes that workflow playable
+from inside Codex instead of requiring a separate shell command.
+
+`CodexGameSession.phase_lock` follows the same preview/confirm mutation policy
+as actions, dossier edits, deals, transfers, and packet-lead votes. With
+`confirm=false`, it reads the contract board and returns a non-mutating preview
+packet with contract id, title, phase, remaining hours, and submitted
+`hours_elapsed`. With `confirm=true`, it calls the existing phase-lock API,
+syncs visible events, and returns a safe shaped result containing only status,
+contract id, phase, standings, and public contract state. The MCP `phase_lock`
+tool exposes only `confirm`, `contract_id`, and `hours_elapsed`; no local path
+overrides are public.
+
+Expected verification:
+
+- `pytest tests/client/test_codex_session.py::test_codex_session_phase_lock_preview_reads_board_without_mutation tests/client/test_codex_session.py::test_codex_session_phase_lock_confirm_calls_api_and_syncs tests/client/test_render_packets.py::test_phase_lock_mutation_result_shapes_safe_resolution_fields_only -q`
+- `pytest tests/test_mcp_server.py::test_phase_lock_mcp_call_passes_confirmation_to_session tests/test_mcp_server.py::test_public_mcp_tools_do_not_expose_local_path_overrides tests/test_mcp_server.py::test_mutating_mcp_tools_require_confirm_argument -q`
+- `pytest tests/client/test_codex_session.py tests/client/test_render_packets.py tests/test_mcp_server.py -q`
+
 ## Completion Standard
 
 Each slice must:

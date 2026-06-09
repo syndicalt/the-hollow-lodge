@@ -249,5 +249,20 @@ def vote_packet_lead(
     )
 
 
+@mcp.tool()
+def phase_lock(
+    confirm: bool,
+    contract_id: str = "contract_false_finger",
+    hours_elapsed: int = 6,
+) -> CallToolResult:
+    return packet_response(
+        _session().phase_lock(
+            contract_id=contract_id,
+            hours_elapsed=hours_elapsed,
+            confirm=confirm,
+        )
+    )
+
+
 def main() -> None:
     mcp.run()

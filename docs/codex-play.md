@@ -56,7 +56,7 @@ admin inventory commands.
    the player.
 8. Clarify consequences and translate intent. Do not choose player strategy by default.
 9. Ask for confirmation before submitting irreversible actions, votes, dossier
-   changes, proof transfers, or messages.
+   changes, proof transfers, messages, or phase locks.
 
 ## Default Landing
 
@@ -79,6 +79,19 @@ When a player says "what's happening" or starts a play session:
    edit dossier framing.
 9. Summarize the most important visible changes and offer 2-4 concrete next
    actions.
+
+## Phase Resolution
+
+Use `phase_lock` for the end-of-phase resolution workflow inside Codex. Start
+with `confirm=false`; the tool reads the contract board and returns a preview
+packet without mutating the server. Explain that a confirmed phase lock resolves
+the current contract phase, invokes the oracle, records standings, may award
+phase rewards, and cannot be undone by the player.
+
+Only call `phase_lock` with `confirm=true` after the player explicitly approves
+the lock. After a confirmed lock, render `render_contract_board` and
+`render_crew_board` so the player can see standings, phase result text, rewards,
+heat/legacy changes, and the next available work.
 
 ## Visibility
 
