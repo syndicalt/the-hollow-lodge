@@ -280,6 +280,31 @@ def test_render_thread_mcp_call_returns_matching_thread_packet(monkeypatch):
     assert result.structuredContent["agent_context"]["conversation_id"] == "crew_a:crew_b"
 
 
+def test_render_conversations_mcp_call_returns_text_and_structured_packet(monkeypatch):
+    packet = RenderPacket(
+        surface="conversations",
+        player_markdown="Visible conversations:\n- crew_a:crew_b (2 messages, last 4): player_2: Agreed.",
+        agent_context={
+            "conversation_count": 1,
+            "conversations": [{"conversation_id": "crew_a:crew_b"}],
+            "mutation": False,
+        },
+    )
+
+    class StubSession:
+        def render_conversations(self) -> RenderPacket:
+            return packet
+
+    monkeypatch.setattr(mcp_server, "_session", lambda: StubSession())
+
+    result = asyncio.run(mcp_server.mcp.call_tool("render_conversations", {}))
+
+    assert result.content[0].text == packet.player_markdown
+    assert result.structuredContent["surface"] == "conversations"
+    assert result.structuredContent["agent_context"]["conversation_count"] == 1
+    assert result.structuredContent["agent_context"]["mutation"] is False
+
+
 def test_preview_deal_acceptance_mcp_call_is_read_only(monkeypatch):
     packet = RenderPacket(
         surface="deal_preview",
@@ -407,6 +432,7 @@ def test_public_mcp_tools_do_not_expose_local_path_overrides():
         "render_activity_delta",
         "render_crew_activity",
         "render_crew_activity_delta",
+        "render_conversations",
         "render_thread",
         "render_deals",
         "preview_deal_acceptance",

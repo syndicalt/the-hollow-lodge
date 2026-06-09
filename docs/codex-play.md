@@ -73,9 +73,11 @@ When a player says "what's happening" or starts a play session:
 6. If the player asks what changed for the crew since they last checked, call
    `render_crew_activity_delta`; use `render_crew_activity` for a broader
    recent crew timeline.
-7. Review Packet Lead vote and replacement history before advising who can
+7. If social coordination or private offers matter, call `render_conversations`
+   before opening a specific `render_thread`.
+8. Review Packet Lead vote and replacement history before advising who can
    edit dossier framing.
-8. Summarize the most important visible changes and offer 2-4 concrete next
+9. Summarize the most important visible changes and offer 2-4 concrete next
    actions.
 
 ## Visibility

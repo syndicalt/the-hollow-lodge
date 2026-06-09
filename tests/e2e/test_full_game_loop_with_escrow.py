@@ -27,6 +27,7 @@ def test_full_game_loop_with_escrow_trade(tmp_path):
     assert result["codex_packets"] == [
         "contract_board",
         "artifact_graph",
+        "conversations",
         "deals",
         "deal_preview",
         "inbox",
@@ -41,11 +42,15 @@ def test_full_game_loop_with_escrow_trade(tmp_path):
     assert "Acceptance preview:" in "\n".join(result["lines"])
     assert "The Saint's False Finger" in "\n".join(result["lines"])
     assert "Visible artifacts:" in "\n".join(result["lines"])
+    assert "Visible conversations:" in "\n".join(result["lines"])
     assert "Phase result:" in "\n".join(result["lines"])
     assert "What changed since sequence" in "\n".join(result["lines"])
     assert "What Now: Ada Corelumen" in "\n".join(result["lines"])
     assert result["final_dossier"]["agent_context"]["dossier"]["packet_lead_votes"]
     assert result["final_dossier"]["agent_context"]["dossier"]["packet_lead_replacements"]
+    assert result["conversations"]["surface"] == "conversations"
+    assert result["conversations"]["agent_context"]["conversation_count"] == 1
+    assert result["conversations"]["agent_context"]["conversations"][0]["message_count"] == 2
     assert result["final_what_now"]["surface"] == "what_now"
     assert result["final_activity_delta"]["surface"] == "activity_delta"
     assert result["final_activity_delta"]["agent_context"]["checkpoint_sequence"] > 0

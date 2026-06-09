@@ -1586,6 +1586,27 @@ Expected verification:
 - `pytest tests/client/test_render_packets.py tests/client/test_codex_session.py tests/test_mcp_server.py tests/e2e/test_full_game_loop_with_escrow.py -q`
 - `pytest -q`
 
+### Slice 63: Conversation Index Surface
+
+Status: completed.
+
+Make brokered conversation discovery visible inside Codex. The render layer now
+builds a `conversations` packet from visible chat events, grouping direct,
+crew, and bidirectional crew-to-crew messages into thread ids that can be
+opened with `render_thread`. The packet reports message counts, first and last
+sequence, last visible sender/body, participant ids, and artifact-reference
+counts while stripping server-only fields. `CodexGameSession` and MCP now
+expose `render_conversations`, and the full-loop smoke exchanges brokered
+crew-to-crew messages before the escrow deal, renders the conversation index,
+and asserts the thread summary is visible in the Codex packet sequence.
+
+Expected verification:
+
+- `pytest tests/client/test_render_packets.py::test_conversations_packet_lists_visible_threads_without_hidden_fields tests/client/test_codex_session.py::test_codex_session_renders_conversations_from_synced_visible_events tests/test_mcp_server.py::test_render_conversations_mcp_call_returns_text_and_structured_packet tests/test_mcp_server.py::test_public_mcp_tools_do_not_expose_local_path_overrides tests/e2e/test_full_game_loop_with_escrow.py -q`
+- `python scripts/mock_full_game_loop.py`
+- `pytest tests/client/test_render_packets.py tests/client/test_codex_session.py tests/test_mcp_server.py tests/e2e/test_full_game_loop_with_escrow.py tests/e2e/test_codex_render_surfaces.py tests/server/test_chat_routes.py -q`
+- `pytest -q`
+
 ## Completion Standard
 
 Each slice must:

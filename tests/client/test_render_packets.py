@@ -2235,3 +2235,80 @@ def test_thread_packet_matches_cli_conversation_logic_and_omits_hidden_fields():
         "Reply using the CLI",
         "Review recent activity",
     ]
+
+
+def test_conversations_packet_lists_visible_threads_without_hidden_fields():
+    assert hasattr(render_packets, "build_conversations_packet")
+    packet = render_packets.build_conversations_packet(
+        [
+            {
+                "sequence": 1,
+                "type": "chat.message.created",
+                "payload": {
+                    "message_id": "msg_1",
+                    "sender_player_id": "player_0001",
+                    "sender_crew_id": "crew_a",
+                    "recipient_crew_id": "crew_b",
+                    "body": "No public claims until lock.",
+                    "artifact_ids": ["artifact_ledger_rubric"],
+                    "server_only_note": "hidden",
+                },
+            },
+            {
+                "sequence": 4,
+                "type": "chat.message.created",
+                "payload": {
+                    "message_id": "msg_4",
+                    "sender_player_id": "player_0002",
+                    "sender_crew_id": "crew_b",
+                    "recipient_crew_id": "crew_a",
+                    "body": "Agreed, but the source stays masked.",
+                },
+            },
+            {
+                "sequence": 3,
+                "type": "chat.message.created",
+                "payload": {
+                    "message_id": "msg_3",
+                    "sender_player_id": "player_0003",
+                    "sender_crew_id": "crew_a",
+                    "body": "Crew channel note.",
+                },
+            },
+            {
+                "sequence": 2,
+                "type": "chat.message.created",
+                "payload": {
+                    "message_id": "msg_2",
+                    "sender_player_id": "player_0004",
+                    "recipient_player_id": "player_0005",
+                    "body": "Direct whisper.",
+                    "server_notes": "hidden",
+                },
+            },
+            {
+                "sequence": 5,
+                "type": "contract.rumor.leaked",
+                "payload": {"summary": "not chat"},
+            },
+        ]
+    )
+
+    assert packet.surface == "conversations"
+    assert "Visible conversations:" in packet.player_markdown
+    assert "- crew_a:crew_b (2 messages, last 4): player_0002" in packet.player_markdown
+    assert "- crew_a (1 messages, last 3): player_0003" in packet.player_markdown
+    assert "- msg_2 (1 messages, last 2): player_0004" in packet.player_markdown
+    assert "hidden" not in packet.player_markdown
+    assert packet.agent_context["conversation_count"] == 3
+    assert packet.agent_context["conversations"][0] == {
+        "conversation_id": "crew_a:crew_b",
+        "message_count": 2,
+        "first_sequence": 1,
+        "last_sequence": 4,
+        "last_sender_player_id": "player_0002",
+        "last_body": "Agreed, but the source stays masked.",
+        "participant_ids": ["crew_a", "crew_b", "player_0001", "player_0002"],
+        "artifact_reference_count": 1,
+    }
+    assert "hidden" not in str(packet.agent_context)

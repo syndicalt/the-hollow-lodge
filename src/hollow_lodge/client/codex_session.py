@@ -15,6 +15,7 @@ from hollow_lodge.client.render_packets import (
     RenderPacket,
     build_activity_delta_packet,
     build_activity_summary_packet,
+    build_conversations_packet,
     build_deal_acceptance_preview_packet,
     build_deals_packet,
     build_contract_board_packet,
@@ -142,6 +143,10 @@ class CodexGameSession:
             self._visible_server_events(),
             conversation_id=conversation_id,
         )
+
+    def render_conversations(self) -> RenderPacket:
+        self.sync()
+        return build_conversations_packet(self._visible_server_events())
 
     def preview_deal_acceptance(self, deal_id: str) -> RenderPacket:
         self.sync()

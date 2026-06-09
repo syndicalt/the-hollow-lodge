@@ -61,6 +61,29 @@ def run_mock(data_dir: str) -> dict[str, Any]:
         reason="mock side action unlock",
         idempotency_key="grant-chapel-to-moth",
     )
+    opening_message = _post(
+        client,
+        "/chat/crew-to-crew",
+        headers=_command_auth(ada["token"], "chat-gilt-to-moth"),
+        json={
+            "sender_crew_id": gilt["crew_id"],
+            "recipient_crew_id": moth["crew_id"],
+            "body": "We can trade ledger leverage for chapel access before lock.",
+        },
+        expected_status=201,
+    )
+    reply_message = _post(
+        client,
+        "/chat/crew-to-crew",
+        headers=_command_auth(bela["token"], "chat-moth-to-gilt"),
+        json={
+            "sender_crew_id": moth["crew_id"],
+            "recipient_crew_id": gilt["crew_id"],
+            "body": "Send the ledger copy first; no public source claims until lock.",
+        },
+        expected_status=201,
+    )
+    conversations_packet = ada_session.render_conversations()
 
     proposed = _post(
         client,
@@ -192,6 +215,7 @@ def run_mock(data_dir: str) -> dict[str, Any]:
     codex_packets = [
         initial_contract_packet,
         initial_artifact_packet,
+        conversations_packet,
         deals_packet,
         deal_preview_packet,
         moth_inbox_packet,
@@ -215,6 +239,9 @@ def run_mock(data_dir: str) -> dict[str, Any]:
         initial_contract_packet.player_markdown,
         "initial artifact graph:",
         initial_artifact_packet.player_markdown,
+        f"messages exchanged: {opening_message['conversation_id']} / {reply_message['conversation_id']}",
+        "visible conversations:",
+        conversations_packet.player_markdown,
         f"deal proposed: {proposed['deal_id']} {proposed['status']}",
         "visible deals:",
         deals_packet.player_markdown,
@@ -254,6 +281,7 @@ def run_mock(data_dir: str) -> dict[str, Any]:
         "gilt_board": gilt_board,
         "moth_board": moth_board,
         "reveal": reveal,
+        "conversations": conversations_packet.model_dump(mode="json"),
         "timeline": timeline,
         "codex_packets": [packet.surface for packet in codex_packets],
         "final_dossier": final_dossier_packet.model_dump(mode="json"),

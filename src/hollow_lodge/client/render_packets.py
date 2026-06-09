@@ -27,6 +27,7 @@ class RenderPacket(BaseModel):
         "activity",
         "activity_delta",
         "crew_activity",
+        "conversations",
         "thread",
         "mutation",
     ]
@@ -732,6 +733,108 @@ def payload_matches_conversation(payload: dict[str, Any], conversation_id: str) 
             f"{recipient_crew_id}:{sender_crew_id}",
         }
     return sender_crew_id == conversation_id
+
+
+def _conversation_key_and_id(payload: dict[str, Any]) -> tuple[str, str] | None:
+    sender_crew_id = payload.get("sender_crew_id")
+    recipient_crew_id = payload.get("recipient_crew_id")
+    if sender_crew_id and recipient_crew_id:
+        participants = sorted((sender_crew_id, recipient_crew_id))
+        conversation_id = f"{participants[0]}:{participants[1]}"
+        return f"crew_pair:{conversation_id}", conversation_id
+    if sender_crew_id:
+        return f"crew:{sender_crew_id}", sender_crew_id
+    message_id = payload.get("message_id")
+    if message_id:
+        return f"direct:{message_id}", message_id
+    return None
+
+
+def _shape_conversation_summary(
+    *,
+    conversation_id: str,
+    events: list[dict[str, Any]],
+) -> dict[str, Any]:
+    sorted_events = sorted(events, key=lambda event: int(event["sequence"]))
+    last_event = sorted_events[-1]
+    last_payload = last_event.get("payload", {})
+    participant_ids = sorted(
+        {
+            value
+            for event in sorted_events
+            for value in (
+                event.get("payload", {}).get("sender_player_id"),
+                event.get("payload", {}).get("recipient_player_id"),
+                event.get("payload", {}).get("sender_crew_id"),
+                event.get("payload", {}).get("recipient_crew_id"),
+            )
+            if value
+        }
+    )
+    artifact_reference_count = sum(
+        len(event.get("payload", {}).get("artifact_ids", []))
+        for event in sorted_events
+    )
+    return {
+        "conversation_id": conversation_id,
+        "message_count": len(sorted_events),
+        "first_sequence": int(sorted_events[0]["sequence"]),
+        "last_sequence": int(last_event["sequence"]),
+        "last_sender_player_id": last_payload.get("sender_player_id"),
+        "last_body": last_payload.get("body"),
+        "participant_ids": participant_ids,
+        "artifact_reference_count": artifact_reference_count,
+    }
+
+
+def build_conversations_packet(
+    events: list[dict[str, Any]],
+    *,
+    recent_limit: int = 10,
+) -> RenderPacket:
+    grouped: dict[str, tuple[str, list[dict[str, Any]]]] = {}
+    for event in sorted(events, key=lambda candidate: int(candidate["sequence"])):
+        if event.get("type") != "chat.message.created":
+            continue
+        conversation = _conversation_key_and_id(event.get("payload", {}))
+        if conversation is None:
+            continue
+        key, conversation_id = conversation
+        grouped.setdefault(key, (conversation_id, []))[1].append(event)
+    summaries = [
+        _shape_conversation_summary(conversation_id=conversation_id, events=messages)
+        for conversation_id, messages in grouped.values()
+    ]
+    summaries.sort(key=lambda summary: int(summary["last_sequence"]), reverse=True)
+    recent = summaries[:recent_limit]
+    lines = ["Visible conversations:"]
+    if recent:
+        for summary in recent:
+            lines.append(
+                f"- {summary['conversation_id']} ({summary['message_count']} messages, "
+                f"last {summary['last_sequence']}): "
+                f"{summary.get('last_sender_player_id')}: {summary.get('last_body')}"
+            )
+    else:
+        lines.append("- none")
+    return RenderPacket(
+        surface="conversations",
+        player_markdown="\n".join(lines),
+        agent_context={
+            "conversation_count": len(summaries),
+            "conversations": recent,
+            "mutation": False,
+        },
+        suggested_prompts=[
+            "Open a conversation thread",
+            "Review recent activity",
+            "Review inbox",
+        ],
+        actions=[
+            RenderAction(label="Review recent activity", intent="render_activity"),
+            RenderAction(label="Review inbox", intent="render_inbox"),
+        ],
+    )
 
 
 def build_activity_summary_packet(

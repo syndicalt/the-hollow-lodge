@@ -863,6 +863,29 @@ def test_codex_session_renders_thread_with_cli_compatible_matching(tmp_path):
     ]
 
 
+def test_codex_session_renders_conversations_from_synced_visible_events(tmp_path):
+    config_path = tmp_path / "config.json"
+    log_path = tmp_path / "local.jsonl"
+    fake_api = FakeApi()
+    save_config(
+        config_path,
+        ClientConfig(server_url="http://testserver", player_id="player_0001", token="token"),
+    )
+    session = CodexGameSession(config_path=config_path, local_log_path=log_path, api=fake_api)
+
+    packet = session.render_conversations()
+
+    assert packet.surface == "conversations"
+    assert fake_api.calls == ["visible_events"]
+    assert "Visible conversations:" in packet.player_markdown
+    assert "crew_0001:crew_0002" in packet.player_markdown
+    assert packet.agent_context["conversation_count"] == 1
+    assert packet.agent_context["conversations"][0]["conversation_id"] == (
+        "crew_0001:crew_0002"
+    )
+    assert "hidden" not in packet.player_markdown
+
+
 def test_codex_session_preview_submit_action_does_not_call_mutating_api(tmp_path):
     config_path = tmp_path / "config.json"
     log_path = tmp_path / "local.jsonl"

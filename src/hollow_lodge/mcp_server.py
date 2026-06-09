@@ -116,6 +116,11 @@ def render_crew_activity_delta(
 
 
 @mcp.tool()
+def render_conversations() -> CallToolResult:
+    return packet_response(_session().render_conversations())
+
+
+@mcp.tool()
 def render_thread(conversation_id: str) -> CallToolResult:
     return packet_response(_session().render_thread(conversation_id))
 
