@@ -4154,6 +4154,28 @@ Expected verification:
 - `pytest tests/e2e/test_full_game_loop_with_escrow.py tests/client/test_render_packets.py tests/client/test_codex_session.py tests/client/test_api.py tests/test_mcp_server.py tests/server/test_proof_routes.py tests/server/test_packet_lead.py -q`
 - `pytest -q`
 
+### Slice 172: Full Loop Resolved Contract Board Proof Gate
+
+Status: completed.
+
+Strengthen the playable-loop smoke so the final Codex contract board is part
+of the asserted resolution proof, not only printed in the transcript. The
+two-crew mock now returns the final `render_contract_board` packet after
+confirmed phase lock.
+
+The e2e proof verifies that the resolved Saint's False Finger contract includes
+`phase.status=resolved`, player-safe `phase_result` standings, shaped
+`score_reasoning`, and public contract state matching the resolution reveal.
+It also checks the rendered markdown includes the phase result and that the
+contract-board packet omits hidden truth, raw oracle/audit metadata, provider
+details, hashes, and other server-only internals.
+
+Expected verification:
+
+- `pytest tests/e2e/test_full_game_loop_with_escrow.py::test_full_game_loop_with_escrow_trade -q`
+- `pytest tests/e2e/test_full_game_loop_with_escrow.py tests/client/test_contract_board.py tests/client/test_render_packets.py tests/client/test_codex_session.py tests/server/test_phase_resolution.py tests/server/test_resolution_oracle.py tests/workflows/test_oracle_boundary.py -q`
+- `pytest -q`
+
 ## Completion Standard
 
 Each slice must:

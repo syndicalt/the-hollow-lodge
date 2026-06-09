@@ -433,6 +433,7 @@ def run_mock(data_dir: str) -> dict[str, Any]:
         "thread": thread_packet.model_dump(mode="json"),
         "final_activity_delta": final_activity_delta_packet.model_dump(mode="json"),
         "final_what_now": final_what_now_packet.model_dump(mode="json"),
+        "final_contract": final_contract_packet.model_dump(mode="json"),
         "final_crew_activity": final_crew_activity_packet.model_dump(mode="json"),
         "final_activity": final_activity_packet.model_dump(mode="json"),
         "lines": lines,

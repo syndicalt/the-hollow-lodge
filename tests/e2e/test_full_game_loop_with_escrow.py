@@ -161,6 +161,51 @@ def test_full_game_loop_with_escrow_trade(tmp_path):
     assert "server_only" not in str(thread)
     assert "hidden" not in str(thread)
     assert result["final_what_now"]["surface"] == "what_now"
+    assert result["final_contract"]["surface"] == "contract_board"
+    final_contracts = result["final_contract"]["agent_context"]["contracts"]
+    false_finger = next(
+        contract
+        for contract in final_contracts
+        if contract["contract_id"] == "contract_false_finger"
+    )
+    expected_standings = [
+        {
+            "crew_id": standing["crew_id"],
+            "standing": standing["standing"],
+            "score": standing["score"],
+            "score_reasoning": {
+                "strengths": standing["strengths"],
+                "weaknesses": standing["weaknesses"],
+                "penalties": standing["penalties"],
+                "revealed_clues": standing["revealed_clues"],
+            },
+        }
+        for standing in result["reveal"]["standings"]
+    ]
+    assert false_finger["phase"]["status"] == "resolved"
+    assert false_finger["phase_result"] == {
+        "standings": expected_standings,
+        "contract_state": result["reveal"]["contract_state"],
+    }
+    assert "Phase result:" in result["final_contract"]["player_markdown"]
+    serialized_contract = str(result["final_contract"])
+    for forbidden in (
+        "hidden_truth",
+        "hidden_truth_summary",
+        "contract.hidden_truth.seeded",
+        "server_only",
+        "visibility",
+        "oracle.resolution",
+        "accepted_output",
+        "accepted_output_hash",
+        "input_packet_hash",
+        "provider",
+        "model",
+        "prompt_version",
+        "validation_status",
+        "fallback_reason",
+    ):
+        assert forbidden not in serialized_contract
     assert result["final_activity_delta"]["surface"] == "activity_delta"
     assert result["final_activity_delta"]["agent_context"]["checkpoint_sequence"] > 0
     assert result["final_activity_delta"]["agent_context"]["synced_event_count"] > 0
