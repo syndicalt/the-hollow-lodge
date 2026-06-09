@@ -3177,17 +3177,55 @@ def test_crew_commands_use_saved_config(tmp_path, monkeypatch):
         ClientConfig(server_url="http://testserver", player_id="player_0001", token="token"),
     )
 
-    create_result = runner.invoke(
+    create_preview = runner.invoke(
         cli.app,
         ["crew-create", "The Gilt Knives", "--config", str(config_path)],
     )
-    join_result = runner.invoke(
+    join_preview = runner.invoke(
         cli.app,
         ["crew-join", "crew_0001", "--join-code", "join-secret", "--config", str(config_path)],
     )
 
+    assert create_preview.exit_code == 0
+    assert "Preview: crew_create" in create_preview.output
+    assert "No server mutation was submitted." in create_preview.output
+    assert "- name: The Gilt Knives" in create_preview.output
+    assert "- active_crew_id: server-created crew id" in create_preview.output
+    assert join_preview.exit_code == 0
+    assert "Preview: crew_join" in join_preview.output
+    assert "No server mutation was submitted." in join_preview.output
+    assert "- crew_id: crew_0001" in join_preview.output
+    assert "- active_crew_id: crew_0001" in join_preview.output
+    assert created_clients == []
+    assert load_config(config_path).active_crew_id is None
+
+    create_result = runner.invoke(
+        cli.app,
+        ["crew-create", "The Gilt Knives", "--confirm", "--config", str(config_path)],
+    )
+    assert create_result.exit_code == 0
+    assert load_config(config_path).active_crew_id == "crew_0001"
+
+    save_config(
+        config_path,
+        ClientConfig(server_url="http://testserver", player_id="player_0001", token="token"),
+    )
+    join_result = runner.invoke(
+        cli.app,
+        [
+            "crew-join",
+            "crew_0001",
+            "--join-code",
+            "join-secret",
+            "--confirm",
+            "--config",
+            str(config_path),
+        ],
+    )
+
     assert create_result.exit_code == 0
     assert join_result.exit_code == 0
+    assert load_config(config_path).active_crew_id == "crew_0001"
     assert created_clients[0].calls == [
         ("create_crew", {"name": "The Gilt Knives", "idempotency_key": "crew-create-key"})
     ]

@@ -4023,6 +4023,28 @@ Expected verification:
 - `pytest tests/client/test_deal_cli.py tests/client/test_cli_commands.py tests/client/test_codex_session.py tests/client/test_render_packets.py tests/client/test_deal_render.py tests/client/test_deal_mcp_render.py tests/test_mcp_server.py tests/server/test_deal_routes.py tests/server/test_deal_service.py -q`
 - `pytest -q`
 
+### Slice 166: CLI Crew Membership Confirmation Guard
+
+Status: completed.
+
+Protect crew membership mutations from accidental shell submission.
+`hollow-lodge crew-create` now renders a no-mutation `crew_create` preview by
+default, showing the crew name and the local active-crew update that would
+follow server creation. `hollow-lodge crew-join` now renders a no-mutation
+`crew_join` preview by default, showing the target crew and resulting local
+active-crew id. Both commands submit to the server and update local config only
+when rerun with `--confirm`.
+
+This keeps local session state aligned with authoritative server state while
+preventing accidental crew creation, accidental joins, and preview-time config
+rewrites.
+
+Expected verification:
+
+- `pytest tests/client/test_cli_commands.py::test_crew_commands_use_saved_config -q`
+- `pytest tests/client/test_cli_commands.py tests/client/test_config.py tests/client/test_codex_session.py tests/client/test_render_packets.py tests/server/test_crew_routes.py tests/server/test_identity_routes.py -q`
+- `pytest -q`
+
 ## Completion Standard
 
 Each slice must:

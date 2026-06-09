@@ -917,10 +917,22 @@ def codex_install_mcp(
 @app.command("crew-create")
 def crew_create(
     name: str = typer.Argument(..., help="Crew name."),
+    confirm: bool = typer.Option(False, "--confirm", help="Create the crew on the server."),
     config: Path = typer.Option(DEFAULT_CONFIG_PATH, "--config", help="Local config path."),
 ) -> None:
     """Create a stable crew."""
     current = load_config(config)
+    if not confirm:
+        packet = build_mutation_result_packet(
+            operation="crew_create",
+            confirmed=False,
+            preview_fields={
+                "name": name,
+                "active_crew_id": "server-created crew id",
+            },
+        )
+        _echo_packet(packet, as_json=False)
+        return
     api = _api_from_config(current)
     response = api.create_crew(
         name=name,
@@ -935,10 +947,22 @@ def crew_create(
 def crew_join(
     crew_id: str = typer.Argument(..., help="Crew id."),
     join_code: str = typer.Option(..., "--join-code", help="Crew join code."),
+    confirm: bool = typer.Option(False, "--confirm", help="Join the crew on the server."),
     config: Path = typer.Option(DEFAULT_CONFIG_PATH, "--config", help="Local config path."),
 ) -> None:
     """Join a crew with its join code."""
     current = load_config(config)
+    if not confirm:
+        packet = build_mutation_result_packet(
+            operation="crew_join",
+            confirmed=False,
+            preview_fields={
+                "crew_id": crew_id,
+                "active_crew_id": crew_id,
+            },
+        )
+        _echo_packet(packet, as_json=False)
+        return
     api = _api_from_config(current)
     response = api.join_crew(
         crew_id=crew_id,
