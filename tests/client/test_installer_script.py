@@ -46,3 +46,14 @@ def test_operations_docs_describe_current_doctor_readiness_checks():
     assert "local event-sync cache" in operations
     assert "Codex inbox render readiness" in operations
     assert "saved auth, inbox readiness, Codex MCP registration" in readme
+
+
+def test_codex_play_guide_describes_doctor_and_mcp_render_readiness():
+    guide = Path("docs/codex-play.md").read_text(encoding="utf-8")
+
+    assert "hollow-lodge doctor" in guide
+    assert "saved auth" in guide
+    assert "local event-sync cache" in guide
+    assert "codex inbox render: ok surface=inbox" in guide
+    assert "MCP `render_inbox` tool" in guide
+    assert "tokens, invite codes, contract titles, event bodies" in guide

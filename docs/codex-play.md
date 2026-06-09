@@ -32,6 +32,25 @@ onboarding state locally while an admin reviews the request:
 hollow-lodge onboard --name Ada --contact ada@example.com
 ```
 
+After onboarding, run the local readiness check:
+
+```sh
+hollow-lodge doctor
+```
+
+For a registered player, `doctor` should verify saved auth, server
+reachability, inbox readiness, local event-sync cache writes, Codex inbox render
+packet construction, MCP config registration, and `hollow-lodge-mcp` command
+availability. The output is intentionally redacted; it should not print bearer
+tokens, invite codes, contract titles, event bodies, player markdown, or agent
+context. Pending players should see pending onboarding state and MCP readiness,
+but auth, inbox, event sync, and render checks are skipped until registration.
+
+If `doctor` reports `codex inbox render: ok surface=inbox`, the local CLI can
+construct the same inbox render packet that the MCP `render_inbox` tool will
+return inside Codex. If it reports `failed`, fix the earlier failing line first:
+auth, inbox reachability, event sync, MCP config, or command availability.
+
 Admins can review and approve requests from the CLI:
 
 ```sh
@@ -43,6 +62,11 @@ See [operations.md](operations.md) for deployment checks, backup/export, and
 admin inventory commands.
 
 ## Session Loop
+
+Before advising, confirm the player has run `hollow-lodge doctor` after
+registration or ask permission to help interpret its output. If the MCP server
+is registered and the inbox render check passes, use MCP tools inside Codex
+rather than asking the player to copy shell output back into the session.
 
 1. Sync visible events before advising.
 2. Render `render_what_now` first for a compact landing state.

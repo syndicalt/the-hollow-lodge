@@ -3548,6 +3548,28 @@ Expected verification:
 - `pytest tests/client/test_cli_commands.py tests/client/test_installer_script.py tests/client/test_codex_mcp_config.py tests/client/test_local_log.py tests/client/test_codex_session.py -q`
 - `pytest -q`
 
+### Slice 144: Codex Play Readiness Guidance
+
+Status: completed.
+
+Align the Codex play guide with the hardened installed-client proof gate. The
+guide now tells players and assisting agents to run `hollow-lodge doctor` after
+onboarding and describes what the current readiness lines prove: server
+reachability, saved auth, inbox readiness, local event-sync cache writes, Codex
+inbox render packet construction, MCP config registration, and
+`hollow-lodge-mcp` command availability.
+
+The guide also documents the redaction boundary for readiness output and ties
+`codex inbox render: ok surface=inbox` directly to the MCP `render_inbox` path,
+so agents can avoid asking players to paste shell-rendered game state back into
+Codex when the MCP surface is ready.
+
+Expected verification:
+
+- `pytest tests/client/test_installer_script.py::test_codex_play_guide_describes_doctor_and_mcp_render_readiness -q`
+- `pytest tests/client/test_installer_script.py -q`
+- `pytest -q`
+
 ## Completion Standard
 
 Each slice must:
