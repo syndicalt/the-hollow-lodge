@@ -36,6 +36,7 @@ class PostgresProjectionStore:
         board = snapshot["board"]
         crew_summaries = snapshot["crew_summaries"]
         artifact_visibility = snapshot["artifact_visibility"]
+        artifact_inspections = snapshot["artifact_inspections"]
         deals = snapshot["deals"]
         crew_legacies = snapshot["crew_legacies"]
         proof_dossiers = snapshot["proof_dossiers"]
@@ -54,8 +55,10 @@ class PostgresProjectionStore:
                 "contract_board",
                 "crew_summary",
                 "artifact_surface",
+                "artifact_inspection_surface",
                 "artifact_edge",
                 "artifact_scoped_surface",
+                "artifact_scoped_inspection_surface",
                 "deal_surface",
                 "visible_event_surface",
                 "crew_legacy",
@@ -124,6 +127,25 @@ class PostgresProjectionStore:
                         last_sequence,
                     ),
                 )
+            for artifact_id, artifact in artifact_inspections[
+                "public_artifacts"
+            ].items():
+                connection.execute(
+                    """
+                    insert into artifact_inspection_surface (
+                        artifact_id,
+                        contract_id,
+                        payload_json,
+                        updated_sequence
+                    ) values (%s, %s, %s::jsonb, %s)
+                    """,
+                    (
+                        artifact_id,
+                        artifact["contract_id"],
+                        _json_dumps(artifact),
+                        last_sequence,
+                    ),
+                )
             for edge in artifact_visibility["public_edges"].values():
                 connection.execute(
                     """
@@ -150,6 +172,29 @@ class PostgresProjectionStore:
                 connection.execute(
                     """
                     insert into artifact_scoped_surface (
+                        artifact_id,
+                        scope_key,
+                        payload_json,
+                        visibility_json,
+                        updated_sequence
+                    ) values (%s, %s, %s::jsonb, %s::jsonb, %s)
+                    on conflict (artifact_id, scope_key) do update set
+                        payload_json = excluded.payload_json,
+                        visibility_json = excluded.visibility_json,
+                        updated_sequence = excluded.updated_sequence
+                    """,
+                    (
+                        scoped["artifact_id"],
+                        _artifact_scope_key(scoped["visibility"]),
+                        _json_dumps(scoped["surface"]),
+                        _json_dumps(scoped["visibility"]),
+                        last_sequence,
+                    ),
+                )
+            for scoped in artifact_inspections["scoped_surfaces"]:
+                connection.execute(
+                    """
+                    insert into artifact_scoped_inspection_surface (
                         artifact_id,
                         scope_key,
                         payload_json,
@@ -406,6 +451,14 @@ class PostgresProjectionStore:
             )
             self._set_meta(
                 connection,
+                "artifact_inspection_count",
+                str(
+                    len(artifact_inspections["public_artifacts"])
+                    + len(artifact_inspections["scoped_surfaces"])
+                ),
+            )
+            self._set_meta(
+                connection,
                 "scoped_artifact_count",
                 str(len(artifact_visibility["scoped_surfaces"])),
             )
@@ -459,6 +512,14 @@ class PostgresProjectionStore:
                 public_artifact_count = connection.execute(
                     "select count(*) from artifact_surface"
                 ).fetchone()[0]
+                artifact_inspection_count = connection.execute(
+                    """
+                    select (
+                        (select count(*) from artifact_inspection_surface)
+                        + (select count(*) from artifact_scoped_inspection_surface)
+                    )
+                    """
+                ).fetchone()[0]
                 scoped_artifact_count = connection.execute(
                     "select count(*) from artifact_scoped_surface"
                 ).fetchone()[0]
@@ -496,6 +557,7 @@ class PostgresProjectionStore:
                 "visible_rumor_count": 0,
                 "contract_unlock_count": 0,
                 "oracle_audit_count": 0,
+                "artifact_inspection_count": 0,
                 "schema_migration_count": 0,
                 "latest_schema_migration": None,
                 "visible_event_count": 0,
@@ -555,6 +617,12 @@ class PostgresProjectionStore:
             ),
             "public_artifact_count": int(
                 meta.get("public_artifact_count", str(public_artifact_count))
+            ),
+            "artifact_inspection_count": int(
+                meta.get(
+                    "artifact_inspection_count",
+                    str(artifact_inspection_count),
+                )
             ),
             "scoped_artifact_count": int(
                 meta.get("scoped_artifact_count", str(scoped_artifact_count))
@@ -652,6 +720,42 @@ class PostgresProjectionStore:
             ],
             "edges": [_load_json(row[0]) for row in edge_rows],
         }
+
+    def read_visible_artifact(
+        self,
+        player_id: str,
+        artifact_id: str,
+        *,
+        crew_ids: list[str] | tuple[str, ...] = (),
+    ) -> dict[str, Any]:
+        principals = {("player", player_id)}
+        principals.update(("crew", crew_id) for crew_id in crew_ids)
+        with self._connect() as connection:
+            self._ensure_schema(connection)
+            public_row = connection.execute(
+                """
+                select payload_json
+                from artifact_inspection_surface
+                where artifact_id = %s
+                """,
+                (artifact_id,),
+            ).fetchone()
+            if public_row is not None:
+                return _load_json(public_row[0])
+            scoped_rows = connection.execute(
+                """
+                select payload_json, visibility_json
+                from artifact_scoped_inspection_surface
+                where artifact_id = %s
+                order by scope_key
+                """,
+                (artifact_id,),
+            ).fetchall()
+        for payload_json, visibility_json in scoped_rows:
+            visibility = _load_json(visibility_json)
+            if _visibility_matches(visibility, principals):
+                return _load_json(payload_json)
+        raise KeyError(artifact_id)
 
     def read_visible_deals(
         self,
@@ -924,6 +1028,16 @@ class PostgresProjectionStore:
         )
         connection.execute(
             """
+            create table if not exists artifact_inspection_surface (
+                artifact_id text primary key,
+                contract_id text not null,
+                payload_json jsonb not null,
+                updated_sequence bigint not null
+            )
+            """
+        )
+        connection.execute(
+            """
             create table if not exists artifact_edge (
                 source_id text not null,
                 target_id text not null,
@@ -937,6 +1051,18 @@ class PostgresProjectionStore:
         connection.execute(
             """
             create table if not exists artifact_scoped_surface (
+                artifact_id text not null,
+                scope_key text not null,
+                payload_json jsonb not null,
+                visibility_json jsonb not null,
+                updated_sequence bigint not null,
+                primary key (artifact_id, scope_key)
+            )
+            """
+        )
+        connection.execute(
+            """
+            create table if not exists artifact_scoped_inspection_surface (
                 artifact_id text not null,
                 scope_key text not null,
                 payload_json jsonb not null,

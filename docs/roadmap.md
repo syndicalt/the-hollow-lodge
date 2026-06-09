@@ -495,6 +495,10 @@ Status:
   read redacted oracle audit rows from the projection database when fresh,
   falling back to Eventloom replay when the projection is stale, disabled, or
   unavailable.
+- Artifact inspection projection reads completed: `GET /artifacts/{artifact_id}`
+  can read player-visible source text and source-chain fields from the
+  projection database when fresh, while hidden flags, hidden truth, and graph
+  internals remain excluded from the read model.
 - Deferred: deeper death/legacy inheritance, additional long-term unlock paths,
   and migrating heavier campaign reads onto the projection database.
 
@@ -2557,6 +2561,32 @@ Expected verification:
 
 - `pytest tests/server/test_resolution_oracle.py::test_projection_store_materializes_redacted_oracle_audits tests/server/test_resolution_oracle.py::test_admin_oracle_audits_read_fresh_projection_when_enabled tests/server/test_resolution_oracle.py::test_admin_oracle_audits_fall_back_when_projection_is_stale -q`
 - `pytest tests/server/test_resolution_oracle.py tests/server/test_phase_resolution.py tests/server/test_projection_store.py tests/server/test_app_config.py tests/e2e/test_projection_backend_smoke.py tests/client/test_cli_commands.py tests/client/test_api.py -q`
+- `pytest -q`
+
+### Slice 101: Artifact Inspection Projection Reads
+
+Status: completed.
+
+Move single-artifact inspection reads onto the projection database without
+weakening the source-material gameplay loop. SQLite and Postgres projection
+stores now materialize an artifact inspection read model separate from the
+shallow visible-artifact list. Public artifact rows include the same
+player-visible source text and source-chain fields returned by
+`GET /artifacts/{artifact_id}`; scoped rows preserve crew/player visibility for
+granted, transferred, and deal-copied artifacts.
+
+`GET /artifacts/{artifact_id}` uses the projection with
+`HOLLOW_LODGE_ARTIFACT_PROJECTION_READS=1` only when diagnostics show zero lag.
+If the projection is stale, unavailable, disabled, or rejects the requested
+artifact, the route keeps the existing Eventloom-derived `ArtifactService`
+fallback. The inspection projection intentionally omits hidden flags, hidden
+truth, server notes, and artifact graph internals while preserving inspectable
+source material. This slice advances the projection schema to version `9`.
+
+Expected verification:
+
+- `pytest tests/server/test_projection_store.py::test_projection_store_materializes_artifact_inspections_without_hidden_fields tests/server/test_projection_store.py::test_artifact_inspection_route_reads_fresh_projection_when_enabled tests/server/test_projection_store.py::test_artifact_inspection_route_falls_back_when_projection_is_stale -q`
+- `pytest tests/server/test_projection_store.py tests/server/test_artifact_routes.py tests/server/test_app_config.py tests/e2e/test_projection_backend_smoke.py tests/client/test_cli_commands.py tests/client/test_api.py -q`
 - `pytest -q`
 
 ## Completion Standard

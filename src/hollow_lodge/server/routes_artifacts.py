@@ -9,7 +9,10 @@ from hollow_lodge.domain.identity import Player
 from hollow_lodge.eventlog.jsonl_store import IdempotencyConflictError
 from hollow_lodge.server.artifact_service import ArtifactService
 from hollow_lodge.server.auth import current_player
-from hollow_lodge.server.projected_artifacts import projected_visible_artifacts
+from hollow_lodge.server.projected_artifacts import (
+    projected_visible_artifact,
+    projected_visible_artifacts,
+)
 from hollow_lodge.server.runtime_services import refresh_projection_store
 
 
@@ -41,11 +44,20 @@ def inspect_artifact(
     request: Request,
     player: Player = Depends(current_player),
 ):
+    crew_ids = _crew_ids_for_player(request, player.player_id)
+    projected = projected_visible_artifact(
+        request,
+        player.player_id,
+        artifact_id,
+        crew_ids=crew_ids,
+    )
+    if projected is not None:
+        return projected
     try:
         return _artifact_service(request).inspect_artifact(
             artifact_id=artifact_id,
             player_id=player.player_id,
-            crew_ids=_crew_ids_for_player(request, player.player_id),
+            crew_ids=crew_ids,
         )
     except KeyError as exc:
         raise HTTPException(

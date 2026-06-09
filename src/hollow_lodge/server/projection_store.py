@@ -11,6 +11,7 @@ from hollow_lodge.domain.events import GameEvent
 from hollow_lodge.domain.proofs import ProofDossier
 from hollow_lodge.server.projections import (
     apply_contract_unlock_status,
+    artifact_inspections_from_events,
     artifact_visibility_from_events,
     contract_board_from_events,
     crew_legacy_from_contracts,
@@ -21,7 +22,7 @@ from hollow_lodge.server.pending_decisions import pending_decisions_for_player
 from hollow_lodge.server.rumors import SAFE_RUMOR_FIELDS
 
 
-SCHEMA_VERSION = "8"
+SCHEMA_VERSION = "9"
 PROJECTION_SCHEMA_MIGRATIONS: tuple[tuple[str, str], ...] = (
     ("1", "initial projection read models"),
     ("2", "proof dossier projection read model"),
@@ -31,6 +32,7 @@ PROJECTION_SCHEMA_MIGRATIONS: tuple[tuple[str, str], ...] = (
     ("6", "visible rumor projection read model"),
     ("7", "contract unlock projection read model"),
     ("8", "oracle audit projection read model"),
+    ("9", "artifact inspection projection read model"),
 )
 
 
@@ -46,6 +48,7 @@ class SqliteProjectionStore:
         board = snapshot["board"]
         crew_summaries = snapshot["crew_summaries"]
         artifact_visibility = snapshot["artifact_visibility"]
+        artifact_inspections = snapshot["artifact_inspections"]
         deals = snapshot["deals"]
         crew_legacies = snapshot["crew_legacies"]
         proof_dossiers = snapshot["proof_dossiers"]
@@ -62,8 +65,10 @@ class SqliteProjectionStore:
             connection.execute("delete from contract_board")
             connection.execute("delete from crew_summary")
             connection.execute("delete from artifact_surface")
+            connection.execute("delete from artifact_inspection_surface")
             connection.execute("delete from artifact_edge")
             connection.execute("delete from artifact_scoped_surface")
+            connection.execute("delete from artifact_scoped_inspection_surface")
             connection.execute("delete from deal_surface")
             connection.execute("delete from visible_event_surface")
             connection.execute("delete from crew_legacy")
@@ -129,6 +134,25 @@ class SqliteProjectionStore:
                         last_sequence,
                     ),
                 )
+            for artifact_id, artifact in artifact_inspections[
+                "public_artifacts"
+            ].items():
+                connection.execute(
+                    """
+                    insert into artifact_inspection_surface (
+                        artifact_id,
+                        contract_id,
+                        payload_json,
+                        updated_sequence
+                    ) values (?, ?, ?, ?)
+                    """,
+                    (
+                        artifact_id,
+                        artifact["contract_id"],
+                        json.dumps(artifact, sort_keys=True, separators=(",", ":")),
+                        last_sequence,
+                    ),
+                )
             for edge in artifact_visibility["public_edges"].values():
                 connection.execute(
                     """
@@ -157,6 +181,38 @@ class SqliteProjectionStore:
                 connection.execute(
                     """
                     insert into artifact_scoped_surface (
+                        artifact_id,
+                        scope_key,
+                        payload_json,
+                        visibility_json,
+                        updated_sequence
+                    ) values (?, ?, ?, ?, ?)
+                    on conflict(artifact_id, scope_key) do update set
+                        payload_json = excluded.payload_json,
+                        visibility_json = excluded.visibility_json,
+                        updated_sequence = excluded.updated_sequence
+                    """,
+                    (
+                        scoped["artifact_id"],
+                        _artifact_scope_key(scoped["visibility"]),
+                        json.dumps(
+                            scoped["surface"],
+                            sort_keys=True,
+                            separators=(",", ":"),
+                        ),
+                        visibility_json,
+                        last_sequence,
+                    ),
+                )
+            for scoped in artifact_inspections["scoped_surfaces"]:
+                visibility_json = json.dumps(
+                    scoped["visibility"],
+                    sort_keys=True,
+                    separators=(",", ":"),
+                )
+                connection.execute(
+                    """
+                    insert into artifact_scoped_inspection_surface (
                         artifact_id,
                         scope_key,
                         payload_json,
@@ -440,6 +496,14 @@ class SqliteProjectionStore:
             )
             self._set_meta(
                 connection,
+                "artifact_inspection_count",
+                str(
+                    len(artifact_inspections["public_artifacts"])
+                    + len(artifact_inspections["scoped_surfaces"])
+                ),
+            )
+            self._set_meta(
+                connection,
                 "scoped_artifact_count",
                 str(len(artifact_visibility["scoped_surfaces"])),
             )
@@ -479,6 +543,7 @@ class SqliteProjectionStore:
                 "visible_rumor_count": 0,
                 "contract_unlock_count": 0,
                 "oracle_audit_count": 0,
+                "artifact_inspection_count": 0,
                 "schema_migration_count": 0,
                 "latest_schema_migration": None,
                 "visible_event_count": 0,
@@ -530,6 +595,14 @@ class SqliteProjectionStore:
                 public_artifact_count = connection.execute(
                     "select count(*) from artifact_surface"
                 ).fetchone()[0]
+                artifact_inspection_count = connection.execute(
+                    """
+                    select (
+                        (select count(*) from artifact_inspection_surface)
+                        + (select count(*) from artifact_scoped_inspection_surface)
+                    )
+                    """
+                ).fetchone()[0]
                 scoped_artifact_count = connection.execute(
                     "select count(*) from artifact_scoped_surface"
                 ).fetchone()[0]
@@ -566,6 +639,7 @@ class SqliteProjectionStore:
                 "visible_rumor_count": 0,
                 "contract_unlock_count": 0,
                 "oracle_audit_count": 0,
+                "artifact_inspection_count": 0,
                 "schema_migration_count": 0,
                 "latest_schema_migration": None,
                 "visible_event_count": 0,
@@ -624,6 +698,12 @@ class SqliteProjectionStore:
             ),
             "public_artifact_count": int(
                 meta.get("public_artifact_count", str(public_artifact_count))
+            ),
+            "artifact_inspection_count": int(
+                meta.get(
+                    "artifact_inspection_count",
+                    str(artifact_inspection_count),
+                )
             ),
             "scoped_artifact_count": int(
                 meta.get("scoped_artifact_count", str(scoped_artifact_count))
@@ -721,6 +801,42 @@ class SqliteProjectionStore:
             ],
             "edges": [json.loads(row[0]) for row in edge_rows],
         }
+
+    def read_visible_artifact(
+        self,
+        player_id: str,
+        artifact_id: str,
+        *,
+        crew_ids: list[str] | tuple[str, ...] = (),
+    ) -> dict[str, Any]:
+        principals = {("player", player_id)}
+        principals.update(("crew", crew_id) for crew_id in crew_ids)
+        with sqlite3.connect(self.path) as connection:
+            self._ensure_schema(connection)
+            public_row = connection.execute(
+                """
+                select payload_json
+                from artifact_inspection_surface
+                where artifact_id = ?
+                """,
+                (artifact_id,),
+            ).fetchone()
+            if public_row is not None:
+                return json.loads(public_row[0])
+            scoped_rows = connection.execute(
+                """
+                select payload_json, visibility_json
+                from artifact_scoped_inspection_surface
+                where artifact_id = ?
+                order by scope_key
+                """,
+                (artifact_id,),
+            ).fetchall()
+        for payload_json, visibility_json in scoped_rows:
+            visibility = json.loads(visibility_json)
+            if _visibility_matches(visibility, principals):
+                return json.loads(payload_json)
+        raise KeyError(artifact_id)
 
     def read_visible_deals(
         self,
@@ -998,6 +1114,16 @@ class SqliteProjectionStore:
         )
         connection.execute(
             """
+            create table if not exists artifact_inspection_surface (
+                artifact_id text primary key,
+                contract_id text not null,
+                payload_json text not null,
+                updated_sequence integer not null
+            )
+            """
+        )
+        connection.execute(
+            """
             create table if not exists artifact_edge (
                 source_id text not null,
                 target_id text not null,
@@ -1009,6 +1135,18 @@ class SqliteProjectionStore:
             """
         )
         self._ensure_artifact_scoped_surface_schema(connection)
+        connection.execute(
+            """
+            create table if not exists artifact_scoped_inspection_surface (
+                artifact_id text not null,
+                scope_key text not null,
+                payload_json text not null,
+                visibility_json text not null,
+                updated_sequence integer not null,
+                primary key (artifact_id, scope_key)
+            )
+            """
+        )
         connection.execute(
             """
             create table if not exists deal_surface (
@@ -1219,6 +1357,7 @@ def build_projection_snapshot(events: list[GameEvent]) -> dict[str, Any]:
     board = contract_board_from_events(events)
     crew_summaries = crew_summaries_from_events(events)
     artifact_visibility = artifact_visibility_from_events(events)
+    artifact_inspections = artifact_inspections_from_events(events)
     deals = deal_rows_from_events(events)
     crew_legacies = _crew_legacies_from_projection_inputs(
         crew_ids=crew_summaries.keys(),
@@ -1259,6 +1398,7 @@ def build_projection_snapshot(events: list[GameEvent]) -> dict[str, Any]:
         "board": board,
         "crew_summaries": crew_summaries,
         "artifact_visibility": artifact_visibility,
+        "artifact_inspections": artifact_inspections,
         "deals": deals,
         "crew_legacies": crew_legacies,
         "contract_unlock_statuses": contract_unlock_statuses,

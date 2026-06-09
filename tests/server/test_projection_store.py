@@ -1804,6 +1804,74 @@ def test_artifact_route_reads_fresh_projected_visible_artifacts_when_enabled(
     assert "ink-after-binding" not in response.text
 
 
+def test_artifact_inspection_route_reads_fresh_projection_when_enabled(
+    tmp_path,
+    monkeypatch,
+):
+    monkeypatch.setenv("HOLLOW_LODGE_ARTIFACT_PROJECTION_READS", "1")
+    client = TestClient(create_app(data_dir=tmp_path, invite_codes=["a"]))
+    ada = register(client, "a", "Ada")
+    original_read = client.app.state.projection_store.read_visible_artifact
+    calls = {"count": 0}
+
+    def tracked_read_visible_artifact(player_id: str, artifact_id: str, crew_ids=()):
+        calls["count"] += 1
+        return original_read(player_id, artifact_id, crew_ids=crew_ids)
+
+    client.app.state.projection_store.read_visible_artifact = tracked_read_visible_artifact
+    client.app.state.artifact_service.inspect_artifact = (
+        lambda **kwargs: (_ for _ in ()).throw(
+            AssertionError("fresh artifact inspection projection should be used")
+        )
+    )
+
+    response = client.get(
+        "/artifacts/artifact_ledger_rubric",
+        headers=auth(ada["token"]),
+    )
+
+    assert response.status_code == 200
+    assert calls["count"] == 1
+    assert response.json()["artifact_id"] == "artifact_ledger_rubric"
+    assert response.json()["full_text"].startswith("Rubric copy:")
+    assert response.json()["source_chain"] == ["archive:lot-card"]
+    assert "hidden_flags" not in response.text
+    assert "ink-after-binding" not in response.text
+
+
+def test_artifact_inspection_route_falls_back_when_projection_is_stale(
+    tmp_path,
+    monkeypatch,
+):
+    monkeypatch.setenv("HOLLOW_LODGE_ARTIFACT_PROJECTION_READS", "1")
+    client = TestClient(create_app(data_dir=tmp_path, invite_codes=["a"]))
+    ada = register(client, "a", "Ada")
+    out_of_band_contract = STARTER_CONTRACT.model_copy(
+        update={"contract_id": "contract_out_of_band", "title": "Out Of Band"}
+    )
+    client.app.state.event_store.append_command(
+        event_type="contract.board.published",
+        actor_id="server",
+        visibility=EventVisibility.public(),
+        payload=out_of_band_contract.model_dump(mode="json"),
+        idempotency_key="out-of-band-contract",
+    )
+
+    def fail_if_projection_read(player_id: str, artifact_id: str, crew_ids=()):
+        raise AssertionError("stale artifact inspection projection should not be used")
+
+    client.app.state.projection_store.read_visible_artifact = fail_if_projection_read
+
+    response = client.get(
+        "/artifacts/artifact_ledger_rubric",
+        headers=auth(ada["token"]),
+    )
+
+    assert response.status_code == 200
+    assert response.json()["artifact_id"] == "artifact_ledger_rubric"
+    assert response.json()["full_text"].startswith("Rubric copy:")
+
+
 def test_artifact_route_falls_back_when_projection_is_stale(tmp_path, monkeypatch):
     monkeypatch.setenv("HOLLOW_LODGE_ARTIFACT_PROJECTION_READS", "1")
     client = TestClient(create_app(data_dir=tmp_path, invite_codes=["a"]))
@@ -2622,6 +2690,43 @@ def test_projection_store_materializes_visible_artifacts_without_hidden_fields(t
     ]
     stored_text = "\n".join(row[1] for row in public_rows)
     assert "full_text" not in stored_text
+    assert "hidden_flags" not in stored_text
+    assert "ink-after-binding" not in stored_text
+    assert "saint-bone forgery" not in stored_text
+
+
+def test_projection_store_materializes_artifact_inspections_without_hidden_fields(
+    tmp_path,
+):
+    client = TestClient(create_app(data_dir=tmp_path, invite_codes=["a"]))
+    ada = register(client, "a", "Ada")
+
+    projected = client.app.state.projection_store.read_visible_artifact(
+        ada["player_id"],
+        "artifact_ledger_rubric",
+        crew_ids=(),
+    )
+    diagnostics = client.app.state.projection_store.diagnostics()
+    with sqlite3.connect(tmp_path / "server-projections.sqlite3") as connection:
+        public_rows = connection.execute(
+            """
+            select artifact_id, payload_json
+            from artifact_inspection_surface
+            order by artifact_id
+            """
+        ).fetchall()
+
+    assert diagnostics["artifact_inspection_count"] == 2
+    assert projected["artifact_id"] == "artifact_ledger_rubric"
+    assert projected["full_text"].startswith("Rubric copy:")
+    assert projected["source_chain"] == ["archive:lot-card"]
+    assert [row[0] for row in public_rows] == [
+        "artifact_ledger_rubric",
+        "artifact_lot_card",
+    ]
+    stored_text = "\n".join(row[1] for row in public_rows)
+    assert "full_text" in stored_text
+    assert "source_chain" in stored_text
     assert "hidden_flags" not in stored_text
     assert "ink-after-binding" not in stored_text
     assert "saint-bone forgery" not in stored_text

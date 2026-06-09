@@ -534,6 +534,8 @@ class FakePostgresConnection:
             return FakePostgresCursor(rows=self.meta_rows)
         if normalized.startswith("select count(*)"):
             return FakePostgresCursor(row=(0,))
+        if normalized.startswith("select ("):
+            return FakePostgresCursor(row=(0,))
         return FakePostgresCursor()
 
     def commit(self) -> None:

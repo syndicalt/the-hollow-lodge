@@ -129,6 +129,53 @@ def artifact_visibility_from_events(events: list[GameEvent]) -> dict[str, Any]:
     }
 
 
+def artifact_inspections_from_events(events: list[GameEvent]) -> dict[str, Any]:
+    graphs = _seeded_artifact_graphs(events)
+    inspections_by_id: dict[str, dict[str, Any]] = {}
+    artifacts_by_id: dict[str, Any] = {}
+    for graph, _ in graphs.values():
+        artifacts_by_id.update(
+            {artifact.artifact_id: artifact for artifact in graph.artifacts}
+        )
+    scoped_surfaces: list[dict[str, Any]] = []
+
+    for graph, graph_public_ids in graphs.values():
+        for artifact_id in graph_public_ids:
+            inspections_by_id[artifact_id] = graph.artifact_by_id(
+                artifact_id
+            ).inspection_view()
+
+    for event in events:
+        if event.type == "artifact.access.granted":
+            artifact = artifacts_by_id.get(event.payload["artifact_id"])
+            surface = (
+                artifact.inspection_view()
+                if artifact is not None
+                else event.payload["surface"]
+            )
+            scoped_surfaces.append(
+                {
+                    "artifact_id": event.payload["artifact_id"],
+                    "surface": surface,
+                    "visibility": event.visibility.model_dump(mode="json"),
+                }
+            )
+        elif event.type in {"artifact.transferred", "artifact.deal_copied"}:
+            surface = event.payload["surface"]
+            scoped_surfaces.append(
+                {
+                    "artifact_id": surface["artifact_id"],
+                    "surface": surface,
+                    "visibility": event.visibility.model_dump(mode="json"),
+                }
+            )
+
+    return {
+        "public_artifacts": inspections_by_id,
+        "scoped_surfaces": scoped_surfaces,
+    }
+
+
 def _seeded_artifact_graphs(
     events: list[GameEvent],
 ) -> dict[str, tuple[ArtifactGraph, tuple[str, ...]]]:

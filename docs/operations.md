@@ -127,7 +127,7 @@ the effective projection read configuration in `data.projection_reads`.
 Implemented surfaces include contract board, crew-scoped contract unlock
 status, crew summary, visible artifacts, visible deals, proof dossiers, chat,
 visible events, pending decisions, current actions, crew-board visible rumors,
-and redacted oracle audit records.
+artifact inspections, and redacted oracle audit records.
 
 Projection storage and authoritative event storage are separate cutovers.
 Projection storage can use `DATABASE_URL` for Railway convenience; the
@@ -165,6 +165,14 @@ safe `unlock_status` payloads keyed by crew and contract; raw seed
 private event payloads remain outside the read model. `/diagnostics` reports
 `contract_unlock_count` so operators can confirm the surface is materialized
 before enabling the read flag.
+
+Artifact inspection reads use the same
+`HOLLOW_LODGE_ARTIFACT_PROJECTION_READS=1` flag as visible artifact lists. The
+inspection projection stores player-visible source text and source-chain fields
+needed by `GET /artifacts/{artifact_id}`, but keeps hidden flags, hidden truth,
+server notes, and artifact graph internals out of the read model. Stale or
+unavailable projections fall back to the authoritative Eventloom-derived
+artifact service.
 
 Admin oracle audit reads can be enabled independently with
 `HOLLOW_LODGE_ORACLE_AUDIT_PROJECTION_READS=1`. The projection stores one
