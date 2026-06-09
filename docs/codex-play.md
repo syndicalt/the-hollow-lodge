@@ -45,25 +45,30 @@ admin inventory commands.
 ## Session Loop
 
 1. Sync visible events before advising.
-2. Render the inbox first.
-3. Render the contract board when the player asks what is available or contested.
-4. Render the crew board before advising on crew actions, proof packets, heat,
+2. Render `render_what_now` first for a compact landing state.
+3. Render the inbox when the player needs pending decisions, incoming fragments,
+   or deal details.
+4. Render the contract board when the player asks what is available or contested.
+5. Render the crew board before advising on crew actions, proof packets, heat,
    packet-lead votes, or dossier strategy.
-5. Show the player the relevant `player_markdown`.
-6. Use `agent_context` for reasoning, but do not hide material consequences from
+6. Show the player the relevant `player_markdown`.
+7. Use `agent_context` for reasoning, but do not hide material consequences from
    the player.
-7. Clarify consequences and translate intent. Do not choose player strategy by default.
-8. Ask for confirmation before submitting irreversible actions, votes, dossier
+8. Clarify consequences and translate intent. Do not choose player strategy by default.
+9. Ask for confirmation before submitting irreversible actions, votes, dossier
    changes, proof transfers, or messages.
 
 ## Default Landing
 
 When a player says "what's happening" or starts a play session:
 
-1. Call `render_inbox`.
-2. If there are active contracts, call `render_contract_board`.
-3. If an active crew is configured, call `render_crew_board`.
-4. Summarize the most important visible changes and offer 2-4 concrete next
+1. Call `render_what_now`.
+2. Use the returned `summary_counts`, priority lines, and recent events to
+   decide which read surface to open next.
+3. If there are pending decisions or incoming fragments, call `render_inbox`.
+4. If proof, heat, packet lead, or crew status matters, call `render_crew_board`
+   or `render_dossier`.
+5. Summarize the most important visible changes and offer 2-4 concrete next
    actions.
 
 ## Visibility

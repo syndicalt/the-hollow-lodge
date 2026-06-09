@@ -31,12 +31,23 @@ def test_full_game_loop_with_escrow_trade(tmp_path):
         "deal_preview",
         "inbox",
         "crew_board",
+        "dossier",
+        "what_now",
         "contract_board",
+        "activity",
     ]
     assert "Acceptance preview:" in "\n".join(result["lines"])
     assert "The Saint's False Finger" in "\n".join(result["lines"])
     assert "Visible artifacts:" in "\n".join(result["lines"])
     assert "Phase result:" in "\n".join(result["lines"])
+    assert "What Now: Ada Corelumen" in "\n".join(result["lines"])
+    assert result["final_what_now"]["surface"] == "what_now"
+    assert (
+        result["final_what_now"]["agent_context"]["summary_counts"]["active_contracts"]
+        == 1
+    )
+    assert result["final_what_now"]["agent_context"]["mutation"] is False
+    assert result["final_activity"]["agent_context"]["visible_event_count"] > 0
     assert result["timeline"] == [
         "deal.proposed",
         "deal.accepted",

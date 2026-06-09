@@ -1,18 +1,13 @@
 from __future__ import annotations
 
 import tempfile
+from pathlib import Path
 from typing import Any
 
 from fastapi.testclient import TestClient
 
-from hollow_lodge.client.artifact_render import build_artifact_graph_packet
-from hollow_lodge.client.render_packets import (
-    build_crew_board_packet,
-    build_deal_acceptance_preview_packet,
-    build_deals_packet,
-    build_contract_board_packet,
-    build_inbox_packet,
-)
+from hollow_lodge.client.codex_session import CodexGameSession
+from hollow_lodge.client.config import ClientConfig, save_config
 from hollow_lodge.server.app import create_app
 
 
@@ -31,12 +26,22 @@ def run_mock(data_dir: str) -> dict[str, Any]:
     moth = _create_crew(client, bela, "The Moth Lanterns", "crew-moth")
     ada_headers = _auth(ada["token"])
     bela_headers = _auth(bela["token"])
+    ada_session = _codex_session(
+        client,
+        data_dir=Path(data_dir),
+        player=ada,
+        active_crew_id=gilt["crew_id"],
+    )
+    bela_session = _codex_session(
+        client,
+        data_dir=Path(data_dir),
+        player=bela,
+        active_crew_id=moth["crew_id"],
+    )
 
     contract_board = _get(client, "/contracts", headers=ada_headers)
-    initial_contract_packet = build_contract_board_packet(contract_board)
-    initial_artifact_packet = build_artifact_graph_packet(
-        _get(client, "/artifacts", headers=ada_headers)
-    )
+    initial_contract_packet = ada_session.render_contract_board()
+    initial_artifact_packet = ada_session.render_artifacts()
     _post(
         client,
         "/artifacts/artifact_ledger_rubric/inspect",
@@ -68,16 +73,9 @@ def run_mock(data_dir: str) -> dict[str, Any]:
         },
         expected_status=201,
     )
-    visible_deals = _get(client, "/deals", headers=ada_headers)
-    deals_packet = build_deals_packet(visible_deals)
-    deal_preview_packet = build_deal_acceptance_preview_packet(
-        {
-            "deal": proposed,
-            "viewer_crew_ids": [gilt["crew_id"]],
-        }
-    )
-    moth_inbox = _get(client, "/inbox", headers=bela_headers)
-    moth_inbox_packet = build_inbox_packet(moth_inbox)
+    deals_packet = ada_session.render_deals()
+    deal_preview_packet = ada_session.preview_deal_acceptance(proposed["deal_id"])
+    moth_inbox_packet = bela_session.render_inbox()
     fulfilled = _post(
         client,
         f"/deals/{proposed['deal_id']}/accept",
@@ -159,7 +157,8 @@ def run_mock(data_dir: str) -> dict[str, Any]:
     )
     gilt_board = _get(client, f"/crews/{gilt['crew_id']}/board", headers=ada_headers)
     moth_board = _get(client, f"/crews/{moth['crew_id']}/board", headers=bela_headers)
-    gilt_board_packet = build_crew_board_packet(gilt_board)
+    gilt_board_packet = ada_session.render_crew_board()
+    final_dossier_packet = ada_session.render_dossier()
     reveal = _post(
         client,
         "/contracts/contract_false_finger/phases/auction-preview/lock",
@@ -167,9 +166,9 @@ def run_mock(data_dir: str) -> dict[str, Any]:
         json={"hours_elapsed": 6},
         expected_status=200,
     )
-    final_contract_packet = build_contract_board_packet(
-        _get(client, "/contracts", headers=ada_headers)
-    )
+    final_what_now_packet = ada_session.render_what_now()
+    final_contract_packet = ada_session.render_contract_board()
+    final_activity_packet = ada_session.render_activity()
     codex_packets = [
         initial_contract_packet,
         initial_artifact_packet,
@@ -177,7 +176,10 @@ def run_mock(data_dir: str) -> dict[str, Any]:
         deal_preview_packet,
         moth_inbox_packet,
         gilt_board_packet,
+        final_dossier_packet,
+        final_what_now_packet,
         final_contract_packet,
+        final_activity_packet,
     ]
 
     timeline = [
@@ -206,13 +208,19 @@ def run_mock(data_dir: str) -> dict[str, Any]:
         f"moth board deals: {', '.join(deal['status'] for deal in moth_board['deals'])}",
         "gilt board excerpt:",
         "\n".join(gilt_board_packet.player_markdown.splitlines()[:18]),
+        "gilt dossier excerpt:",
+        "\n".join(final_dossier_packet.player_markdown.splitlines()[:12]),
         "phase standings:",
         *[
             f"- {standing['crew_id']}: {standing['standing']} ({standing['score']})"
             for standing in reveal["standings"]
         ],
+        "final what now:",
+        final_what_now_packet.player_markdown,
         "final contract board:",
         final_contract_packet.player_markdown,
+        "final activity:",
+        final_activity_packet.player_markdown,
         f"escrow timeline: {' -> '.join(timeline)}",
     ]
     return {
@@ -222,8 +230,75 @@ def run_mock(data_dir: str) -> dict[str, Any]:
         "reveal": reveal,
         "timeline": timeline,
         "codex_packets": [packet.surface for packet in codex_packets],
+        "final_what_now": final_what_now_packet.model_dump(mode="json"),
+        "final_activity": final_activity_packet.model_dump(mode="json"),
         "lines": lines,
     }
+
+
+class _TestClientCodexApi:
+    def __init__(self, client: TestClient, token: str):
+        self.client = client
+        self.token = token
+
+    def visible_events(self) -> list[dict[str, Any]]:
+        return self._get("/events")["events"]
+
+    def contracts(self) -> dict[str, Any]:
+        return self._get("/contracts")
+
+    def inbox(self) -> dict[str, Any]:
+        return self._get("/inbox")
+
+    def me(self) -> dict[str, Any]:
+        return self._get("/identity/me")
+
+    def profile(self) -> dict[str, Any]:
+        return self._get("/identity/profile")
+
+    def crew_board(self, *, crew_id: str) -> dict[str, Any]:
+        return self._get(f"/crews/{crew_id}/board")
+
+    def dossier(self, *, crew_id: str) -> dict[str, Any]:
+        return self._get(f"/proofs/dossiers/{crew_id}")
+
+    def artifacts(self) -> dict[str, Any]:
+        return self._get("/artifacts")
+
+    def artifact(self, *, artifact_id: str) -> dict[str, Any]:
+        return self._get(f"/artifacts/{artifact_id}")
+
+    def deals(self) -> dict[str, Any]:
+        return self._get("/deals")
+
+    def _get(self, path: str) -> dict[str, Any]:
+        return _get(self.client, path, headers=_auth(self.token))
+
+
+def _codex_session(
+    client: TestClient,
+    *,
+    data_dir: Path,
+    player: dict[str, Any],
+    active_crew_id: str,
+) -> CodexGameSession:
+    config_path = data_dir / f"{player['player_id']}.config.json"
+    local_log_path = data_dir / f"{player['player_id']}.local.jsonl"
+    save_config(
+        config_path,
+        ClientConfig(
+            server_url="http://testserver",
+            player_id=player["player_id"],
+            token=player["token"],
+            display_name=player["display_name"],
+            active_crew_id=active_crew_id,
+        ),
+    )
+    return CodexGameSession(
+        config_path=config_path,
+        local_log_path=local_log_path,
+        api=_TestClientCodexApi(client, player["token"]),
+    )
 
 
 def _register(client: TestClient, invite: str, name: str) -> dict[str, Any]:

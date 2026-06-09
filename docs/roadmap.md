@@ -1486,6 +1486,26 @@ Expected verification:
 - `pytest tests/client/test_render_packets.py tests/client/test_codex_session.py tests/test_mcp_server.py tests/e2e/test_codex_render_surfaces.py -q`
 - `pytest -q`
 
+### Slice 58: Codex-Session Alpha Playthrough Proof
+
+Status: completed.
+
+Harden the Milestone 1 proof gate so the full-loop smoke exercises the same
+Codex session path used by MCP tools instead of only constructing render
+packets directly from server responses. `scripts/mock_full_game_loop.py` now
+creates real `CodexGameSession` instances against the in-process server,
+syncs local perspective logs, and renders contract board, artifacts, visible
+deals, deal preview, inbox, crew board, dossier, `what_now`, contract result,
+and activity packets during a two-crew escrow playthrough. The Codex play guide
+now starts sessions with `render_what_now`.
+
+Expected verification:
+
+- `pytest tests/e2e/test_full_game_loop_with_escrow.py -q`
+- `python scripts/mock_full_game_loop.py`
+- `pytest tests/e2e/test_full_game_loop_with_escrow.py tests/e2e/test_codex_render_surfaces.py tests/client/test_codex_session.py tests/test_mcp_server.py -q`
+- `pytest -q`
+
 ## Completion Standard
 
 Each slice must:
