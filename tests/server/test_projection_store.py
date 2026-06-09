@@ -878,6 +878,130 @@ def test_deal_accept_refreshes_projection_for_flagged_reads(tmp_path, monkeypatc
     )
 
 
+def test_inbox_embeds_projected_visible_deals_when_enabled(tmp_path, monkeypatch):
+    monkeypatch.setenv("HOLLOW_LODGE_DEAL_PROJECTION_READS", "1")
+    client = TestClient(create_app(data_dir=tmp_path, invite_codes=["a", "b", "c"]))
+    ada = register(client, "a", "Ada")
+    bela = register(client, "b", "Bela")
+    caro = register(client, "c", "Caro")
+    gilt = create_crew(client, ada["token"], "crew-create-gilt", "The Gilt Knives")
+    moth = create_crew(client, bela["token"], "crew-create-moth", "The Moth Choir")
+    ash = create_crew(client, caro["token"], "crew-create-ash", "The Ash Keys")
+    proposed = client.post(
+        "/deals",
+        headers=command_auth(ada["token"], "deal-propose"),
+        json=proposed_deal_payload(gilt, moth),
+    )
+    original_read = client.app.state.projection_store.read_visible_deals
+    calls = {"count": 0}
+
+    def tracked_read_visible_deals(player_id: str, crew_ids=()):
+        calls["count"] += 1
+        return original_read(player_id, crew_ids=crew_ids)
+
+    client.app.state.projection_store.read_visible_deals = tracked_read_visible_deals
+    client.app.state.deal_service.list_for_player = (
+        lambda player_id: (_ for _ in ()).throw(
+            AssertionError("inbox should use fresh deal projection")
+        )
+    )
+
+    participant = client.get("/inbox", headers=auth(bela["token"]))
+    bystander = client.get("/inbox", headers=auth(caro["token"]))
+
+    assert proposed.status_code == 201
+    assert participant.status_code == 200
+    assert bystander.status_code == 200
+    assert calls["count"] >= 2
+    assert participant.json()["deals"] == [proposed.json()]
+    assert bystander.json()["deals"] == []
+    assert "Do not cite us." not in str(bystander.json())
+    assert ash["crew_id"] not in {
+        deal["proposer_crew_id"] for deal in participant.json()["deals"]
+    }
+
+
+def test_crew_board_embeds_projected_visible_deals_when_enabled(tmp_path, monkeypatch):
+    monkeypatch.setenv("HOLLOW_LODGE_DEAL_PROJECTION_READS", "1")
+    client = TestClient(create_app(data_dir=tmp_path, invite_codes=["a", "b", "c"]))
+    ada = register(client, "a", "Ada")
+    bela = register(client, "b", "Bela")
+    caro = register(client, "c", "Caro")
+    gilt = create_crew(client, ada["token"], "crew-create-gilt", "The Gilt Knives")
+    moth = create_crew(client, bela["token"], "crew-create-moth", "The Moth Choir")
+    ash = create_crew(client, caro["token"], "crew-create-ash", "The Ash Keys")
+    proposed = client.post(
+        "/deals",
+        headers=command_auth(ada["token"], "deal-propose"),
+        json=proposed_deal_payload(gilt, moth),
+    )
+    original_read = client.app.state.projection_store.read_visible_deals
+    calls = {"count": 0}
+
+    def tracked_read_visible_deals(player_id: str, crew_ids=()):
+        calls["count"] += 1
+        return original_read(player_id, crew_ids=crew_ids)
+
+    client.app.state.projection_store.read_visible_deals = tracked_read_visible_deals
+    client.app.state.deal_service.list_for_player = (
+        lambda player_id: (_ for _ in ()).throw(
+            AssertionError("crew board should use fresh deal projection")
+        )
+    )
+
+    participant = client.get(f"/crews/{moth['crew_id']}/board", headers=auth(bela["token"]))
+    bystander = client.get(f"/crews/{ash['crew_id']}/board", headers=auth(caro["token"]))
+
+    assert proposed.status_code == 201
+    assert participant.status_code == 200
+    assert bystander.status_code == 200
+    assert calls["count"] >= 2
+    assert participant.json()["deals"] == [proposed.json()]
+    assert bystander.json()["deals"] == []
+    assert "Do not cite us." not in str(bystander.json())
+
+
+def test_embedded_visible_deals_fall_back_when_projection_is_stale(
+    tmp_path,
+    monkeypatch,
+):
+    monkeypatch.setenv("HOLLOW_LODGE_DEAL_PROJECTION_READS", "1")
+    client = TestClient(create_app(data_dir=tmp_path, invite_codes=["a", "b"]))
+    ada = register(client, "a", "Ada")
+    bela = register(client, "b", "Bela")
+    gilt = create_crew(client, ada["token"], "crew-create-gilt", "The Gilt Knives")
+    moth = create_crew(client, bela["token"], "crew-create-moth", "The Moth Choir")
+    proposed = client.post(
+        "/deals",
+        headers=command_auth(ada["token"], "deal-propose"),
+        json=proposed_deal_payload(gilt, moth),
+    )
+    out_of_band_contract = STARTER_CONTRACT.model_copy(
+        update={"contract_id": "contract_out_of_band", "title": "Out Of Band"}
+    )
+    client.app.state.event_store.append_command(
+        event_type="contract.board.published",
+        actor_id="server",
+        visibility=EventVisibility.public(),
+        payload=out_of_band_contract.model_dump(mode="json"),
+        idempotency_key="out-of-band-contract",
+    )
+
+    def fail_if_projection_read(player_id: str, crew_ids=()):
+        raise AssertionError("stale embedded deal projection should not be used")
+
+    client.app.state.projection_store.read_visible_deals = fail_if_projection_read
+
+    inbox = client.get("/inbox", headers=auth(bela["token"]))
+    crew_board = client.get(f"/crews/{moth['crew_id']}/board", headers=auth(bela["token"]))
+
+    assert proposed.status_code == 201
+    assert inbox.status_code == 200
+    assert crew_board.status_code == 200
+    assert inbox.json()["deals"] == [proposed.json()]
+    assert crew_board.json()["deals"] == [proposed.json()]
+
+
 def test_projection_store_materializes_visible_deals_without_bystander_terms(tmp_path):
     client = TestClient(create_app(data_dir=tmp_path, invite_codes=["a", "b", "c"]))
     ada = register(client, "a", "Ada")

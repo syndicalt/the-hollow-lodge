@@ -315,6 +315,10 @@ Status:
   while deal proposal, acceptance, decline, cancellation, authorization, and
   artifact-copy fulfillment remain authoritative service writes against the
   event log.
+- Embedded deal projection reads completed: inbox and crew board deal blocks,
+  plus contract unlock and crew legacy calculations reached through those
+  surfaces, now reuse the same fresh SQLite deal projection and stale fallback
+  used by `/deals`, keeping Codex-facing deal context aligned.
 - Deferred: deeper death/legacy inheritance, additional long-term unlock paths,
   and migrating heavier campaign reads onto the projection database.
 
@@ -1242,6 +1246,26 @@ Expected verification:
 
 - `pytest tests/server/test_projection_store.py::test_deal_route_reads_fresh_projected_visible_deals_when_enabled tests/server/test_projection_store.py::test_deal_route_falls_back_when_projection_is_stale tests/server/test_projection_store.py::test_deal_accept_refreshes_projection_for_flagged_reads tests/server/test_projection_store.py::test_projection_store_materializes_visible_deals_without_bystander_terms -q`
 - `pytest tests/server/test_projection_store.py tests/server/test_deal_routes.py tests/server/test_deal_service.py tests/server/test_crew_routes.py tests/server/test_contract_seed.py tests/client/test_deal_mcp_render.py tests/client/test_deal_render.py tests/client/test_render_packets.py tests/test_mcp_server.py -q`
+- `pytest -q`
+
+### Slice 47: Embedded Deal Projection Reads
+
+Status: completed.
+
+Reuse the deal projection across Codex-facing surfaces that embed deal context.
+Inbox and crew board route helpers now call the same
+`projected_visible_deals` gate used by `/deals` when
+`HOLLOW_LODGE_DEAL_PROJECTION_READS=1`, the projection is available, and lag is
+zero. Stale, missing, or unreadable projection state still falls back to
+`DealService`. Because those helpers also feed pending decisions, contract
+unlock shaping, and crew legacy calculations reached from the inbox and crew
+board, embedded deal context now stays aligned with the dedicated deal list
+surface without moving deal authority out of the event-log/service path.
+
+Expected verification:
+
+- `pytest tests/server/test_projection_store.py::test_inbox_embeds_projected_visible_deals_when_enabled tests/server/test_projection_store.py::test_crew_board_embeds_projected_visible_deals_when_enabled tests/server/test_projection_store.py::test_embedded_visible_deals_fall_back_when_projection_is_stale -q`
+- `pytest tests/server/test_projection_store.py tests/server/test_deal_routes.py tests/server/test_deal_service.py tests/server/test_crew_routes.py tests/server/test_contract_seed.py tests/client/test_deal_mcp_render.py tests/client/test_deal_render.py tests/client/test_render_packets.py tests/client/test_contract_board.py tests/test_mcp_server.py -q`
 - `pytest -q`
 
 ## Completion Standard

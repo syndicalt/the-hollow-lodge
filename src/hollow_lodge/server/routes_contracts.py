@@ -14,6 +14,7 @@ from hollow_lodge.server.auth import current_player
 from hollow_lodge.server.contract_seed import ContractSeed, load_contract_seed_file
 from hollow_lodge.server.pending_decisions import pending_decisions_for_player
 from hollow_lodge.server.projected_artifacts import projected_visible_artifacts
+from hollow_lodge.server.projected_deals import projected_visible_deals
 from hollow_lodge.server.projections import (
     apply_contract_unlock_status,
     crew_legacy_from_contracts,
@@ -262,6 +263,9 @@ def _visible_artifacts_for_player(request: Request, player_id: str) -> list[dict
 
 
 def _deals_for_player(request: Request, player_id: str) -> list[dict]:
+    projected = projected_visible_deals(request, player_id)
+    if projected is not None:
+        return projected
     return ensure_deal_service(request).list_for_player(player_id)
 
 
