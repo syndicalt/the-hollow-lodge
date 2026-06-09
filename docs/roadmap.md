@@ -4342,6 +4342,36 @@ Expected verification:
 - `pytest tests/e2e/test_mcp_codex_play_loop.py tests/test_mcp_server.py tests/client/test_codex_session.py tests/client/test_render_packets.py -q`
 - `pytest -q`
 
+### Slice 180: Codex Action Revision Proof Gate
+
+Status: completed.
+
+Strengthen the freeform-action trust loop by proving players can revise and
+withdraw submitted actions before phase lock through the Codex session path.
+A new action-revision mock submits two crew actions, renders the pre-revision
+crew board, previews and confirms an edit to the first action, previews and
+confirms cancellation of the second action, renders an activity delta and
+post-revision crew board, then locks the phase and renders the resolved
+contract board and activity timeline.
+
+The e2e proof verifies that the pre-revision pending decision references both
+actions, the edit preview is read-only, the confirmed edit preserves the
+original action id with replacement intent, the cancel preview is read-only,
+the confirmed cancel marks the second action canceled, and the post-revision
+pending decision references only the still-submitted edited action. It also
+asserts that phase scoring resolves at 64 with no `minor heat trace`, proving
+the canceled noisy second action does not affect scoring, while the edited
+provenance-bearing action remains the current submitted action. Rendered
+mutation, board, delta, and activity packets are guarded against hidden truth,
+server-only notes, oracle audit metadata, provider details, hashes, auth
+material, idempotency keys, and raw event envelopes.
+
+Expected verification:
+
+- `pytest tests/e2e/test_action_revision_loop.py -q`
+- `pytest tests/e2e/test_action_revision_loop.py tests/server/test_action_routes.py tests/server/test_phase_resolution.py tests/client/test_codex_session.py tests/client/test_render_packets.py -q`
+- `pytest -q`
+
 ## Completion Standard
 
 Each slice must:
