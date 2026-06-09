@@ -4630,6 +4630,31 @@ Expected verification:
 - `pytest tests/e2e/test_mcp_codex_play_loop.py tests/e2e/test_full_game_loop_with_escrow.py tests/client/test_render_packets.py tests/client/test_codex_session.py tests/test_mcp_server.py tests/server/test_chat_routes.py tests/server/test_event_sync.py -q`
 - `pytest -q`
 
+### Slice 191: Actual MCP Proof Fragment Proof Gate
+
+Status: completed.
+
+Close the actual-MCP boundary gap around proof fragments. The MCP e2e now runs
+the proof-fragment loop through real `mcp.call_tool` calls instead of only the
+Codex session wrapper: Ada previews and confirms a starter ledger transfer to
+Grace, Grace sees the copied fragment in her inbox, renders the fragment,
+previews and confirms a provenance check, then renders activity showing both
+the transfer and provenance events.
+
+The proof verifies preview-before-mutation behavior, the copied fragment
+surface, recipient-only inbox urgency, provenance flags appearing only in the
+confirmed check result/activity, and serialized packet leak guards covering
+hidden truth, server-only/internal transfer fields, source fragment ids,
+oracle/provider metadata, auth material, idempotency keys, hashes, and raw event
+envelopes.
+
+Expected verification:
+
+- `pytest tests/e2e/test_mcp_codex_play_loop.py::test_player_can_transfer_and_check_proof_fragment_through_actual_mcp_tools -q`
+- `pytest tests/e2e/test_mcp_codex_play_loop.py -q`
+- `pytest tests/e2e/test_proof_fragment_codex_loop.py tests/server/test_proof_routes.py tests/client/test_codex_session.py tests/client/test_render_packets.py tests/test_mcp_server.py -q`
+- `pytest -q`
+
 ## Completion Standard
 
 Each slice must:

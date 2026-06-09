@@ -81,12 +81,247 @@ def _call_tool(name: str, arguments: dict[str, Any] | None = None):
     return asyncio.run(mcp_server.mcp.call_tool(name, arguments or {}))
 
 
+def _install_httpx_test_bridge(monkeypatch, client: TestClient) -> None:
+    def fake_get(url, headers=None, params=None, timeout=None):
+        assert url.startswith("http://testserver")
+        path = url.removeprefix("http://testserver")
+        return client.get(path, headers=headers, params=params)
+
+    def fake_post(url, headers=None, json=None, timeout=None):
+        assert url.startswith("http://testserver")
+        path = url.removeprefix("http://testserver")
+        return client.post(path, headers=headers, json=json)
+
+    def fake_patch(url, headers=None, json=None, timeout=None):
+        assert url.startswith("http://testserver")
+        path = url.removeprefix("http://testserver")
+        return client.patch(path, headers=headers, json=json)
+
+    def fake_delete(url, headers=None, timeout=None):
+        assert url.startswith("http://testserver")
+        path = url.removeprefix("http://testserver")
+        return client.delete(path, headers=headers)
+
+    monkeypatch.setattr(httpx, "get", fake_get)
+    monkeypatch.setattr(httpx, "post", fake_post)
+    monkeypatch.setattr(httpx, "patch", fake_patch)
+    monkeypatch.setattr(httpx, "delete", fake_delete)
+
+
 def _assert_packet(result, *, surface: str) -> dict[str, Any]:
     assert result.content[0].type == "text"
     assert result.content[0].text == result.structuredContent["player_markdown"]
     assert not result.content[0].text.startswith("{")
     assert result.structuredContent["surface"] == surface
     return result.structuredContent
+
+
+def test_player_can_transfer_and_check_proof_fragment_through_actual_mcp_tools(
+    tmp_path,
+    monkeypatch,
+):
+    app = create_app(data_dir=tmp_path / "server", invite_codes=["ada", "grace"])
+    client = TestClient(app)
+    ada = _register(client, "ada", "Ada Corelumen")
+    grace = _register(client, "grace", "Grace Ledger")
+    crew = _create_crew(
+        client,
+        token=ada["token"],
+        name="The Gilt Knives",
+        key="crew-create-gilt",
+    )
+    _join_crew(client, player=grace, crew=crew, key="crew-join-grace-gilt")
+
+    config_path = tmp_path / "config.json"
+    local_log_path = tmp_path / "local.jsonl"
+    _write_config(
+        config_path,
+        player=ada,
+        active_crew_id=crew["crew_id"],
+        display_name="Ada Corelumen",
+    )
+    monkeypatch.setattr(mcp_server, "DEFAULT_CONFIG_PATH", config_path)
+    monkeypatch.setattr(mcp_server, "DEFAULT_LOCAL_LOG_PATH", local_log_path)
+    _install_httpx_test_bridge(monkeypatch, client)
+
+    transfer_preview = _assert_packet(
+        _call_tool(
+            "transfer_proof_fragment",
+            {
+                "fragment_id": "fragment_starter_ledger",
+                "recipient_player_id": grace["player_id"],
+                "confirm": False,
+            },
+        ),
+        surface="mutation",
+    )
+    assert transfer_preview["agent_context"] == {
+        "operation": "transfer_proof_fragment",
+        "mutation": False,
+        "confirmed": False,
+        "preview": {
+            "fragment_id": "fragment_starter_ledger",
+            "recipient_player_id": grace["player_id"],
+        },
+    }
+    assert "No server mutation was submitted." in transfer_preview["player_markdown"]
+
+    transfer_confirm = _assert_packet(
+        _call_tool(
+            "transfer_proof_fragment",
+            {
+                "fragment_id": "fragment_starter_ledger",
+                "recipient_player_id": grace["player_id"],
+                "confirm": True,
+            },
+        ),
+        surface="mutation",
+    )
+    assert transfer_confirm["agent_context"]["operation"] == "transfer_proof_fragment"
+    assert transfer_confirm["agent_context"]["mutation"] is True
+    assert transfer_confirm["agent_context"]["confirmed"] is True
+    copied_fragment_id = transfer_confirm["agent_context"]["result"]["fragment_id"]
+    assert transfer_confirm["agent_context"]["result"] == {
+        "fragment_id": copied_fragment_id,
+        "content_summary": "A red ledger rubric names three prior owners.",
+        "source_chain": [
+            "archive:lot-card",
+            f"transfer:{ada['player_id']}->{grace['player_id']}",
+        ],
+        "provenance_checked": False,
+    }
+
+    _write_config(
+        config_path,
+        player=grace,
+        active_crew_id=crew["crew_id"],
+        display_name="Grace Ledger",
+    )
+    grace_inbox = _assert_packet(_call_tool("render_inbox"), surface="inbox")
+    assert grace_inbox["agent_context"]["incoming_proof_fragments"] == [
+        {
+            "fragment_id": copied_fragment_id,
+            "summary": "A red ledger rubric names three prior owners.",
+        }
+    ]
+    assert grace_inbox["agent_context"]["urgent_items"][-1] == {
+        "kind": "proof_fragment",
+        "fragment_id": copied_fragment_id,
+    }
+    assert f"- {copied_fragment_id}: A red ledger rubric names three prior owners." in (
+        grace_inbox["player_markdown"]
+    )
+
+    fragment_before_check = _assert_packet(
+        _call_tool("render_proof_fragment", {"fragment_id": copied_fragment_id}),
+        surface="proof_fragment",
+    )
+    assert fragment_before_check["agent_context"]["fragment"] == {
+        "fragment_id": copied_fragment_id,
+        "content_summary": "A red ledger rubric names three prior owners.",
+        "source_chain": [
+            "archive:lot-card",
+            f"transfer:{ada['player_id']}->{grace['player_id']}",
+        ],
+        "provenance_checked": False,
+    }
+    assert "Provenance checked: false" in fragment_before_check["player_markdown"]
+
+    provenance_preview = _assert_packet(
+        _call_tool(
+            "check_provenance",
+            {"fragment_id": copied_fragment_id, "confirm": False},
+        ),
+        surface="mutation",
+    )
+    assert provenance_preview["agent_context"] == {
+        "operation": "check_provenance",
+        "mutation": False,
+        "confirmed": False,
+        "preview": {
+            "fragment_id": copied_fragment_id,
+            "check_type": "provenance",
+        },
+    }
+
+    provenance_confirm = _assert_packet(
+        _call_tool(
+            "check_provenance",
+            {"fragment_id": copied_fragment_id, "confirm": True},
+        ),
+        surface="mutation",
+    )
+    assert provenance_confirm["agent_context"] == {
+        "operation": "check_provenance",
+        "mutation": True,
+        "confirmed": True,
+        "result": {
+            "fragment_id": copied_fragment_id,
+            "content_summary": "A red ledger rubric names three prior owners.",
+            "source_chain": [
+                "archive:lot-card",
+                f"transfer:{ada['player_id']}->{grace['player_id']}",
+            ],
+            "provenance_checked": True,
+            "provenance_flags": ["copied-hand", "ink-after-binding"],
+        },
+    }
+    assert "copied-hand, ink-after-binding" in provenance_confirm["player_markdown"]
+
+    fragment_after_check = _assert_packet(
+        _call_tool("render_proof_fragment", {"fragment_id": copied_fragment_id}),
+        surface="proof_fragment",
+    )
+    assert fragment_after_check["agent_context"]["fragment"]["provenance_checked"] is False
+
+    activity = _assert_packet(_call_tool("render_activity"), surface="activity")
+    assert activity["agent_context"]["event_type_counts"]["proof.fragment.transferred"] == 1
+    assert activity["agent_context"]["event_type_counts"]["proof.provenance.checked"] == 1
+    assert f"proof fragment {copied_fragment_id}" in activity["player_markdown"]
+    assert f"provenance {copied_fragment_id}: copied-hand, ink-after-binding" in (
+        activity["player_markdown"]
+    )
+
+    serialized_packets = "\n".join(
+        str(packet)
+        for packet in (
+            transfer_preview,
+            transfer_confirm,
+            grace_inbox,
+            fragment_before_check,
+            provenance_preview,
+            provenance_confirm,
+            fragment_after_check,
+            activity,
+        )
+    )
+    for forbidden in (
+        "hidden_truth",
+        "hidden_truth_summary",
+        "contract.hidden_truth.seeded",
+        "server_only",
+        "server_notes",
+        "visibility",
+        "proof.fragment.transferred.internal",
+        "source_fragment_id",
+        "transfer_idempotency_key",
+        "accepted_output",
+        "accepted_output_hash",
+        "input_packet_hash",
+        "provider",
+        "model",
+        "prompt_version",
+        "validation_status",
+        "fallback_reason",
+        "token",
+        "join_code",
+        "idempotency_key",
+        "event_id",
+        "event_hash",
+        "origin",
+        "payload",
+    ):
+        assert forbidden not in serialized_packets
 
 
 def test_player_can_progress_contract_through_actual_mcp_tools(tmp_path, monkeypatch):
