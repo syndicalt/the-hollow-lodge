@@ -178,6 +178,59 @@ def test_invalid_oracle_result_falls_back_and_is_audited(tmp_path):
     assert completed[0].payload["accepted_output_hash"]
 
 
+def test_admin_oracle_audits_require_admin_token_and_omit_raw_outputs(
+    tmp_path,
+    monkeypatch,
+):
+    monkeypatch.setenv("HOLLOW_LODGE_ADMIN_TOKEN", "admin-secret")
+    oracle = UnknownCrewOracle()
+    client = TestClient(
+        create_app(data_dir=tmp_path, invite_codes=["a"], resolution_oracle=oracle)
+    )
+    ada = register(client, "a", "Ada")
+    crew = create_crew(client, ada["token"], "crew-create-ada", "The Gilt Knives")
+    submit_action(client, ada, crew)
+    resolved = client.post(
+        "/contracts/contract_false_finger/phases/auction-preview/lock",
+        headers=command_auth(ada["token"], "phase-lock-1"),
+        json={"hours_elapsed": 6},
+    )
+
+    missing_admin = client.get("/admin/oracle/audits")
+    response = client.get(
+        "/admin/oracle/audits",
+        headers={"X-Hollow-Lodge-Admin-Token": "admin-secret"},
+    )
+
+    assert resolved.status_code == 200
+    assert missing_admin.status_code == 401
+    assert response.status_code == 200
+    audits = response.json()["audits"]
+    assert [audit["event_type"] for audit in audits] == [
+        "oracle.resolution.requested",
+        "oracle.resolution.failed",
+        "oracle.resolution.completed",
+    ]
+    failed = audits[1]
+    completed = audits[2]
+    assert failed["provider_attempted"] == "test-invalid"
+    assert failed["model"] == "invalid-v1"
+    assert failed["validation_status"] == "rejected"
+    assert failed["failure_stage"] == "server_validation"
+    assert failed["fallback_provider"] == "deterministic"
+    assert completed["provider"] == "deterministic"
+    assert completed["fallback"] is True
+    assert completed["validation_status"] == "fallback_validated"
+    assert completed["crew_count"] == 1
+    assert completed["standing_count"] == 1
+    assert completed["accepted_output_hash"]
+    response_text = response.text
+    assert '"accepted_output":' not in response_text
+    assert "hidden_truth_summary" not in response_text
+    assert "saint bone forgery" not in response_text
+    assert "truth false finger forgery" not in response_text
+
+
 def test_duplicate_phase_lock_does_not_call_oracle_twice(tmp_path):
     oracle = CountingOracle()
     client = TestClient(

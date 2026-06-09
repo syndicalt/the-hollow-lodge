@@ -343,6 +343,10 @@ Status:
   pending-decision fallback paths can read current submitted actions from
   SQLite when fresh, while action submission, editing, cancellation,
   authorization, and artifact unlocks remain authoritative event-log writes.
+- Admin oracle audit surface completed: operators can inspect redacted
+  provider, validation, fallback, count, and hash evidence for server-only
+  oracle audit events without exposing raw oracle inputs, hidden truth, or
+  accepted model output.
 - Deferred: deeper death/legacy inheritance, additional long-term unlock paths,
   and migrating heavier campaign reads onto the projection database.
 
@@ -1726,6 +1730,26 @@ Expected verification:
 
 - `pytest tests/server/test_projection_store.py::test_projection_store_materializes_current_actions_without_command_metadata tests/server/test_projection_store.py::test_inbox_and_crew_board_read_fresh_action_projection_when_enabled tests/server/test_projection_store.py::test_action_projection_reads_fall_back_when_stale -q`
 - `pytest tests/server/test_projection_store.py tests/server/test_app_config.py tests/server/test_action_routes.py tests/server/test_crew_routes.py tests/server/test_pending_decisions.py tests/server/test_contract_seed.py tests/client/test_render_packets.py tests/client/test_codex_session.py tests/test_mcp_server.py -q`
+- `pytest -q`
+
+### Slice 69: Admin Oracle Audit Surface
+
+Status: completed.
+
+Add an operator-facing audit surface for Milestone 3 without widening player
+visibility. `GET /admin/oracle/audits` is protected by
+`X-Hollow-Lodge-Admin-Token` and returns a redacted list of
+`oracle.resolution.*` audit events with sequence, event id, contract, phase,
+provider/model/prompt metadata, validation status, failure/fallback fields,
+safe crew/standing/warning counts, input packet hash, and accepted output hash.
+The route intentionally omits raw oracle input packets, hidden truth, and
+accepted model output. The operations guide now documents using the endpoint as
+operator evidence for provider behavior and deterministic fallback.
+
+Expected verification:
+
+- `pytest tests/server/test_resolution_oracle.py::test_admin_oracle_audits_require_admin_token_and_omit_raw_outputs tests/server/test_resolution_oracle.py::test_invalid_oracle_result_falls_back_and_is_audited tests/server/test_phase_resolution.py::test_phase_resolution_records_server_only_oracle_audit_events -q`
+- `pytest tests/server/test_resolution_oracle.py tests/server/test_phase_resolution.py tests/workflows/test_oracle_boundary.py tests/workflows/test_openai_oracle.py tests/workflows/test_deterministic_oracle.py tests/workflows/test_oracle_factory.py tests/server/test_app_config.py -q`
 - `pytest -q`
 
 ## Completion Standard

@@ -19,6 +19,7 @@ from hollow_lodge.server.routes_crews import router as crews_router
 from hollow_lodge.server.routes_deals import router as deals_router
 from hollow_lodge.server.routes_events import router as events_router
 from hollow_lodge.server.routes_identity import router as identity_router
+from hollow_lodge.server.routes_oracle import router as oracle_router
 from hollow_lodge.server.routes_proofs import router as proofs_router
 from hollow_lodge.server.services import (
     ActionService,
@@ -110,6 +111,7 @@ def create_app(
     app.include_router(contracts_router)
     app.include_router(proofs_router)
     app.include_router(events_router)
+    app.include_router(oracle_router)
 
     @app.get("/health", tags=["system"])
     def health() -> dict[str, str]:

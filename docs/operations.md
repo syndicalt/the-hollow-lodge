@@ -105,6 +105,20 @@ service and redeploy. The server will return to
 `$HOLLOW_LODGE_DATA_DIR/server-projections.sqlite3`; the authoritative event
 log remains unchanged through the cutover and rollback.
 
+## Oracle Audits
+
+Phase resolution writes server-only oracle audit events into the authoritative
+Eventloom log. Operators can inspect a redacted audit summary with:
+
+```sh
+curl -fsS https://server.thehollowlodge.com/admin/oracle/audits \
+  -H "X-Hollow-Lodge-Admin-Token: $HOLLOW_LODGE_ADMIN_TOKEN"
+```
+
+The audit surface reports provider, model, prompt version, validation status,
+fallback status, safe counts, and input/output hashes. It intentionally omits
+raw oracle input packets, hidden truth, and accepted model output.
+
 ## Access Requests
 
 Players without an invite request access during onboarding:
