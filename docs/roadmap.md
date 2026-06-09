@@ -242,6 +242,12 @@ Status:
   backend while preserving event IDs, sequences, hashes, idempotency metadata,
   and timestamps exactly, and then verify the hosted cutover with the backend
   smoke.
+- Required Postgres event-log guard completed: production deployments can now
+  set `HOLLOW_LODGE_REQUIRE_POSTGRES_EVENT_LOG=1` to fail startup unless the
+  authoritative Eventloom backend is explicitly configured with
+  `HOLLOW_LODGE_EVENT_DATABASE_URL=postgresql://...`; platform `DATABASE_URL`
+  remains projection-only convenience and cannot accidentally select the
+  source-of-truth event backend.
 
 Proof gate:
 
@@ -384,6 +390,10 @@ Status:
   arrays, or JSONL rows, supports `--dry-run`, validates the source hash chain
   before connecting, and refuses to import into a non-empty Postgres
   destination by default.
+- Required Postgres event-log guard completed: hosted production can enforce
+  explicit Postgres authoritative event storage with
+  `HOLLOW_LODGE_REQUIRE_POSTGRES_EVENT_LOG=1`, while local dev and tests keep
+  JSONL defaults and Railway-style `DATABASE_URL` remains projection-only.
 - Admin oracle audit surface completed: operators can inspect redacted
   provider, validation, fallback, count, and hash evidence for server-only
   oracle audit events without exposing raw oracle inputs, hidden truth, or
@@ -2030,6 +2040,25 @@ Expected verification:
 
 - `pytest tests/e2e/test_projection_backend_smoke.py tests/client/test_cli_commands.py::test_admin_backend_smoke_command_reports_safe_backend_status tests/client/test_cli_commands.py::test_admin_backend_smoke_command_rejects_missing_projection_read_surface -q`
 - `pytest tests/e2e/test_projection_backend_smoke.py tests/client/test_cli_commands.py tests/server/test_app_config.py::test_global_projection_read_flag_enables_all_surfaces -q`
+- `pytest -q`
+
+### Slice 82: Required Postgres Event Log Guard
+
+Status: completed.
+
+Add a production startup invariant for the authoritative Eventloom backend.
+`HOLLOW_LODGE_REQUIRE_POSTGRES_EVENT_LOG=1` now requires an explicit
+`HOLLOW_LODGE_EVENT_DATABASE_URL=postgresql://...` configuration, rejects a
+missing event database URL, rejects non-Postgres event-log URLs with redacted
+error text, and deliberately does not accept platform `DATABASE_URL` as an
+authoritative event-log selector. This lets hosted deployments make Postgres
+event storage a hard production invariant after migration without weakening the
+append-only Eventloom authority boundary or changing local JSONL defaults.
+
+Expected verification:
+
+- `pytest tests/eventlog/test_postgres_store.py::test_require_postgres_event_log_rejects_missing_event_database_url tests/eventlog/test_postgres_store.py::test_require_postgres_event_log_does_not_accept_platform_database_url tests/eventlog/test_postgres_store.py::test_require_postgres_event_log_allows_explicit_postgres_backend tests/eventlog/test_postgres_store.py::test_require_postgres_event_log_rejects_non_postgres_url_without_secret_leak tests/eventlog/test_postgres_store.py::test_require_postgres_event_log_rejects_invalid_flag_value -q`
+- `pytest tests/eventlog/test_postgres_store.py tests/server/test_app_config.py -q`
 - `pytest -q`
 
 ## Completion Standard

@@ -31,9 +31,42 @@ curl -fsSIL https://www.thehollowlodge.com/install.sh
 directory without returning API keys, admin tokens, invite codes, or player
 tokens.
 
+## Authoritative Event Log
+
+The authoritative game record is the append-only Eventloom log. Local
+development uses JSONL by default:
+
+```sh
+$HOLLOW_LODGE_DATA_DIR/server-events.jsonl
+```
+
+Hosted production can move authoritative event storage to Postgres only by
+setting the Hollow-specific event database URL:
+
+```sh
+HOLLOW_LODGE_EVENT_DATABASE_URL=postgresql://user:password@host:5432/database
+```
+
+The server intentionally does not use platform `DATABASE_URL` for
+authoritative events. Attaching a Railway or PaaS database should not
+silently move the append-only source of truth; operators must choose that
+cutover explicitly with `HOLLOW_LODGE_EVENT_DATABASE_URL`.
+
+After migrating and verifying the hosted event log, production deployments can
+fail fast unless the authoritative backend is explicitly Postgres:
+
+```sh
+HOLLOW_LODGE_REQUIRE_POSTGRES_EVENT_LOG=1
+```
+
+When this guard is enabled, server startup rejects a missing
+`HOLLOW_LODGE_EVENT_DATABASE_URL` or any non-Postgres event-log URL. Keep it
+unset for local development and tests unless intentionally exercising the
+production event-log cutover path.
+
 ## Projection Database
 
-The authoritative game record is still the append-only Eventloom JSONL file.
+The authoritative game record remains the append-only Eventloom log.
 The projection database is a read-side cache for contract boards, crew
 summaries, artifacts, deals, visible events, chat messages, current actions,
 legacy blocks, current proof dossiers, and pending decision surfaces.
@@ -146,6 +179,11 @@ python scripts/smoke_projection_backend.py \
   --require-sequence-alignment
 ```
 
+After that smoke passes, set `HOLLOW_LODGE_REQUIRE_POSTGRES_EVENT_LOG=1` on
+the server service and redeploy once more. This turns the authoritative event
+storage cutover from a best-effort configuration into a startup invariant
+without allowing platform `DATABASE_URL` to select the event-log backend.
+
 After the backend smoke passes, set `HOLLOW_LODGE_PROJECTION_READS=1` and verify
 that all implemented projection read surfaces are enabled:
 
@@ -194,6 +232,12 @@ Rollback is to remove `HOLLOW_LODGE_PROJECTION_DATABASE_URL` from the server
 service and redeploy. The server will return to
 `$HOLLOW_LODGE_DATA_DIR/server-projections.sqlite3`; the authoritative event
 log remains unchanged through the cutover and rollback.
+
+If the authoritative event log has also been moved to Postgres, rollback must
+be handled as a deliberate event-log restore or migration decision. Do not
+remove `HOLLOW_LODGE_EVENT_DATABASE_URL` after new hosted events have been
+accepted unless the JSONL log has first been brought to the same verified
+sequence and hash-chain state.
 
 ## Oracle Audits
 

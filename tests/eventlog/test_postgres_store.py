@@ -173,6 +173,102 @@ def test_app_does_not_use_platform_database_url_for_authoritative_events(
     assert "secret" not in response.text
 
 
+def test_require_postgres_event_log_rejects_missing_event_database_url(
+    tmp_path,
+    monkeypatch,
+):
+    monkeypatch.setenv("HOLLOW_LODGE_REQUIRE_POSTGRES_EVENT_LOG", "1")
+    monkeypatch.delenv("HOLLOW_LODGE_EVENT_DATABASE_URL", raising=False)
+    monkeypatch.delenv("DATABASE_URL", raising=False)
+
+    with pytest.raises(RuntimeError) as exc_info:
+        create_app(data_dir=tmp_path)
+
+    message = str(exc_info.value)
+    assert "HOLLOW_LODGE_REQUIRE_POSTGRES_EVENT_LOG=1 requires" in message
+    assert "HOLLOW_LODGE_EVENT_DATABASE_URL=postgresql://..." in message
+    assert "platform" not in message
+    assert "secret" not in message
+
+
+def test_require_postgres_event_log_does_not_accept_platform_database_url(
+    tmp_path,
+    monkeypatch,
+):
+    monkeypatch.setenv("HOLLOW_LODGE_REQUIRE_POSTGRES_EVENT_LOG", "true")
+    monkeypatch.delenv("HOLLOW_LODGE_EVENT_DATABASE_URL", raising=False)
+    monkeypatch.setenv(
+        "DATABASE_URL",
+        "postgresql://platform:secret@example.com:5432/hollow_lodge",
+    )
+    monkeypatch.setenv(
+        "HOLLOW_LODGE_PROJECTION_DATABASE_URL",
+        f"sqlite:///{tmp_path / 'projection.sqlite3'}",
+    )
+
+    with pytest.raises(RuntimeError) as exc_info:
+        create_app(data_dir=tmp_path)
+
+    message = str(exc_info.value)
+    assert "HOLLOW_LODGE_REQUIRE_POSTGRES_EVENT_LOG=1 requires" in message
+    assert "HOLLOW_LODGE_EVENT_DATABASE_URL=postgresql://..." in message
+    assert "platform" not in message
+    assert "secret" not in message
+
+
+def test_require_postgres_event_log_allows_explicit_postgres_backend(
+    tmp_path,
+    monkeypatch,
+):
+    fake = FakePostgresConnector()
+    monkeypatch.setenv("HOLLOW_LODGE_REQUIRE_POSTGRES_EVENT_LOG", "yes")
+    monkeypatch.setenv(
+        "HOLLOW_LODGE_EVENT_DATABASE_URL",
+        "postgresql://user:secret@example.com:5432/hollow_lodge",
+    )
+    monkeypatch.setattr(PostgresEventStore, "_connect", lambda self: fake())
+
+    response = TestClient(create_app(data_dir=tmp_path)).get("/diagnostics")
+
+    event_log = response.json()["data"]["event_log"]
+    assert event_log["backend"] == "postgres"
+    assert event_log["database_url_env"] == "HOLLOW_LODGE_EVENT_DATABASE_URL"
+    assert "secret" not in response.text
+
+
+def test_require_postgres_event_log_rejects_non_postgres_url_without_secret_leak(
+    tmp_path,
+    monkeypatch,
+):
+    monkeypatch.setenv("HOLLOW_LODGE_REQUIRE_POSTGRES_EVENT_LOG", "on")
+    monkeypatch.setenv(
+        "HOLLOW_LODGE_EVENT_DATABASE_URL",
+        "mysql://user:secret@example.com:3306/hollow_lodge",
+    )
+
+    with pytest.raises(RuntimeError) as exc_info:
+        create_app(data_dir=tmp_path)
+
+    message = str(exc_info.value)
+    assert "rejects non-Postgres event log URLs" in message
+    assert "mysql://user:***@example.com:3306/hollow_lodge" in message
+    assert "secret" not in message
+
+
+def test_require_postgres_event_log_rejects_invalid_flag_value(
+    tmp_path,
+    monkeypatch,
+):
+    monkeypatch.setenv("HOLLOW_LODGE_REQUIRE_POSTGRES_EVENT_LOG", "sometimes")
+
+    with pytest.raises(RuntimeError) as exc_info:
+        create_app(data_dir=tmp_path)
+
+    assert "HOLLOW_LODGE_REQUIRE_POSTGRES_EVENT_LOG must be one of" in str(
+        exc_info.value
+    )
+
+
 def test_postgres_event_store_imports_validated_events_exactly(tmp_path, monkeypatch):
     source = JsonlEventStore(tmp_path / "events.jsonl")
     first = source.append_command(
