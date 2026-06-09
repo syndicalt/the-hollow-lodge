@@ -6,6 +6,7 @@ from typing import Any
 
 from hollow_lodge.client.backend_smoke import (
     database_url_exposes_password,
+    resolve_backend_smoke_options,
     run_backend_smoke,
     validate_backend_diagnostics,
     validate_projection_diagnostics,
@@ -24,7 +25,6 @@ def main() -> None:
     parser.add_argument(
         "--expected-backend",
         choices=["sqlite", "postgres"],
-        required=True,
         help="Projection backend expected in /diagnostics.",
     )
     parser.add_argument(
@@ -72,23 +72,36 @@ def main() -> None:
         action="store_true",
         help="Require the latest projection refresh diagnostic status to be ok.",
     )
+    parser.add_argument(
+        "--production-postgres",
+        action="store_true",
+        help=(
+            "Require production Postgres readiness: Postgres event log, Postgres "
+            "projections, storage guards, current schema, projection reads, "
+            "sequence alignment, and successful projection refresh."
+        ),
+    )
     args = parser.parse_args()
 
-    result = run_smoke(
-        server_url=args.server_url,
-        expected_backend=args.expected_backend,
-        expected_event_backend=args.expected_event_backend,
-        require_projection_reads=args.require_projection_reads,
-        require_current_projection_read_surfaces=(
-            args.require_current_projection_read_surfaces
-        ),
-        require_current_projection_schema=args.require_current_projection_schema,
-        require_sequence_alignment=args.require_sequence_alignment,
-        event_log_manifest=args.event_log_manifest,
-        require_postgres_event_log_guard=args.require_postgres_event_log_guard,
-        require_postgres_projection_guard=args.require_postgres_projection_guard,
-        require_projection_refresh_ok=args.require_projection_refresh_ok,
-    )
+    try:
+        result = run_smoke(
+            server_url=args.server_url,
+            expected_backend=args.expected_backend,
+            expected_event_backend=args.expected_event_backend,
+            require_projection_reads=args.require_projection_reads,
+            require_current_projection_read_surfaces=(
+                args.require_current_projection_read_surfaces
+            ),
+            require_current_projection_schema=args.require_current_projection_schema,
+            require_sequence_alignment=args.require_sequence_alignment,
+            event_log_manifest=args.event_log_manifest,
+            require_postgres_event_log_guard=args.require_postgres_event_log_guard,
+            require_postgres_projection_guard=args.require_postgres_projection_guard,
+            require_projection_refresh_ok=args.require_projection_refresh_ok,
+            production_postgres=args.production_postgres,
+        )
+    except RuntimeError as exc:
+        parser.error(str(exc))
     print(
         "backend readiness ok: "
         f"event={result['event_log']['backend']} "
@@ -106,7 +119,7 @@ def main() -> None:
 def run_smoke(
     *,
     server_url: str,
-    expected_backend: str,
+    expected_backend: str | None = None,
     expected_event_backend: str | None = None,
     require_projection_reads: bool = False,
     require_current_projection_read_surfaces: bool = False,
@@ -116,19 +129,24 @@ def run_smoke(
     require_postgres_event_log_guard: bool = False,
     require_postgres_projection_guard: bool = False,
     require_projection_refresh_ok: bool = False,
+    production_postgres: bool = False,
 ) -> dict[str, Any]:
-    return run_backend_smoke(
-        server_url=server_url,
+    smoke_options = resolve_backend_smoke_options(
+        production_postgres=production_postgres,
         expected_backend=expected_backend,
         expected_event_backend=expected_event_backend,
         require_projection_reads=require_projection_reads,
         require_current_projection_read_surfaces=require_current_projection_read_surfaces,
         require_current_projection_schema=require_current_projection_schema,
         require_sequence_alignment=require_sequence_alignment,
-        event_log_manifest=event_log_manifest,
         require_postgres_event_log_guard=require_postgres_event_log_guard,
         require_postgres_projection_guard=require_postgres_projection_guard,
         require_projection_refresh_ok=require_projection_refresh_ok,
+    )
+    return run_backend_smoke(
+        server_url=server_url,
+        event_log_manifest=event_log_manifest,
+        **smoke_options,
     )
 
 

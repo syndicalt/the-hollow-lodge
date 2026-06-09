@@ -2802,6 +2802,29 @@ Expected verification:
 - `pytest tests/server/test_identity_routes.py tests/server/test_crew_legacy_projection.py tests/server/test_projection_store.py tests/client/test_render_packets.py tests/client/test_codex_session.py tests/client/test_api.py tests/test_mcp_server.py -q`
 - `pytest -q`
 
+### Slice 111: Production Postgres Smoke Preset
+
+Status: completed.
+
+Make the production database cutover less error-prone by adding a single
+installed-client and checkout-script readiness preset. `hollow-lodge admin
+backend-smoke --production-postgres` and `scripts/smoke_projection_backend.py
+--production-postgres` now require the full production database invariant:
+Postgres authoritative event log, Postgres projection database, both Postgres
+startup guards, all implemented projection reads enabled, current projection
+schema, aligned authoritative/projection sequences, zero projection lag, and a
+successful latest projection refresh.
+
+The preset rejects contradictory backend flags instead of silently overriding
+them. Explicit staged-cutover flags remain available for local development,
+projection-only cutovers, and pre-guard verification.
+
+Expected verification:
+
+- `pytest tests/client/test_cli_commands.py::test_admin_backend_smoke_command_accepts_production_postgres_preset tests/client/test_cli_commands.py::test_admin_backend_smoke_command_rejects_conflicting_production_preset tests/e2e/test_projection_backend_smoke.py::test_run_smoke_production_postgres_preset_forwards_required_checks -q`
+- `pytest tests/e2e/test_projection_backend_smoke.py tests/client/test_cli_commands.py tests/server/test_app_config.py -q`
+- `pytest -q`
+
 ## Completion Standard
 
 Each slice must:

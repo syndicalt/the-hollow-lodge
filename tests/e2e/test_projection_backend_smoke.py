@@ -152,6 +152,58 @@ def test_backend_smoke_accepts_event_and_projection_backends():
     assert result["projection_refresh"]["status"] == "ok"
 
 
+def test_run_smoke_production_postgres_preset_forwards_required_checks(monkeypatch):
+    smoke = _load_smoke_module()
+    calls = []
+
+    def fake_run_backend_smoke(**kwargs):
+        calls.append(kwargs)
+        return {
+            "event_log": {
+                "backend": "postgres",
+                "status": "available",
+                "event_count": 23,
+                "last_sequence": 23,
+                "last_event_hash": "event-hash-23",
+                "event_hash_chain_sha256": "chain-digest-23",
+            },
+            "projection": {
+                "backend": "postgres",
+                "status": "available",
+                "lag": 0,
+                "last_sequence": 23,
+                "authoritative_last_sequence": 23,
+                "schema_version": CURRENT_PROJECTION_SCHEMA_VERSION,
+                "schema_migration_count": CURRENT_PROJECTION_SCHEMA_MIGRATION_COUNT,
+                "latest_schema_migration": CURRENT_PROJECTION_SCHEMA_VERSION,
+            },
+        }
+
+    monkeypatch.setattr(smoke, "run_backend_smoke", fake_run_backend_smoke)
+
+    result = smoke.run_smoke(
+        server_url="https://server.thehollowlodge.com",
+        production_postgres=True,
+    )
+
+    assert result["event_log"]["backend"] == "postgres"
+    assert calls == [
+        {
+            "server_url": "https://server.thehollowlodge.com",
+            "expected_backend": "postgres",
+            "expected_event_backend": "postgres",
+            "require_projection_reads": True,
+            "require_current_projection_read_surfaces": True,
+            "require_current_projection_schema": True,
+            "require_sequence_alignment": True,
+            "event_log_manifest": None,
+            "require_postgres_event_log_guard": True,
+            "require_postgres_projection_guard": True,
+            "require_projection_refresh_ok": True,
+        }
+    ]
+
+
 def test_backend_smoke_rejects_failed_projection_refresh():
     smoke = _load_smoke_module()
 

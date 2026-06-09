@@ -1659,6 +1659,71 @@ def test_admin_backend_smoke_command_reports_safe_backend_status(monkeypatch):
     assert created_clients[0].calls == [("health", {}), ("diagnostics", {})]
 
 
+def test_admin_backend_smoke_command_accepts_production_postgres_preset(monkeypatch):
+    class ProductionPostgresApi(FakeApi):
+        def diagnostics(self):
+            payload = super().diagnostics()
+            payload["data"]["event_log"]["backend"] = "postgres"
+            payload["data"]["storage_guards"] = {
+                "require_postgres_event_log": True,
+                "require_postgres_projection": True,
+            }
+            return payload
+
+    monkeypatch.setattr(cli, "HollowLodgeApi", ProductionPostgresApi)
+    runner = CliRunner()
+
+    result = runner.invoke(
+        cli.app,
+        [
+            "admin",
+            "backend-smoke",
+            "--server",
+            "http://testserver",
+            "--production-postgres",
+        ],
+    )
+
+    assert result.exit_code == 0
+    assert "backend readiness ok: event=postgres" in result.output
+    assert "projection=postgres" in result.output
+    assert "secret" not in result.output
+
+
+def test_admin_backend_smoke_command_rejects_conflicting_production_preset(
+    monkeypatch,
+):
+    created_clients: list[FakeApi] = []
+
+    def fake_client(**kwargs):
+        client = FakeApi(**kwargs)
+        created_clients.append(client)
+        return client
+
+    monkeypatch.setattr(cli, "HollowLodgeApi", fake_client)
+    runner = CliRunner()
+
+    result = runner.invoke(
+        cli.app,
+        [
+            "admin",
+            "backend-smoke",
+            "--server",
+            "http://testserver",
+            "--production-postgres",
+            "--expected-event-backend",
+            "jsonl",
+        ],
+    )
+
+    assert result.exit_code != 0
+    assert (
+        "--production-postgres requires --expected-event-backend postgres"
+        in result.output
+    )
+    assert created_clients == []
+
+
 def test_admin_backend_smoke_command_rejects_failed_projection_refresh(monkeypatch):
     class FailedRefreshApi(FakeApi):
         def diagnostics(self):

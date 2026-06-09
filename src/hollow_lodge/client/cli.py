@@ -9,7 +9,10 @@ from hollow_lodge.client.artifact_render import (
     build_artifact_graph_packet,
     build_artifact_packet,
 )
-from hollow_lodge.client.backend_smoke import validate_backend_diagnostics
+from hollow_lodge.client.backend_smoke import (
+    resolve_backend_smoke_options,
+    validate_backend_diagnostics,
+)
 from hollow_lodge.client.codex_mcp_config import (
     codex_mcp_server_registered,
     install_codex_mcp_server,
@@ -551,8 +554,8 @@ def admin_backend_smoke(
         "--server",
         help="Authoritative server URL. Defaults to the official Lodge.",
     ),
-    expected_backend: str = typer.Option(
-        ...,
+    expected_backend: str | None = typer.Option(
+        None,
         "--expected-backend",
         help="Expected projection backend: sqlite or postgres.",
     ),
@@ -601,12 +604,39 @@ def admin_backend_smoke(
         "--require-projection-refresh-ok",
         help="Require the latest projection refresh diagnostic status to be ok.",
     ),
+    production_postgres: bool = typer.Option(
+        False,
+        "--production-postgres",
+        help=(
+            "Require production Postgres readiness: Postgres event log, "
+            "Postgres projections, storage guards, current schema, projection "
+            "reads, sequence alignment, and successful projection refresh."
+        ),
+    ),
 ) -> None:
     """Verify hosted event-log and projection backend readiness."""
-    if expected_backend not in {"sqlite", "postgres"}:
+    if expected_backend not in {None, "sqlite", "postgres"}:
         raise typer.BadParameter("expected backend must be sqlite or postgres")
     if expected_event_backend not in {None, "jsonl", "postgres"}:
         raise typer.BadParameter("expected event backend must be jsonl or postgres")
+    try:
+        smoke_options = resolve_backend_smoke_options(
+            production_postgres=production_postgres,
+            expected_backend=expected_backend,
+            expected_event_backend=expected_event_backend,
+            require_projection_reads=require_projection_reads,
+            require_current_projection_read_surfaces=(
+                require_current_projection_read_surfaces
+            ),
+            require_current_projection_schema=require_current_projection_schema,
+            require_sequence_alignment=require_sequence_alignment,
+            require_postgres_event_log_guard=require_postgres_event_log_guard,
+            require_postgres_projection_guard=require_postgres_projection_guard,
+            require_projection_refresh_ok=require_projection_refresh_ok,
+        )
+    except RuntimeError as exc:
+        typer.echo(f"Error: {exc}", err=True)
+        raise typer.Exit(1) from exc
 
     api = HollowLodgeApi(server_url=server)
     health = api.health()
@@ -616,22 +646,12 @@ def admin_backend_smoke(
     try:
         result = validate_backend_diagnostics(
             api.diagnostics(),
-            expected_backend=expected_backend,
-            expected_event_backend=expected_event_backend,
-            require_projection_reads=require_projection_reads,
-            require_current_projection_read_surfaces=(
-                require_current_projection_read_surfaces
-            ),
-            require_current_projection_schema=require_current_projection_schema,
-            require_sequence_alignment=require_sequence_alignment,
             event_log_manifest=(
                 load_event_log_manifest(event_log_manifest)
                 if event_log_manifest is not None
                 else None
             ),
-            require_postgres_event_log_guard=require_postgres_event_log_guard,
-            require_postgres_projection_guard=require_postgres_projection_guard,
-            require_projection_refresh_ok=require_projection_refresh_ok,
+            **smoke_options,
         )
     except RuntimeError as exc:
         typer.echo(f"Error: {exc}", err=True)

@@ -357,17 +357,15 @@ Verify that both production storage guards are enforced:
 ```sh
 hollow-lodge admin backend-smoke \
   --server https://server.thehollowlodge.com \
-  --expected-backend postgres \
-  --expected-event-backend postgres \
-  --event-log-manifest backups/hollow-lodge-events.manifest.json \
-  --require-projection-reads \
-  --require-current-projection-read-surfaces \
-  --require-current-projection-schema \
-  --require-sequence-alignment \
-  --require-projection-refresh-ok \
-  --require-postgres-event-log-guard \
-  --require-postgres-projection-guard
+  --production-postgres \
+  --event-log-manifest backups/hollow-lodge-events.manifest.json
 ```
+
+`--production-postgres` is the installed-client preset for the full production
+database invariant: Postgres authoritative event log, Postgres projections,
+both Postgres startup guards, all implemented projection reads enabled, current
+projection schema, zero projection lag, aligned authoritative/projection
+sequences, and a successful latest projection refresh.
 
 The smoke fails if `/health` is not ok, the event-log backend does not match
 `--expected-event-backend`, event-log status is not `available` or

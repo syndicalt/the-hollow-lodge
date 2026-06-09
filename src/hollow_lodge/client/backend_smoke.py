@@ -23,6 +23,61 @@ CURRENT_PROJECTION_SCHEMA_MIGRATION_COUNT = len(PROJECTION_SCHEMA_MIGRATIONS)
 CURRENT_PROJECTION_READ_SURFACES = tuple(sorted(PROJECTION_READ_SURFACE_ENVS))
 
 
+def resolve_backend_smoke_options(
+    *,
+    production_postgres: bool = False,
+    expected_backend: str | None = None,
+    expected_event_backend: str | None = None,
+    require_projection_reads: bool = False,
+    require_current_projection_read_surfaces: bool = False,
+    require_current_projection_schema: bool = False,
+    require_sequence_alignment: bool = False,
+    require_postgres_event_log_guard: bool = False,
+    require_postgres_projection_guard: bool = False,
+    require_projection_refresh_ok: bool = False,
+) -> dict[str, Any]:
+    if production_postgres:
+        if expected_backend not in {None, "postgres"}:
+            raise RuntimeError(
+                "--production-postgres requires --expected-backend postgres "
+                "when --expected-backend is supplied"
+            )
+        if expected_event_backend not in {None, "postgres"}:
+            raise RuntimeError(
+                "--production-postgres requires --expected-event-backend postgres "
+                "when --expected-event-backend is supplied"
+            )
+        return {
+            "expected_backend": "postgres",
+            "expected_event_backend": "postgres",
+            "require_projection_reads": True,
+            "require_current_projection_read_surfaces": True,
+            "require_current_projection_schema": True,
+            "require_sequence_alignment": True,
+            "require_postgres_event_log_guard": True,
+            "require_postgres_projection_guard": True,
+            "require_projection_refresh_ok": True,
+        }
+
+    if expected_backend is None:
+        raise RuntimeError(
+            "--expected-backend is required unless --production-postgres is used"
+        )
+    return {
+        "expected_backend": expected_backend,
+        "expected_event_backend": expected_event_backend,
+        "require_projection_reads": require_projection_reads,
+        "require_current_projection_read_surfaces": (
+            require_current_projection_read_surfaces
+        ),
+        "require_current_projection_schema": require_current_projection_schema,
+        "require_sequence_alignment": require_sequence_alignment,
+        "require_postgres_event_log_guard": require_postgres_event_log_guard,
+        "require_postgres_projection_guard": require_postgres_projection_guard,
+        "require_projection_refresh_ok": require_projection_refresh_ok,
+    }
+
+
 def run_backend_smoke(
     *,
     server_url: str,
