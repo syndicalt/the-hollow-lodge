@@ -50,7 +50,7 @@ def create_event_log_manifest(source: Path) -> dict[str, Any]:
     return build_event_log_manifest(load_events(source))
 
 
-def verify_event_log_manifest(events: list[GameEvent], manifest_path: Path) -> None:
+def load_event_log_manifest(manifest_path: Path) -> dict[str, Any]:
     if not manifest_path.exists():
         raise RuntimeError(f"event manifest does not exist: {manifest_path}")
     try:
@@ -59,6 +59,11 @@ def verify_event_log_manifest(events: list[GameEvent], manifest_path: Path) -> N
         raise RuntimeError(f"invalid event manifest JSON: {manifest_path}") from exc
     if not isinstance(raw_manifest, dict):
         raise RuntimeError("event manifest must be a JSON object")
+    return raw_manifest
+
+
+def verify_event_log_manifest(events: list[GameEvent], manifest_path: Path) -> None:
+    raw_manifest = load_event_log_manifest(manifest_path)
     expected = build_event_log_manifest(events)
     mismatches = [
         key

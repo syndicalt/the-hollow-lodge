@@ -1,3 +1,5 @@
+import json
+
 import pytest
 from fastapi.testclient import TestClient
 
@@ -125,6 +127,8 @@ def test_postgres_event_store_diagnostics_redact_database_url(monkeypatch):
         "exists": True,
         "status": "available",
         "event_count": 0,
+        "last_sequence": None,
+        "last_event_hash": None,
     }
     assert "secret" not in str(diagnostics)
 
@@ -361,6 +365,13 @@ class FakePostgresConnection:
             return FakePostgresCursor()
         if normalized.startswith("select count(*) from event_log"):
             return FakePostgresCursor(row=(len(self.connector.event_rows),))
+        if normalized.startswith("select sequence, event_hash from event_log"):
+            if not self.connector.event_rows:
+                return FakePostgresCursor(row=None)
+            latest = json.loads(self.connector.event_rows[-1])
+            return FakePostgresCursor(
+                row=(latest["sequence"], latest["event_hash"])
+            )
         return FakePostgresCursor()
 
     def commit(self) -> None:

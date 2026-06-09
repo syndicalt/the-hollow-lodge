@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import argparse
+from pathlib import Path
 from typing import Any
 
 from hollow_lodge.client.backend_smoke import (
@@ -51,6 +52,11 @@ def main() -> None:
         action="store_true",
         help="Require event count and projection sequence diagnostics to agree.",
     )
+    parser.add_argument(
+        "--event-log-manifest",
+        type=Path,
+        help="Event-log backup manifest file to compare with hosted diagnostics.",
+    )
     args = parser.parse_args()
 
     result = run_smoke(
@@ -63,6 +69,7 @@ def main() -> None:
         ),
         require_current_projection_schema=args.require_current_projection_schema,
         require_sequence_alignment=args.require_sequence_alignment,
+        event_log_manifest=args.event_log_manifest,
     )
     print(
         "backend readiness ok: "
@@ -87,6 +94,7 @@ def run_smoke(
     require_current_projection_read_surfaces: bool = False,
     require_current_projection_schema: bool = False,
     require_sequence_alignment: bool = False,
+    event_log_manifest: Path | None = None,
 ) -> dict[str, Any]:
     return run_backend_smoke(
         server_url=server_url,
@@ -96,6 +104,7 @@ def run_smoke(
         require_current_projection_read_surfaces=require_current_projection_read_surfaces,
         require_current_projection_schema=require_current_projection_schema,
         require_sequence_alignment=require_sequence_alignment,
+        event_log_manifest=event_log_manifest,
     )
 
 

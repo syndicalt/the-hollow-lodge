@@ -256,6 +256,10 @@ Status:
   imports can now require a matching content-safe backup manifest before
   writing, catching wrong-export or stale-manifest operator mistakes before the
   authoritative event-log backend is changed.
+- Hosted event-log manifest smoke completed: backend readiness checks can now
+  compare hosted event-log diagnostics against a backup manifest's event count,
+  last sequence, and last event hash, proving the deployed authoritative backend
+  is at the expected Eventloom chain head without exposing payloads.
 
 Proof gate:
 
@@ -411,6 +415,9 @@ Status:
   migration commands accept `--manifest`, verify that the manifest matches the
   validated source export before dry-run or import, and report when the manifest
   was verified without printing sensitive export contents.
+- Hosted event-log manifest smoke completed: event-log diagnostics now include
+  safe chain-head metadata, and repository/installed backend smoke commands can
+  require that metadata to match an event-log backup manifest after cutover.
 - Admin oracle audit surface completed: operators can inspect redacted
   provider, validation, fallback, count, and hash evidence for server-only
   oracle audit events without exposing raw oracle inputs, hidden truth, or
@@ -2118,6 +2125,26 @@ Expected verification:
 
 - `pytest tests/e2e/test_event_log_migration.py::test_event_log_migration_dry_run_verifies_matching_manifest tests/e2e/test_event_log_migration.py::test_event_log_migration_rejects_mismatched_manifest tests/client/test_cli_commands.py::test_admin_event_log_import_postgres_dry_run_verifies_manifest -q`
 - `pytest tests/e2e/test_event_log_migration.py tests/client/test_cli_commands.py -q`
+- `pytest -q`
+
+### Slice 85: Hosted Event Log Manifest Smoke
+
+Status: completed.
+
+Add a hosted readiness gate that proves the deployed authoritative event-log
+backend is at the expected Eventloom chain head after migration. JSONL and
+Postgres event-log diagnostics now include safe `last_sequence` and
+`last_event_hash` fields alongside `event_count`. `scripts/smoke_projection_backend.py`
+and `hollow-lodge admin backend-smoke` now accept `--event-log-manifest`, load
+the content-safe backup manifest, and require hosted diagnostics to match the
+manifest's event count, last sequence, and last event hash before reporting
+readiness. The gate does not expose payloads, actors, visibility principals,
+idempotency keys, invite hashes, auth material, or raw events.
+
+Expected verification:
+
+- `pytest tests/e2e/test_projection_backend_smoke.py::test_backend_smoke_accepts_event_log_manifest_chain_head tests/e2e/test_projection_backend_smoke.py::test_backend_smoke_rejects_event_log_manifest_chain_head_mismatch tests/client/test_cli_commands.py::test_admin_backend_smoke_command_verifies_event_log_manifest tests/eventlog/test_jsonl_store.py::test_jsonl_event_store_diagnostics_include_event_count tests/eventlog/test_postgres_store.py::test_postgres_event_store_diagnostics_redact_database_url -q`
+- `pytest tests/e2e/test_projection_backend_smoke.py tests/client/test_cli_commands.py tests/eventlog tests/server/test_app_config.py -q`
 - `pytest -q`
 
 ## Completion Standard

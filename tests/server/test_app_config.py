@@ -59,6 +59,8 @@ def test_diagnostics_reports_safe_operational_status(tmp_path, monkeypatch):
     assert body["data"]["event_log"]["exists"] is False
     assert body["data"]["event_log"]["status"] == "not_created"
     assert body["data"]["event_log"]["event_count"] == 0
+    assert body["data"]["event_log"]["last_sequence"] is None
+    assert body["data"]["event_log"]["last_event_hash"] is None
     assert body["oracle"]["configured_provider"] == "openai"
     assert body["oracle"]["active_provider"] == "deterministic"
     assert body["oracle"]["ready"] is False
@@ -83,6 +85,8 @@ def test_diagnostics_reports_existing_event_log(tmp_path):
     assert event_log_diagnostics["exists"] is True
     assert event_log_diagnostics["status"] == "available"
     assert event_log_diagnostics["event_count"] > 0
+    assert event_log_diagnostics["last_sequence"] == event_log_diagnostics["event_count"]
+    assert isinstance(event_log_diagnostics["last_event_hash"], str)
 
 
 def test_projection_store_defaults_to_sqlite_backend(tmp_path):

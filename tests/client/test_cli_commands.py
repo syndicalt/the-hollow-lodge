@@ -9,6 +9,7 @@ from hollow_lodge.client.backend_smoke import (
     CURRENT_PROJECTION_SCHEMA_MIGRATION_COUNT,
     CURRENT_PROJECTION_SCHEMA_VERSION,
 )
+from hollow_lodge.client.event_log_migration import create_event_log_manifest
 from hollow_lodge.client import cli
 from hollow_lodge.client.config import (
     ClientConfig,
@@ -77,6 +78,8 @@ class FakeApi:
                     "backend": "jsonl",
                     "status": "available",
                     "event_count": 12,
+                    "last_sequence": 12,
+                    "last_event_hash": "event-hash-12",
                 },
                 "projection_db": {
                     "backend": "postgres",
@@ -1251,6 +1254,11 @@ def test_admin_event_log_manifest_command_writes_safe_summary(tmp_path):
         ),
         encoding="utf-8",
     )
+    manifest = tmp_path / "events.manifest.json"
+    manifest.write_text(
+        json.dumps(create_event_log_manifest(source), sort_keys=True),
+        encoding="utf-8",
+    )
     output_path = tmp_path / "manifest.json"
 
     result = runner.invoke(
@@ -1548,6 +1556,67 @@ def test_admin_backend_smoke_command_reports_safe_backend_status(monkeypatch):
     ) in result.output
     assert "secret" not in result.output
     assert created_clients[0].calls == [("health", {}), ("diagnostics", {})]
+
+
+def test_admin_backend_smoke_command_verifies_event_log_manifest(
+    tmp_path,
+    monkeypatch,
+):
+    store = JsonlEventStore(tmp_path / "server-events.jsonl")
+    event = store.append(
+        event_type="contract.seeded",
+        actor_id="server",
+        visibility=EventVisibility.server_only(),
+        payload={"contract_id": "contract_false_finger"},
+    )
+    source = tmp_path / "events.json"
+    source.write_text(
+        json.dumps(
+            {"events": [row.model_dump(mode="json") for row in store.read()]},
+            sort_keys=True,
+        ),
+        encoding="utf-8",
+    )
+    manifest = tmp_path / "events.manifest.json"
+    manifest.write_text(
+        json.dumps(create_event_log_manifest(source), sort_keys=True),
+        encoding="utf-8",
+    )
+
+    class ManifestApi(FakeApi):
+        def diagnostics(self):
+            payload = super().diagnostics()
+            payload["data"]["event_log"]["event_count"] = 1
+            payload["data"]["event_log"]["last_sequence"] = 1
+            payload["data"]["event_log"]["last_event_hash"] = event.event_hash
+            payload["data"]["projection_db"]["last_sequence"] = 1
+            payload["data"]["projection_db"]["authoritative_last_sequence"] = 1
+            return payload
+
+    monkeypatch.setattr(cli, "HollowLodgeApi", ManifestApi)
+    runner = CliRunner()
+
+    result = runner.invoke(
+        cli.app,
+        [
+            "admin",
+            "backend-smoke",
+            "--server",
+            "http://testserver",
+            "--expected-backend",
+            "postgres",
+            "--expected-event-backend",
+            "jsonl",
+            "--event-log-manifest",
+            str(manifest),
+        ],
+    )
+
+    assert result.exit_code == 0
+    assert "backend readiness ok: event=jsonl event_status=available events=1" in (
+        result.output
+    )
+    assert "secret" not in result.output
 
 
 def test_admin_backend_smoke_command_rejects_unredacted_database_url(monkeypatch):

@@ -1,10 +1,12 @@
 from __future__ import annotations
 
+from pathlib import Path
 import re
 from typing import Any
 
 import httpx
 
+from hollow_lodge.client.event_log_migration import load_event_log_manifest
 from hollow_lodge.server.projection_store import (
     PROJECTION_SCHEMA_MIGRATIONS,
     SCHEMA_VERSION,
@@ -27,7 +29,13 @@ def run_backend_smoke(
     require_current_projection_read_surfaces: bool = False,
     require_current_projection_schema: bool = False,
     require_sequence_alignment: bool = False,
+    event_log_manifest: Path | None = None,
 ) -> dict[str, Any]:
+    manifest = (
+        load_event_log_manifest(event_log_manifest)
+        if event_log_manifest is not None
+        else None
+    )
     base_url = server_url.rstrip("/")
     with httpx.Client(base_url=base_url, timeout=10.0) as client:
         health = client.get("/health")
@@ -47,6 +55,7 @@ def run_backend_smoke(
             ),
             require_current_projection_schema=require_current_projection_schema,
             require_sequence_alignment=require_sequence_alignment,
+            event_log_manifest=manifest,
         )
 
 
@@ -59,6 +68,7 @@ def validate_backend_diagnostics(
     require_current_projection_read_surfaces: bool = False,
     require_current_projection_schema: bool = False,
     require_sequence_alignment: bool = False,
+    event_log_manifest: dict[str, Any] | None = None,
 ) -> dict[str, Any]:
     data = diagnostics.get("data", {})
     if not isinstance(data, dict):
@@ -82,10 +92,32 @@ def validate_backend_diagnostics(
     if event_status not in {"available", "not_created"}:
         errors.append(f"event log status is {event_status}")
     event_count = _optional_int(event_log.get("event_count"))
+    event_last_sequence = _optional_int(event_log.get("last_sequence"))
+    event_last_hash = _optional_str(event_log.get("last_event_hash"))
 
     event_database_url = str(event_log.get("database_url", ""))
     if database_url_exposes_password(event_database_url):
         errors.append("event-log diagnostics expose an unredacted database URL password")
+
+    if event_log_manifest is not None:
+        expected_count = _optional_int(event_log_manifest.get("event_count"))
+        expected_sequence = _optional_int(event_log_manifest.get("last_sequence"))
+        expected_hash = _optional_str(event_log_manifest.get("last_event_hash"))
+        if event_count != expected_count:
+            errors.append(
+                "event log event_count "
+                f"{event_count} does not match manifest event_count {expected_count}"
+            )
+        if event_last_sequence != expected_sequence:
+            errors.append(
+                "event log last_sequence "
+                f"{event_last_sequence} does not match manifest last_sequence "
+                f"{expected_sequence}"
+            )
+        if event_last_hash != expected_hash:
+            errors.append(
+                "event log last_event_hash does not match manifest last_event_hash"
+            )
 
     backend = projection.get("backend")
     if backend != expected_backend:
@@ -217,6 +249,8 @@ def validate_backend_diagnostics(
             "backend": event_backend,
             "status": event_status,
             "event_count": event_count,
+            "last_sequence": event_last_sequence,
+            "last_event_hash": event_last_hash,
         },
         "projection": {
             "backend": backend,
@@ -241,6 +275,7 @@ def validate_projection_diagnostics(
     require_current_projection_read_surfaces: bool = False,
     require_current_projection_schema: bool = False,
     require_sequence_alignment: bool = False,
+    event_log_manifest: dict[str, Any] | None = None,
 ) -> dict[str, Any]:
     if not isinstance(diagnostics.get("data"), dict):
         diagnostics = {"data": {"event_log": {"backend": None, "status": "not_created"}}}
@@ -259,6 +294,7 @@ def validate_projection_diagnostics(
         require_current_projection_read_surfaces=require_current_projection_read_surfaces,
         require_current_projection_schema=require_current_projection_schema,
         require_sequence_alignment=require_sequence_alignment,
+        event_log_manifest=event_log_manifest,
     )
     projection = result["projection"]
     return {
@@ -291,3 +327,9 @@ def _optional_int(value: Any) -> int | None:
         return int(value)
     except (TypeError, ValueError):
         return None
+
+
+def _optional_str(value: Any) -> str | None:
+    if value is None:
+        return None
+    return str(value)

@@ -122,8 +122,11 @@ def test_command_events_require_idempotency_keys(tmp_path):
 def test_jsonl_event_store_diagnostics_include_event_count(tmp_path):
     store = JsonlEventStore(tmp_path / "events.jsonl")
 
-    assert store.diagnostics()["event_count"] == 0
-    store.append(
+    empty_diagnostics = store.diagnostics()
+    assert empty_diagnostics["event_count"] == 0
+    assert empty_diagnostics["last_sequence"] is None
+    assert empty_diagnostics["last_event_hash"] is None
+    event = store.append(
         event_type="contract.seeded",
         actor_id="server",
         visibility=EventVisibility.server_only(),
@@ -135,6 +138,8 @@ def test_jsonl_event_store_diagnostics_include_event_count(tmp_path):
     assert diagnostics["backend"] == "jsonl"
     assert diagnostics["status"] == "available"
     assert diagnostics["event_count"] == 1
+    assert diagnostics["last_sequence"] == 1
+    assert diagnostics["last_event_hash"] == event.event_hash
 
 
 def test_projection_can_rebuild_current_state_from_authoritative_events(tmp_path):

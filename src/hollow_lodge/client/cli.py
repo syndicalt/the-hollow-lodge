@@ -18,6 +18,7 @@ from hollow_lodge.client.event_log_migration import (
     EVENT_DATABASE_URL_ENV,
     build_event_log_manifest,
     create_event_log_manifest,
+    load_event_log_manifest,
     migrate_event_log_to_postgres,
 )
 from hollow_lodge.client.config import (
@@ -540,6 +541,11 @@ def admin_backend_smoke(
         "--require-sequence-alignment",
         help="Require event count and projection sequence diagnostics to agree.",
     ),
+    event_log_manifest: Path | None = typer.Option(
+        None,
+        "--event-log-manifest",
+        help="Event-log backup manifest file to compare with hosted diagnostics.",
+    ),
 ) -> None:
     """Verify hosted event-log and projection backend readiness."""
     if expected_backend not in {"sqlite", "postgres"}:
@@ -563,6 +569,11 @@ def admin_backend_smoke(
             ),
             require_current_projection_schema=require_current_projection_schema,
             require_sequence_alignment=require_sequence_alignment,
+            event_log_manifest=(
+                load_event_log_manifest(event_log_manifest)
+                if event_log_manifest is not None
+                else None
+            ),
         )
     except RuntimeError as exc:
         typer.echo(f"Error: {exc}", err=True)

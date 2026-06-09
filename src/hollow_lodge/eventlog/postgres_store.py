@@ -166,6 +166,14 @@ class PostgresEventStore(EventStore):
             with self._connect() as connection:
                 self._ensure_schema(connection)
                 count = connection.execute("select count(*) from event_log").fetchone()[0]
+                last_row = connection.execute(
+                    """
+                    select sequence, event_hash
+                    from event_log
+                    order by sequence desc
+                    limit 1
+                    """
+                ).fetchone()
         except Exception:
             return {
                 "backend": self.backend,
@@ -174,7 +182,11 @@ class PostgresEventStore(EventStore):
                 "exists": False,
                 "status": "unavailable",
                 "event_count": 0,
+                "last_sequence": None,
+                "last_event_hash": None,
             }
+        last_sequence = int(last_row[0]) if last_row is not None else None
+        last_event_hash = str(last_row[1]) if last_row is not None else None
         return {
             "backend": self.backend,
             "database_url": self.safe_database_url,
@@ -182,6 +194,8 @@ class PostgresEventStore(EventStore):
             "exists": True,
             "status": "available",
             "event_count": int(count),
+            "last_sequence": last_sequence,
+            "last_event_hash": last_event_hash,
         }
 
     def import_events(self, events: list[GameEvent]) -> IntegrityReport:

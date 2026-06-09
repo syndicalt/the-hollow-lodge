@@ -216,13 +216,19 @@ class JsonlEventStore(EventStore):
     def diagnostics(self) -> dict[str, Any]:
         exists = self.path.exists()
         status = "available" if exists else "not_created"
-        event_count = len(self.read()) if exists else 0
+        events = self.read() if exists else []
+        event_count = len(events)
+        last_event = events[-1] if events else None
         return {
             "backend": "jsonl",
             "path": str(self.path),
             "exists": exists,
             "status": status,
             "event_count": event_count,
+            "last_sequence": last_event.sequence if last_event is not None else None,
+            "last_event_hash": (
+                last_event.event_hash if last_event is not None else None
+            ),
         }
 
     def _validate_chain(self, events: list[GameEvent]) -> None:

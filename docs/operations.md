@@ -174,10 +174,16 @@ python scripts/smoke_projection_backend.py \
   --server-url https://server.thehollowlodge.com \
   --expected-backend postgres \
   --expected-event-backend postgres \
+  --event-log-manifest backups/hollow-lodge-events.manifest.json \
   --require-current-projection-read-surfaces \
   --require-current-projection-schema \
   --require-sequence-alignment
 ```
+
+`--event-log-manifest` compares the hosted event-log diagnostics with the
+backup manifest's event count, last sequence, and last event hash. This proves
+the deployed authoritative backend is at the expected Eventloom chain head
+without exposing event payloads.
 
 After that smoke passes, set `HOLLOW_LODGE_REQUIRE_POSTGRES_EVENT_LOG=1` on
 the server service and redeploy once more. This turns the authoritative event
