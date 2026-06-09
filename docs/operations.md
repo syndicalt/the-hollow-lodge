@@ -729,4 +729,6 @@ hollow-lodge doctor
 ```
 
 The doctor reports CLI version, selected server health, registered or pending
-player state, and whether the Codex MCP server is registered.
+player state, saved auth status, inbox readiness, local event-sync cache
+status, Codex inbox render readiness, Codex MCP config status, and whether the
+`hollow-lodge-mcp` command is available on `PATH`.

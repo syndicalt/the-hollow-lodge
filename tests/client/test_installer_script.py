@@ -11,6 +11,7 @@ def test_install_script_bootstraps_cli_and_runs_onboarding():
     assert "hollow-lodge codex install-mcp" in script
     assert "hollow-lodge onboard" in script
     assert "hollow-lodge doctor" in script
+    assert "server, auth, MCP, and Codex render readiness" in script
     assert "HOLLOW_LODGE_SKIP_ONBOARD" in script
 
 
@@ -34,3 +35,14 @@ def test_site_copy_includes_public_installer_and_agent_boundary():
 
     assert "curl -fsSL https://www.thehollowlodge.com/install.sh | sh" in html
     assert "Your local agent helps you with organization, but the decisions are yours." in html
+
+
+def test_operations_docs_describe_current_doctor_readiness_checks():
+    operations = Path("docs/operations.md").read_text(encoding="utf-8")
+    readme = Path("README.md").read_text(encoding="utf-8")
+
+    assert "saved auth status" in operations
+    assert "inbox readiness" in operations
+    assert "local event-sync cache" in operations
+    assert "Codex inbox render readiness" in operations
+    assert "saved auth, inbox readiness, Codex MCP registration" in readme

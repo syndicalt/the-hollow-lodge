@@ -3527,6 +3527,27 @@ Expected verification:
 - `pytest tests/client/test_cli_commands.py tests/client/test_installer_script.py tests/client/test_codex_mcp_config.py tests/client/test_local_log.py tests/client/test_codex_session.py -q`
 - `pytest -q`
 
+### Slice 143: Public Installer Readiness Copy Alignment
+
+Status: completed.
+
+Align the public install surface with the hardened clean-machine proof gate.
+The installer now points players to `hollow-lodge doctor` as the verification
+step for server reachability, saved auth, MCP setup, and Codex render
+readiness, rather than the older narrower onboarding/MCP wording.
+
+The hosted `site/install.sh` copy remains byte-for-byte aligned with
+`scripts/install.sh`, and public README/operations documentation now describes
+the current doctor readiness checks: saved auth, inbox readiness,
+local event-sync cache, Codex inbox render readiness, MCP config status, and
+`hollow-lodge-mcp` command availability.
+
+Expected verification:
+
+- `pytest tests/client/test_installer_script.py -q`
+- `pytest tests/client/test_cli_commands.py tests/client/test_installer_script.py tests/client/test_codex_mcp_config.py tests/client/test_local_log.py tests/client/test_codex_session.py -q`
+- `pytest -q`
+
 ## Completion Standard
 
 Each slice must:

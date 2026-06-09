@@ -25,6 +25,10 @@ The installer uses `uv tool install` and then launches first-run onboarding.
 Players with an invite can register immediately; players without an invite can
 request an access key.
 
+After onboarding, run `hollow-lodge doctor` to verify server reachability,
+saved auth, inbox readiness, Codex MCP registration, and Codex inbox render
+readiness without printing token or gameplay payload details.
+
 Operational deployment, access approval, and event-log backup commands are in
 [docs/operations.md](docs/operations.md).
 
