@@ -4727,6 +4727,31 @@ Expected verification:
 - `pytest tests/test_mcp_server.py::test_render_backend_status_mcp_call_returns_text_and_structured_packet tests/test_mcp_server.py::test_check_backend_readiness_mcp_call_returns_text_and_structured_packet tests/client/test_codex_session.py::test_codex_session_renders_backend_status_without_event_sync tests/client/test_codex_session.py::test_codex_session_checks_backend_readiness_with_production_preset tests/client/test_render_packets.py::test_backend_status_packet_renders_safe_database_and_oracle_posture tests/client/test_render_packets.py::test_backend_readiness_packet_renders_safe_pass_summary -q`
 - `pytest -q`
 
+### Slice 195: Real CLI Onboarding Readiness Proof Gate
+
+Status: completed.
+
+Close the installed-client proof gap between unit-style CLI tests and actual
+local server behavior. A new e2e drives the Typer CLI against a real FastAPI app
+through an `httpx`/`TestClient` bridge: the player onboards with an invite,
+saves a local config, installs the Codex MCP config, runs `hollow-lodge doctor
+--strict`, and then renders the first `what-now` surface from the saved config.
+
+The proof verifies the registered player id and display name, strict doctor
+readiness across server health, saved auth, inbox, visible-event sync, Codex
+inbox render, Codex what-now render, MCP config registration, and
+`hollow-lodge-mcp` command availability. It then proves the player can see the
+first actionable contract from the CLI render path. Output leak guards exclude
+the saved bearer token, token hashes, join codes, idempotency keys, raw
+authorization/payload/origin fields, and local server storage paths.
+
+Expected verification:
+
+- `pytest tests/e2e/test_cli_onboarding_readiness.py -q`
+- `pytest tests/e2e/test_cli_onboarding_readiness.py tests/e2e/test_mcp_codex_play_loop.py -q`
+- `pytest tests/client/test_cli_commands.py::test_onboard_with_invite_registers_and_saves_local_config tests/client/test_cli_commands.py::test_codex_install_mcp_previews_until_confirmed tests/client/test_cli_commands.py::test_doctor_strict_passes_for_registered_ready_install tests/client/test_cli_commands.py::test_what_now_command_renders_codex_landing_surface tests/client/test_installer_script.py tests/client/test_codex_mcp_config.py tests/client/test_codex_session.py::test_codex_session_renders_what_now_landing_surface -q`
+- `pytest -q`
+
 ## Completion Standard
 
 Each slice must:
