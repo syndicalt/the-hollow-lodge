@@ -1620,11 +1620,20 @@ def dossier_frame(
 def packet_lead_vote(
     player_id: str,
     crew_id: str | None = typer.Option(None, "--crew-id", help="Crew id; defaults to active crew."),
+    confirm: bool = typer.Option(False, "--confirm", help="Submit the Packet Lead vote on the server."),
     config: Path = typer.Option(DEFAULT_CONFIG_PATH, "--config", help="Local config path."),
 ) -> None:
     """Vote to replace the Packet Lead."""
     current = load_config(config)
     target_crew_id = _target_crew_id(current, crew_id)
+    if not confirm:
+        packet = build_mutation_result_packet(
+            operation="vote_packet_lead",
+            confirmed=False,
+            preview_fields={"crew_id": target_crew_id, "player_id": player_id},
+        )
+        _echo_packet(packet, as_json=False)
+        return
     response = _api_from_config(current).vote_packet_lead(
         crew_id=target_crew_id,
         player_id=player_id,

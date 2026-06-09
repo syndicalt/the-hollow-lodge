@@ -127,14 +127,22 @@ def test_dossier_commands_use_saved_config(tmp_path, monkeypatch):
         cli.app,
         ["dossier", "claim", "The finger is false.", "--config", str(config_path)],
     )
-    vote = runner.invoke(
+    vote_preview = runner.invoke(
         cli.app,
         ["packet-lead", "vote", "player_0002", "--config", str(config_path)],
+    )
+    vote = runner.invoke(
+        cli.app,
+        ["packet-lead", "vote", "player_0002", "--confirm", "--config", str(config_path)],
     )
 
     assert view.exit_code == 0
     assert evidence.exit_code == 0
     assert claim.exit_code == 0
+    assert vote_preview.exit_code == 0
+    assert "Preview: vote_packet_lead" in vote_preview.output
+    assert "- crew_id: crew_0001" in vote_preview.output
+    assert "- player_id: player_0002" in vote_preview.output
     assert vote.exit_code == 0
     assert clients[1].calls == [
         (

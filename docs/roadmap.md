@@ -3899,6 +3899,25 @@ Expected verification:
 - `pytest tests/client/test_cli_commands.py tests/client/test_action_cli.py tests/client/test_deal_cli.py tests/client/test_codex_session.py tests/test_mcp_server.py tests/server/test_chat_routes.py -q`
 - `pytest -q`
 
+### Slice 160: CLI Packet Lead Vote Confirmation Guard
+
+Status: completed.
+
+Protect Packet Lead office changes from accidental shell submission.
+`hollow-lodge packet-lead vote` now renders a no-mutation
+`vote_packet_lead` preview by default, showing the target crew id and candidate
+player id, and only sends the server vote when rerun with `--confirm`.
+
+This aligns the CLI with the existing Codex session mutation contract. Packet
+Lead replacement is a visible crew governance action, so the shell path should
+clarify consequences before it appends authoritative event-log state.
+
+Expected verification:
+
+- `pytest tests/client/test_cli_commands.py::test_packet_lead_vote_command_previews_until_confirmed -q`
+- `pytest tests/client/test_cli_commands.py tests/client/test_codex_session.py tests/client/test_render_packets.py tests/test_mcp_server.py tests/server/test_packet_lead.py -q`
+- `pytest -q`
+
 ## Completion Standard
 
 Each slice must:

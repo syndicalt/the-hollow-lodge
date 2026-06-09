@@ -3927,7 +3927,7 @@ def test_dossier_artifact_citation_and_frame_commands_use_active_crew(tmp_path, 
     ]
 
 
-def test_packet_lead_vote_command_uses_active_crew(tmp_path, monkeypatch):
+def test_packet_lead_vote_command_previews_until_confirmed(tmp_path, monkeypatch):
     runner = CliRunner()
     created_clients: list[FakeApi] = []
 
@@ -3949,12 +3949,24 @@ def test_packet_lead_vote_command_uses_active_crew(tmp_path, monkeypatch):
         ),
     )
 
-    result = runner.invoke(
+    preview = runner.invoke(
         cli.app,
         ["packet-lead", "vote", "player_0002", "--config", str(config_path)],
     )
 
-    assert result.exit_code == 0
+    assert preview.exit_code == 0
+    assert "Preview: vote_packet_lead" in preview.output
+    assert "No server mutation was submitted." in preview.output
+    assert "- crew_id: crew_0001" in preview.output
+    assert "- player_id: player_0002" in preview.output
+    assert created_clients == []
+
+    confirmed = runner.invoke(
+        cli.app,
+        ["packet-lead", "vote", "player_0002", "--confirm", "--config", str(config_path)],
+    )
+
+    assert confirmed.exit_code == 0
     assert created_clients[0].calls == [
         (
             "vote_packet_lead",
