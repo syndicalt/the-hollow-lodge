@@ -315,7 +315,23 @@ hollow-lodge admin event-log-verify
 Export a JSON backup:
 
 ```sh
-hollow-lodge admin event-log-export --output backups/hollow-lodge-events.json
+hollow-lodge admin event-log-export \
+  --output backups/hollow-lodge-events.json \
+  --manifest-output backups/hollow-lodge-events.manifest.json
+```
+
+The manifest validates the export and writes only content-safe chain metadata:
+event count, first and last sequence, first and last event hashes, schema
+versions, and a digest over the event hash chain. It does not include payloads,
+actor IDs, visibility principals, idempotency keys, invite hashes, or auth
+material.
+
+For an existing export, generate or refresh the manifest with:
+
+```sh
+hollow-lodge admin event-log-manifest \
+  --source backups/hollow-lodge-events.json \
+  --output backups/hollow-lodge-events.manifest.json
 ```
 
 Before moving the authoritative event log to Postgres, validate the exported

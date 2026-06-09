@@ -1,17 +1,20 @@
 from __future__ import annotations
 
+import hashlib
 import json
 from pathlib import Path
 from typing import Any
 
 from pydantic import ValidationError
 
-from hollow_lodge.domain.events import GameEvent
+from hollow_lodge.domain.events import GameEvent, canonical_json_bytes
 from hollow_lodge.eventlog.jsonl_store import EventLogIntegrityError, validate_event_chain
 from hollow_lodge.eventlog.postgres_store import PostgresEventStore
 
 
 EVENT_DATABASE_URL_ENV = "HOLLOW_LODGE_EVENT_DATABASE_URL"
+MANIFEST_TYPE = "hollow_lodge_event_log_backup"
+MANIFEST_VERSION = 1
 
 
 def migrate_event_log_to_postgres(
@@ -35,6 +38,55 @@ def migrate_event_log_to_postgres(
         "dry_run": False,
         "event_count": report.event_count,
         "database_url": store.safe_database_url,
+    }
+
+
+def create_event_log_manifest(source: Path) -> dict[str, Any]:
+    return build_event_log_manifest(load_events(source))
+
+
+def build_event_log_manifest(events: list[GameEvent]) -> dict[str, Any]:
+    validate_event_chain(events)
+    if events:
+        first = events[0]
+        last = events[-1]
+        first_sequence = first.sequence
+        last_sequence = last.sequence
+        first_event_id = first.event_id
+        last_event_id = last.event_id
+        first_event_hash = first.event_hash
+        last_event_hash = last.event_hash
+        schema_versions = sorted({event.schema_version for event in events})
+    else:
+        first_sequence = None
+        last_sequence = None
+        first_event_id = None
+        last_event_id = None
+        first_event_hash = None
+        last_event_hash = None
+        schema_versions = []
+    chain_rows = [
+        {
+            "sequence": event.sequence,
+            "event_id": event.event_id,
+            "event_hash": event.event_hash,
+            "previous_hash": event.previous_hash,
+        }
+        for event in events
+    ]
+    chain_digest = hashlib.sha256(canonical_json_bytes(chain_rows)).hexdigest()
+    return {
+        "manifest_type": MANIFEST_TYPE,
+        "manifest_version": MANIFEST_VERSION,
+        "event_count": len(events),
+        "first_sequence": first_sequence,
+        "last_sequence": last_sequence,
+        "first_event_id": first_event_id,
+        "last_event_id": last_event_id,
+        "first_event_hash": first_event_hash,
+        "last_event_hash": last_event_hash,
+        "schema_versions": schema_versions,
+        "event_hash_chain_sha256": chain_digest,
     }
 
 

@@ -16,6 +16,8 @@ from hollow_lodge.client.codex_mcp_config import (
 )
 from hollow_lodge.client.event_log_migration import (
     EVENT_DATABASE_URL_ENV,
+    build_event_log_manifest,
+    create_event_log_manifest,
     migrate_event_log_to_postgres,
 )
 from hollow_lodge.client.config import (
@@ -42,6 +44,8 @@ from hollow_lodge.client.render_packets import (
     build_inbox_packet,
     payload_matches_conversation,
 )
+from hollow_lodge.domain.events import GameEvent
+from hollow_lodge.eventlog.jsonl_store import EventLogIntegrityError
 
 
 DEFAULT_SERVER_URL = "https://server.thehollowlodge.com"
@@ -373,6 +377,11 @@ def admin_event_log_verify(
 @admin_app.command("event-log-export")
 def admin_event_log_export(
     output: Path = typer.Option(..., "--output", help="Destination JSON file."),
+    manifest_output: Path | None = typer.Option(
+        None,
+        "--manifest-output",
+        help="Optional destination for a content-safe backup manifest.",
+    ),
     server: str = typer.Option(
         DEFAULT_SERVER_URL,
         "--server",
@@ -391,6 +400,43 @@ def admin_event_log_export(
     )
     output.parent.mkdir(parents=True, exist_ok=True)
     output.write_text(json.dumps(response, indent=2, sort_keys=True) + "\n", encoding="utf-8")
+    typer.echo(f"wrote {output}")
+    if manifest_output is not None:
+        try:
+            manifest = build_event_log_manifest(_events_from_export_response(response))
+        except (RuntimeError, EventLogIntegrityError) as exc:
+            typer.echo(f"Error: {exc}", err=True)
+            raise typer.Exit(1) from exc
+        manifest_output.parent.mkdir(parents=True, exist_ok=True)
+        manifest_output.write_text(
+            json.dumps(manifest, indent=2, sort_keys=True) + "\n",
+            encoding="utf-8",
+        )
+        typer.echo(f"wrote manifest {manifest_output}")
+
+
+@admin_app.command("event-log-manifest")
+def admin_event_log_manifest(
+    source: Path = typer.Option(
+        ...,
+        "--source",
+        help="Event export file. Accepts admin export JSON, JSON array, or JSONL rows.",
+    ),
+    output: Path = typer.Option(..., "--output", help="Destination manifest JSON file."),
+) -> None:
+    """Write a content-safe manifest for a validated event-log export."""
+    try:
+        manifest = create_event_log_manifest(source)
+    except (RuntimeError, EventLogIntegrityError) as exc:
+        typer.echo(f"Error: {exc}", err=True)
+        raise typer.Exit(1) from exc
+    output.parent.mkdir(parents=True, exist_ok=True)
+    output.write_text(json.dumps(manifest, indent=2, sort_keys=True) + "\n", encoding="utf-8")
+    typer.echo(
+        f"manifest ok: {manifest['event_count']} events "
+        f"last_sequence={manifest['last_sequence']} "
+        f"last_hash={manifest['last_event_hash'] or '-'}"
+    )
     typer.echo(f"wrote {output}")
 
 
@@ -430,6 +476,19 @@ def admin_event_log_import_postgres(
         "event log import ok: "
         f"{result['event_count']} events into {result['database_url']}"
     )
+
+
+def _events_from_export_response(response: dict) -> list[GameEvent]:
+    raw_events = response.get("events")
+    if not isinstance(raw_events, list):
+        raise RuntimeError("event export response did not include events")
+    events: list[GameEvent] = []
+    for index, raw_event in enumerate(raw_events, start=1):
+        try:
+            events.append(GameEvent.model_validate(raw_event))
+        except Exception as exc:
+            raise EventLogIntegrityError(f"invalid event row {index}") from exc
+    return events
 
 
 @admin_app.command("backend-smoke")

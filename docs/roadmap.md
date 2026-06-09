@@ -248,6 +248,10 @@ Status:
   `HOLLOW_LODGE_EVENT_DATABASE_URL=postgresql://...`; platform `DATABASE_URL`
   remains projection-only convenience and cannot accidentally select the
   source-of-truth event backend.
+- Event-log backup manifest completed: operators can generate content-safe
+  manifests for authoritative event-log exports, validating the hash chain and
+  recording count, sequence range, chain head, schema versions, and a digest
+  over event hashes without exposing event payloads or auth material.
 
 Proof gate:
 
@@ -394,6 +398,11 @@ Status:
   explicit Postgres authoritative event storage with
   `HOLLOW_LODGE_REQUIRE_POSTGRES_EVENT_LOG=1`, while local dev and tests keep
   JSONL defaults and Railway-style `DATABASE_URL` remains projection-only.
+- Event-log backup manifest completed: `hollow-lodge admin event-log-export`
+  can now write an optional content-safe manifest, and
+  `hollow-lodge admin event-log-manifest` can validate an existing export and
+  write the same chain summary without exposing payloads, actors, visibility,
+  idempotency keys, invite hashes, or auth material.
 - Admin oracle audit surface completed: operators can inspect redacted
   provider, validation, fallback, count, and hash evidence for server-only
   oracle audit events without exposing raw oracle inputs, hidden truth, or
@@ -2059,6 +2068,27 @@ Expected verification:
 
 - `pytest tests/eventlog/test_postgres_store.py::test_require_postgres_event_log_rejects_missing_event_database_url tests/eventlog/test_postgres_store.py::test_require_postgres_event_log_does_not_accept_platform_database_url tests/eventlog/test_postgres_store.py::test_require_postgres_event_log_allows_explicit_postgres_backend tests/eventlog/test_postgres_store.py::test_require_postgres_event_log_rejects_non_postgres_url_without_secret_leak tests/eventlog/test_postgres_store.py::test_require_postgres_event_log_rejects_invalid_flag_value -q`
 - `pytest tests/eventlog/test_postgres_store.py tests/server/test_app_config.py -q`
+- `pytest -q`
+
+### Slice 83: Event Log Backup Manifest
+
+Status: completed.
+
+Add a content-safe backup manifest for authoritative Eventloom exports.
+`hollow-lodge admin event-log-export` now accepts `--manifest-output` and
+validates the exported chain before writing a manifest, while
+`hollow-lodge admin event-log-manifest` can validate an existing admin export,
+raw event array, or JSONL event file and write the same summary. The manifest
+records event count, first and last sequence, first and last event IDs/hashes,
+schema versions, and a digest over the event hash chain. It deliberately omits
+payloads, actor IDs, visibility principals, idempotency keys, invite hashes,
+auth material, and raw event contents so operators can compare backups and
+migration sources without opening sensitive exports.
+
+Expected verification:
+
+- `pytest tests/e2e/test_event_log_migration.py::test_event_log_manifest_summarizes_validated_chain_without_payloads tests/client/test_cli_commands.py::test_admin_event_log_export_writes_safe_manifest tests/client/test_cli_commands.py::test_admin_event_log_manifest_command_writes_safe_summary tests/client/test_cli_commands.py::test_admin_event_log_manifest_rejects_corrupted_export -q`
+- `pytest tests/e2e/test_event_log_migration.py tests/client/test_cli_commands.py -q`
 - `pytest -q`
 
 ## Completion Standard

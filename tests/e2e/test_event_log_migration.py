@@ -50,6 +50,41 @@ def test_event_log_migration_dry_run_accepts_admin_export(tmp_path):
     assert result == {"dry_run": True, "event_count": 1}
 
 
+def test_event_log_manifest_summarizes_validated_chain_without_payloads(tmp_path):
+    store = JsonlEventStore(tmp_path / "server-events.jsonl")
+    store.append_command(
+        event_type="action.submitted",
+        actor_id="player_ada",
+        visibility=EventVisibility.players(["player_ada"]),
+        payload={"intent": "secret inspection plan"},
+        idempotency_key="submit-action-1",
+    )
+    source = tmp_path / "export.json"
+    source.write_text(
+        json.dumps(
+            {"events": [event.model_dump(mode="json") for event in store.read()]},
+            sort_keys=True,
+        ),
+        encoding="utf-8",
+    )
+
+    manifest = event_log_migration.create_event_log_manifest(source)
+
+    [event] = store.read()
+    assert manifest["manifest_type"] == "hollow_lodge_event_log_backup"
+    assert manifest["manifest_version"] == 1
+    assert manifest["event_count"] == 1
+    assert manifest["first_sequence"] == 1
+    assert manifest["last_sequence"] == 1
+    assert manifest["first_event_hash"] == event.event_hash
+    assert manifest["last_event_hash"] == event.event_hash
+    assert manifest["schema_versions"] == [1]
+    assert len(manifest["event_hash_chain_sha256"]) == 64
+    assert "secret inspection plan" not in json.dumps(manifest)
+    assert "player_ada" not in json.dumps(manifest)
+    assert "submit-action-1" not in json.dumps(manifest)
+
+
 def test_event_log_migration_imports_jsonl_without_leaking_password(
     tmp_path,
     monkeypatch,

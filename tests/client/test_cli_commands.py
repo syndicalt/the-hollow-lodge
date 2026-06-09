@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+import json
+
 from typer.testing import CliRunner
 
 from hollow_lodge.client.backend_smoke import (
@@ -15,6 +17,8 @@ from hollow_lodge.client.config import (
     load_onboarding_config,
     save_config,
 )
+from hollow_lodge.domain.events import EventVisibility
+from hollow_lodge.eventlog.jsonl_store import JsonlEventStore
 
 
 class FakeApi:
@@ -1171,6 +1175,136 @@ def test_admin_event_log_commands_verify_and_export(tmp_path, monkeypatch):
     assert '"identity.player.registered"' in output_path.read_text(encoding="utf-8")
     assert created_clients[0].calls == [("verify_event_log", {"admin_token": "admin-secret"})]
     assert created_clients[1].calls == [("export_event_log", {"admin_token": "admin-secret"})]
+
+
+def test_admin_event_log_export_writes_safe_manifest(tmp_path, monkeypatch):
+    runner = CliRunner()
+    store = JsonlEventStore(tmp_path / "server-events.jsonl")
+    event = store.append_command(
+        event_type="action.submitted",
+        actor_id="player_ada",
+        visibility=EventVisibility.players(["player_ada"]),
+        payload={"intent": "secret backup payload"},
+        idempotency_key="submit-action-1",
+    )
+
+    class ExportApi(FakeApi):
+        def export_event_log(self, *, admin_token: str):
+            self.calls.append(("export_event_log", {"admin_token": admin_token}))
+            return {"events": [row.model_dump(mode="json") for row in store.read()]}
+
+    created_clients: list[ExportApi] = []
+
+    def fake_client(**kwargs):
+        client = ExportApi(**kwargs)
+        created_clients.append(client)
+        return client
+
+    monkeypatch.setattr(cli, "HollowLodgeApi", fake_client)
+    output_path = tmp_path / "events.json"
+    manifest_path = tmp_path / "events.manifest.json"
+
+    result = runner.invoke(
+        cli.app,
+        [
+            "admin",
+            "event-log-export",
+            "--server",
+            "http://testserver",
+            "--admin-token",
+            "admin-secret",
+            "--output",
+            str(output_path),
+            "--manifest-output",
+            str(manifest_path),
+        ],
+    )
+
+    assert result.exit_code == 0
+    assert f"wrote {output_path}" in result.output
+    assert f"wrote manifest {manifest_path}" in result.output
+    manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
+    assert manifest["event_count"] == 1
+    assert manifest["last_sequence"] == 1
+    assert manifest["last_event_hash"] == event.event_hash
+    manifest_text = manifest_path.read_text(encoding="utf-8")
+    assert "secret backup payload" not in manifest_text
+    assert "player_ada" not in manifest_text
+    assert "submit-action-1" not in manifest_text
+    assert created_clients[0].calls == [("export_event_log", {"admin_token": "admin-secret"})]
+
+
+def test_admin_event_log_manifest_command_writes_safe_summary(tmp_path):
+    runner = CliRunner()
+    store = JsonlEventStore(tmp_path / "server-events.jsonl")
+    event = store.append(
+        event_type="contract.seeded",
+        actor_id="server",
+        visibility=EventVisibility.server_only(),
+        payload={"hidden_truth": "do not include this"},
+    )
+    source = tmp_path / "events.json"
+    source.write_text(
+        json.dumps(
+            {"events": [row.model_dump(mode="json") for row in store.read()]},
+            sort_keys=True,
+        ),
+        encoding="utf-8",
+    )
+    output_path = tmp_path / "manifest.json"
+
+    result = runner.invoke(
+        cli.app,
+        [
+            "admin",
+            "event-log-manifest",
+            "--source",
+            str(source),
+            "--output",
+            str(output_path),
+        ],
+    )
+
+    assert result.exit_code == 0
+    assert "manifest ok: 1 events last_sequence=1" in result.output
+    assert f"last_hash={event.event_hash}" in result.output
+    manifest = json.loads(output_path.read_text(encoding="utf-8"))
+    assert manifest["manifest_type"] == "hollow_lodge_event_log_backup"
+    assert manifest["event_count"] == 1
+    assert manifest["last_event_hash"] == event.event_hash
+    assert "do not include this" not in output_path.read_text(encoding="utf-8")
+
+
+def test_admin_event_log_manifest_rejects_corrupted_export(tmp_path):
+    runner = CliRunner()
+    store = JsonlEventStore(tmp_path / "server-events.jsonl")
+    row = store.append(
+        event_type="contract.seeded",
+        actor_id="server",
+        visibility=EventVisibility.server_only(),
+        payload={"contract_id": "contract_false_finger"},
+    ).model_dump(mode="json")
+    row["payload"]["contract_id"] = "tampered"
+    source = tmp_path / "events.json"
+    source.write_text(json.dumps({"events": [row]}), encoding="utf-8")
+    output_path = tmp_path / "manifest.json"
+
+    result = runner.invoke(
+        cli.app,
+        [
+            "admin",
+            "event-log-manifest",
+            "--source",
+            str(source),
+            "--output",
+            str(output_path),
+        ],
+    )
+
+    assert result.exit_code != 0
+    assert "invalid event hash" in result.output
+    assert not output_path.exists()
+    assert "Traceback" not in result.output
 
 
 def test_admin_event_log_import_postgres_dry_run_uses_packaged_migration(
