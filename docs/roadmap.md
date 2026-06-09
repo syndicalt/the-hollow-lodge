@@ -4292,6 +4292,30 @@ Expected verification:
 - `pytest tests/e2e/test_social_pressure_loop.py tests/server/test_deal_routes.py tests/server/test_action_routes.py tests/client/test_render_packets.py tests/test_mcp_server.py -q`
 - `pytest -q`
 
+### Slice 178: Tactical Noise Score Proof Gate
+
+Status: completed.
+
+Strengthen the medium-tactical-rules proof by showing the full player-facing
+chain from repeated crew actions to resolved contract scoring. A new tactical
+noise mock creates a crew, submits two confirmed full actions in the same
+Auction Preview phase through the Codex session path, locks the phase, and
+renders the contract board and activity timeline.
+
+The e2e proof verifies the two submitted action mutation packets, the confirmed
+phase-lock mutation, the resolved `contract_false_finger` standings, and the
+Codex-visible `score_reasoning` penalty `minor heat trace`. It also checks the
+activity timeline includes both actions and the resolved standing, while
+guarding the rendered packets against hidden truth, oracle audit metadata,
+provider details, hashes, auth material, idempotency keys, and raw event
+envelopes.
+
+Expected verification:
+
+- `pytest tests/e2e/test_tactical_noise_loop.py -q`
+- `pytest tests/e2e/test_tactical_noise_loop.py tests/server/test_action_routes.py tests/domain/test_scoring.py tests/server/test_phase_resolution.py tests/client/test_render_packets.py -q`
+- `pytest -q`
+
 ## Completion Standard
 
 Each slice must:
