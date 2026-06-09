@@ -97,6 +97,10 @@ class FakeApi:
                         surface: True for surface in CURRENT_PROJECTION_READ_SURFACES
                     }
                 },
+                "storage_guards": {
+                    "require_postgres_event_log": False,
+                    "require_postgres_projection": False,
+                },
             }
         }
 
@@ -1617,6 +1621,63 @@ def test_admin_backend_smoke_command_verifies_event_log_manifest(
         result.output
     )
     assert "secret" not in result.output
+
+
+def test_admin_backend_smoke_command_verifies_required_storage_guards(monkeypatch):
+    class GuardedStorageApi(FakeApi):
+        def diagnostics(self):
+            payload = super().diagnostics()
+            payload["data"]["storage_guards"] = {
+                "require_postgres_event_log": True,
+                "require_postgres_projection": True,
+            }
+            return payload
+
+    monkeypatch.setattr(cli, "HollowLodgeApi", GuardedStorageApi)
+    runner = CliRunner()
+
+    result = runner.invoke(
+        cli.app,
+        [
+            "admin",
+            "backend-smoke",
+            "--server",
+            "http://testserver",
+            "--expected-backend",
+            "postgres",
+            "--expected-event-backend",
+            "jsonl",
+            "--require-postgres-event-log-guard",
+            "--require-postgres-projection-guard",
+        ],
+    )
+
+    assert result.exit_code == 0
+    assert "backend readiness ok: event=jsonl" in result.output
+    assert "secret" not in result.output
+
+
+def test_admin_backend_smoke_command_rejects_disabled_event_log_guard(monkeypatch):
+    monkeypatch.setattr(cli, "HollowLodgeApi", FakeApi)
+    runner = CliRunner()
+
+    result = runner.invoke(
+        cli.app,
+        [
+            "admin",
+            "backend-smoke",
+            "--server",
+            "http://testserver",
+            "--expected-backend",
+            "postgres",
+            "--expected-event-backend",
+            "jsonl",
+            "--require-postgres-event-log-guard",
+        ],
+    )
+
+    assert result.exit_code != 0
+    assert "Postgres event-log startup guard is not enabled" in result.output
 
 
 def test_admin_backend_smoke_command_rejects_unredacted_database_url(monkeypatch):

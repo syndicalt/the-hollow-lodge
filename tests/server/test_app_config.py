@@ -61,6 +61,10 @@ def test_diagnostics_reports_safe_operational_status(tmp_path, monkeypatch):
     assert body["data"]["event_log"]["event_count"] == 0
     assert body["data"]["event_log"]["last_sequence"] is None
     assert body["data"]["event_log"]["last_event_hash"] is None
+    assert body["data"]["storage_guards"] == {
+        "require_postgres_event_log": False,
+        "require_postgres_projection": False,
+    }
     assert body["oracle"]["configured_provider"] == "openai"
     assert body["oracle"]["active_provider"] == "deterministic"
     assert body["oracle"]["ready"] is False

@@ -546,6 +546,16 @@ def admin_backend_smoke(
         "--event-log-manifest",
         help="Event-log backup manifest file to compare with hosted diagnostics.",
     ),
+    require_postgres_event_log_guard: bool = typer.Option(
+        False,
+        "--require-postgres-event-log-guard",
+        help="Require the deployed server to enforce Postgres event-log startup.",
+    ),
+    require_postgres_projection_guard: bool = typer.Option(
+        False,
+        "--require-postgres-projection-guard",
+        help="Require the deployed server to enforce Postgres projection startup.",
+    ),
 ) -> None:
     """Verify hosted event-log and projection backend readiness."""
     if expected_backend not in {"sqlite", "postgres"}:
@@ -574,6 +584,8 @@ def admin_backend_smoke(
                 if event_log_manifest is not None
                 else None
             ),
+            require_postgres_event_log_guard=require_postgres_event_log_guard,
+            require_postgres_projection_guard=require_postgres_projection_guard,
         )
     except RuntimeError as exc:
         typer.echo(f"Error: {exc}", err=True)

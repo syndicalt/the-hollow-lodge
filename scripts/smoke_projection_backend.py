@@ -57,6 +57,16 @@ def main() -> None:
         type=Path,
         help="Event-log backup manifest file to compare with hosted diagnostics.",
     )
+    parser.add_argument(
+        "--require-postgres-event-log-guard",
+        action="store_true",
+        help="Require the deployed server to enforce Postgres event-log startup.",
+    )
+    parser.add_argument(
+        "--require-postgres-projection-guard",
+        action="store_true",
+        help="Require the deployed server to enforce Postgres projection startup.",
+    )
     args = parser.parse_args()
 
     result = run_smoke(
@@ -70,6 +80,8 @@ def main() -> None:
         require_current_projection_schema=args.require_current_projection_schema,
         require_sequence_alignment=args.require_sequence_alignment,
         event_log_manifest=args.event_log_manifest,
+        require_postgres_event_log_guard=args.require_postgres_event_log_guard,
+        require_postgres_projection_guard=args.require_postgres_projection_guard,
     )
     print(
         "backend readiness ok: "
@@ -95,6 +107,8 @@ def run_smoke(
     require_current_projection_schema: bool = False,
     require_sequence_alignment: bool = False,
     event_log_manifest: Path | None = None,
+    require_postgres_event_log_guard: bool = False,
+    require_postgres_projection_guard: bool = False,
 ) -> dict[str, Any]:
     return run_backend_smoke(
         server_url=server_url,
@@ -105,6 +119,8 @@ def run_smoke(
         require_current_projection_schema=require_current_projection_schema,
         require_sequence_alignment=require_sequence_alignment,
         event_log_manifest=event_log_manifest,
+        require_postgres_event_log_guard=require_postgres_event_log_guard,
+        require_postgres_projection_guard=require_postgres_projection_guard,
     )
 
 

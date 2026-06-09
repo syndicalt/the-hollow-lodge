@@ -7,10 +7,14 @@ from typing import Any
 from fastapi import FastAPI
 
 from hollow_lodge import __version__
-from hollow_lodge.eventlog.config import event_store_from_env
+from hollow_lodge.eventlog.config import (
+    event_store_from_env,
+    event_store_guard_diagnostics,
+)
 from hollow_lodge.server.artifact_service import ArtifactService
 from hollow_lodge.server.deal_service import DealService
 from hollow_lodge.server.projection_config import (
+    projection_guard_diagnostics,
     projection_read_diagnostics,
     projection_store_from_env,
 )
@@ -137,6 +141,10 @@ def create_app(
                     )
                 ),
                 "projection_reads": projection_read_diagnostics(),
+                "storage_guards": {
+                    **event_store_guard_diagnostics(),
+                    **projection_guard_diagnostics(),
+                },
             },
         }
 

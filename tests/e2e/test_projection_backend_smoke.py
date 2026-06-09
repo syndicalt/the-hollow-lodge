@@ -50,6 +50,10 @@ def test_projection_backend_smoke_accepts_available_zero_lag_backend():
                         surface: True for surface in CURRENT_PROJECTION_READ_SURFACES
                     },
                 },
+                "storage_guards": {
+                    "require_postgres_event_log": True,
+                    "require_postgres_projection": True,
+                },
             },
         },
         expected_backend="postgres",
@@ -98,6 +102,10 @@ def test_backend_smoke_accepts_event_and_projection_backends():
                         surface: True for surface in CURRENT_PROJECTION_READ_SURFACES
                     },
                 },
+                "storage_guards": {
+                    "require_postgres_event_log": True,
+                    "require_postgres_projection": True,
+                },
             },
         },
         expected_backend="postgres",
@@ -106,6 +114,8 @@ def test_backend_smoke_accepts_event_and_projection_backends():
         require_current_projection_read_surfaces=True,
         require_current_projection_schema=True,
         require_sequence_alignment=True,
+        require_postgres_event_log_guard=True,
+        require_postgres_projection_guard=True,
     )
 
     assert result["event_log"] == {
@@ -118,6 +128,81 @@ def test_backend_smoke_accepts_event_and_projection_backends():
     assert result["projection"]["backend"] == "postgres"
     assert result["projection"]["lag"] == 0
     assert result["projection"]["schema_version"] == CURRENT_PROJECTION_SCHEMA_VERSION
+    assert result["storage_guards"] == {
+        "require_postgres_event_log": True,
+        "require_postgres_projection": True,
+    }
+
+
+def test_backend_smoke_rejects_missing_required_storage_guards():
+    smoke = _load_smoke_module()
+
+    try:
+        smoke.validate_backend_diagnostics(
+            {
+                "data": {
+                    "event_log": {
+                        "backend": "postgres",
+                        "status": "available",
+                        "event_count": 3,
+                    },
+                    "projection_db": {
+                        "backend": "postgres",
+                        "status": "available",
+                        "lag": 0,
+                    },
+                }
+            },
+            expected_backend="postgres",
+            expected_event_backend="postgres",
+            require_postgres_event_log_guard=True,
+            require_postgres_projection_guard=True,
+        )
+    except RuntimeError as exc:
+        message = str(exc)
+    else:
+        raise AssertionError("missing storage guards should fail")
+
+    assert "diagnostics response did not include data.storage_guards" in message
+    assert "Postgres event-log startup guard is not enabled" in message
+    assert "Postgres projection startup guard is not enabled" in message
+
+
+def test_backend_smoke_rejects_disabled_required_storage_guards():
+    smoke = _load_smoke_module()
+
+    try:
+        smoke.validate_backend_diagnostics(
+            {
+                "data": {
+                    "event_log": {
+                        "backend": "postgres",
+                        "status": "available",
+                        "event_count": 3,
+                    },
+                    "projection_db": {
+                        "backend": "postgres",
+                        "status": "available",
+                        "lag": 0,
+                    },
+                    "storage_guards": {
+                        "require_postgres_event_log": False,
+                        "require_postgres_projection": False,
+                    },
+                }
+            },
+            expected_backend="postgres",
+            expected_event_backend="postgres",
+            require_postgres_event_log_guard=True,
+            require_postgres_projection_guard=True,
+        )
+    except RuntimeError as exc:
+        message = str(exc)
+    else:
+        raise AssertionError("disabled storage guards should fail")
+
+    assert "Postgres event-log startup guard is not enabled" in message
+    assert "Postgres projection startup guard is not enabled" in message
 
 
 def test_backend_smoke_accepts_event_log_manifest_chain_head(tmp_path):

@@ -41,6 +41,12 @@ def event_store_from_env(root: Path) -> JsonlEventStore | PostgresEventStore:
     )
 
 
+def event_store_guard_diagnostics() -> dict[str, object]:
+    return {
+        "require_postgres_event_log": _env_flag(REQUIRE_POSTGRES_EVENT_LOG_ENV),
+    }
+
+
 def _env_flag(name: str) -> bool:
     value = os.environ.get(name, "").strip().lower()
     if value in {"", "0", "false", "no", "off"}:

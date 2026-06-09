@@ -87,6 +87,12 @@ def projection_read_diagnostics() -> dict[str, object]:
     }
 
 
+def projection_guard_diagnostics() -> dict[str, object]:
+    return {
+        "require_postgres_projection": _env_flag(REQUIRE_POSTGRES_PROJECTION_ENV),
+    }
+
+
 def _env_flag(name: str) -> bool:
     value = os.environ.get(name, "").strip().lower()
     if value in {"", "0", "false", "no", "off"}:

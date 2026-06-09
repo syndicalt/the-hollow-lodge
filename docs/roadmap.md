@@ -260,6 +260,10 @@ Status:
   compare hosted event-log diagnostics against a backup manifest's event count,
   last sequence, and last event hash, proving the deployed authoritative backend
   is at the expected Eventloom chain head without exposing payloads.
+- Storage guard readiness smoke completed: `/diagnostics` reports whether
+  production Postgres startup guards are enabled for both the authoritative
+  Eventloom backend and projection backend, and repository or installed-client
+  backend smokes can require those guards before accepting hosted readiness.
 
 Proof gate:
 
@@ -418,6 +422,11 @@ Status:
 - Hosted event-log manifest smoke completed: event-log diagnostics now include
   safe chain-head metadata, and repository/installed backend smoke commands can
   require that metadata to match an event-log backup manifest after cutover.
+- Storage guard readiness smoke completed: hosted readiness checks can now
+  require `HOLLOW_LODGE_REQUIRE_POSTGRES_EVENT_LOG=1` and
+  `HOLLOW_LODGE_REQUIRE_POSTGRES_PROJECTION=1` to be active in the deployed
+  process, preventing a passing smoke when production has merely selected
+  Postgres without enforcing it as a startup invariant.
 - Admin oracle audit surface completed: operators can inspect redacted
   provider, validation, fallback, count, and hash evidence for server-only
   oracle audit events without exposing raw oracle inputs, hidden truth, or

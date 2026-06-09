@@ -189,8 +189,22 @@ After that smoke passes, set `HOLLOW_LODGE_REQUIRE_POSTGRES_EVENT_LOG=1` on
 the server service and redeploy once more. This turns the authoritative event
 storage cutover from a best-effort configuration into a startup invariant
 without allowing platform `DATABASE_URL` to select the event-log backend.
+Verify that the hosted process is enforcing the guard:
 
-After the backend smoke passes, set `HOLLOW_LODGE_PROJECTION_READS=1` and verify
+```sh
+python scripts/smoke_projection_backend.py \
+  --server-url https://server.thehollowlodge.com \
+  --expected-backend postgres \
+  --expected-event-backend postgres \
+  --event-log-manifest backups/hollow-lodge-events.manifest.json \
+  --require-current-projection-read-surfaces \
+  --require-current-projection-schema \
+  --require-sequence-alignment \
+  --require-postgres-event-log-guard
+```
+
+For a projection-only cutover where the authoritative event log remains JSONL,
+set `HOLLOW_LODGE_PROJECTION_READS=1` after the backend smoke passes and verify
 that all implemented projection read surfaces are enabled:
 
 ```sh
@@ -204,7 +218,7 @@ python scripts/smoke_projection_backend.py \
   --require-sequence-alignment
 ```
 
-The installed-client equivalent is:
+The installed-client equivalent for that projection-only path is:
 
 ```sh
 hollow-lodge admin backend-smoke \
@@ -220,6 +234,21 @@ hollow-lodge admin backend-smoke \
 After the Postgres smoke passes, set `HOLLOW_LODGE_REQUIRE_POSTGRES_PROJECTION=1`
 on the server service and redeploy once more. This turns the cutover from a
 best-effort configuration into a startup invariant.
+Verify that both production storage guards are enforced:
+
+```sh
+hollow-lodge admin backend-smoke \
+  --server https://server.thehollowlodge.com \
+  --expected-backend postgres \
+  --expected-event-backend postgres \
+  --event-log-manifest backups/hollow-lodge-events.manifest.json \
+  --require-projection-reads \
+  --require-current-projection-read-surfaces \
+  --require-current-projection-schema \
+  --require-sequence-alignment \
+  --require-postgres-event-log-guard \
+  --require-postgres-projection-guard
+```
 
 The smoke fails if `/health` is not ok, the event-log backend does not match
 `--expected-event-backend`, event-log status is not `available` or
@@ -232,10 +261,14 @@ is set and the reported projection read surface names do not match the
 installed package, `--require-sequence-alignment` is set and the event count,
 projection last sequence, authoritative projection sequence, or projection lag
 do not agree, or `--require-projection-reads` is set and any projection read
-surface is disabled.
+surface is disabled. When `--require-postgres-event-log-guard` or
+`--require-postgres-projection-guard` is set, the smoke also fails unless
+`/diagnostics` reports the corresponding startup guard as enabled.
 
-Rollback is to remove `HOLLOW_LODGE_PROJECTION_DATABASE_URL` from the server
-service and redeploy. The server will return to
+Rollback for a projection-only cutover is to remove
+`HOLLOW_LODGE_REQUIRE_POSTGRES_PROJECTION`,
+`HOLLOW_LODGE_PROJECTION_DATABASE_URL`, and projection-read flags from the
+server service and redeploy. The server will return to
 `$HOLLOW_LODGE_DATA_DIR/server-projections.sqlite3`; the authoritative event
 log remains unchanged through the cutover and rollback.
 

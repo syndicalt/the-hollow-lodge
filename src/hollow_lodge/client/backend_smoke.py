@@ -30,6 +30,8 @@ def run_backend_smoke(
     require_current_projection_schema: bool = False,
     require_sequence_alignment: bool = False,
     event_log_manifest: Path | None = None,
+    require_postgres_event_log_guard: bool = False,
+    require_postgres_projection_guard: bool = False,
 ) -> dict[str, Any]:
     manifest = (
         load_event_log_manifest(event_log_manifest)
@@ -56,6 +58,8 @@ def run_backend_smoke(
             require_current_projection_schema=require_current_projection_schema,
             require_sequence_alignment=require_sequence_alignment,
             event_log_manifest=manifest,
+            require_postgres_event_log_guard=require_postgres_event_log_guard,
+            require_postgres_projection_guard=require_postgres_projection_guard,
         )
 
 
@@ -69,6 +73,8 @@ def validate_backend_diagnostics(
     require_current_projection_schema: bool = False,
     require_sequence_alignment: bool = False,
     event_log_manifest: dict[str, Any] | None = None,
+    require_postgres_event_log_guard: bool = False,
+    require_postgres_projection_guard: bool = False,
 ) -> dict[str, Any]:
     data = diagnostics.get("data", {})
     if not isinstance(data, dict):
@@ -83,6 +89,24 @@ def validate_backend_diagnostics(
         raise RuntimeError("diagnostics response did not include data.projection_db")
 
     errors: list[str] = []
+    storage_guards = data.get("storage_guards")
+    if require_postgres_event_log_guard or require_postgres_projection_guard:
+        if not isinstance(storage_guards, dict):
+            errors.append("diagnostics response did not include data.storage_guards")
+            storage_guards = {}
+    elif not isinstance(storage_guards, dict):
+        storage_guards = None
+    if (
+        require_postgres_event_log_guard
+        and storage_guards.get("require_postgres_event_log") is not True
+    ):
+        errors.append("Postgres event-log startup guard is not enabled")
+    if (
+        require_postgres_projection_guard
+        and storage_guards.get("require_postgres_projection") is not True
+    ):
+        errors.append("Postgres projection startup guard is not enabled")
+
     event_backend = event_log.get("backend")
     if expected_event_backend is not None and event_backend != expected_event_backend:
         errors.append(
@@ -264,6 +288,7 @@ def validate_backend_diagnostics(
         },
         "projection_reads": projection_reads,
         "projection_read_surfaces": projection_read_surfaces,
+        "storage_guards": storage_guards,
     }
 
 
@@ -276,6 +301,8 @@ def validate_projection_diagnostics(
     require_current_projection_schema: bool = False,
     require_sequence_alignment: bool = False,
     event_log_manifest: dict[str, Any] | None = None,
+    require_postgres_event_log_guard: bool = False,
+    require_postgres_projection_guard: bool = False,
 ) -> dict[str, Any]:
     if not isinstance(diagnostics.get("data"), dict):
         diagnostics = {"data": {"event_log": {"backend": None, "status": "not_created"}}}
@@ -295,6 +322,8 @@ def validate_projection_diagnostics(
         require_current_projection_schema=require_current_projection_schema,
         require_sequence_alignment=require_sequence_alignment,
         event_log_manifest=event_log_manifest,
+        require_postgres_event_log_guard=require_postgres_event_log_guard,
+        require_postgres_projection_guard=require_postgres_projection_guard,
     )
     projection = result["projection"]
     return {
@@ -308,6 +337,7 @@ def validate_projection_diagnostics(
         "latest_schema_migration": projection["latest_schema_migration"],
         "projection_reads": result["projection_reads"],
         "projection_read_surfaces": result["projection_read_surfaces"],
+        "storage_guards": result["storage_guards"],
     }
 
 
