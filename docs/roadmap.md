@@ -275,6 +275,10 @@ Status:
   event-log diagnostics now validate the stored sequence/hash chain and compute
   the content-safe chain digest from metadata columns instead of reading every
   full event payload.
+- Projection readiness chain-head diagnostics completed: projected read
+  freshness checks now use event-log diagnostics for the authoritative chain
+  head instead of replaying the full Eventloom log on each projection-backed
+  request.
 
 Proof gate:
 
@@ -455,6 +459,11 @@ Status:
   and `event_hash_chain_sha256` from metadata columns without loading
   `event_json`, while still failing closed if stored sequence or previous-hash
   continuity is broken.
+- Projection readiness chain-head diagnostics completed: shared projection
+  readiness checks now compare projection lag against
+  `event_store.diagnostics().last_sequence`, letting Postgres-backed
+  production requests use the metadata-only chain head rather than a full
+  event-log replay before every projected surface read.
 - Admin oracle audit surface completed: operators can inspect redacted
   provider, validation, fallback, count, and hash evidence for server-only
   oracle audit events without exposing raw oracle inputs, hidden truth, or
@@ -2402,6 +2411,30 @@ Expected verification:
 
 - `pytest tests/eventlog/test_postgres_store.py::test_postgres_event_store_diagnostics_include_chain_digest tests/eventlog/test_postgres_store.py::test_postgres_event_store_diagnostics_reports_unavailable_for_chain_break -q`
 - `pytest tests/eventlog/test_postgres_store.py tests/e2e/test_projection_backend_smoke.py tests/server/test_app_config.py -q`
+- `pytest -q`
+
+### Slice 96: Projection Readiness Chain-Head Diagnostics
+
+Status: completed.
+
+Remove a full Eventloom replay from the common projection-backed read path.
+Shared projection readiness now asks the authoritative event store for its
+safe diagnostics chain head and passes that `last_sequence` to projection
+diagnostics. Freshness checks still require the projection to be available and
+zero-lag, but they no longer call `event_store.read()` just to discover the
+authoritative sequence.
+
+This compounds the Slice 95 Postgres improvement: in production, the readiness
+check can use metadata-only Postgres event-log diagnostics, while actual
+gameplay fallbacks, writes, imports, and integrity checks continue to validate
+or replay full events where that authority is required. If event-log
+diagnostics are unavailable or malformed, projection readiness fails closed and
+the existing route fallback behavior remains in force.
+
+Expected verification:
+
+- `pytest tests/server/test_projection_store.py::test_projection_readiness_uses_event_log_diagnostics_without_replay tests/server/test_projection_store.py::test_projection_readiness_falls_back_when_event_log_diagnostics_unavailable tests/server/test_projection_store.py::test_deal_route_reads_fresh_projected_visible_deals_when_enabled tests/server/test_projection_store.py::test_deal_route_falls_back_when_projection_is_stale -q`
+- `pytest tests/server/test_projection_store.py tests/server/test_app_config.py tests/e2e/test_projection_backend_smoke.py tests/client/test_cli_commands.py -q`
 - `pytest -q`
 
 ## Completion Standard

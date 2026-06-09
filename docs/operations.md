@@ -137,6 +137,13 @@ returning operational status. Projection diagnostics also include the current
 projection schema version, migration count, and latest applied migration so
 operators can verify schema drift before enabling projection reads.
 
+Projection-backed read readiness compares projection lag against the
+authoritative event-log diagnostics chain head. In Postgres event-log mode,
+that means ordinary projected reads can prove freshness from metadata-only
+chain diagnostics instead of replaying the full Eventloom log. If the
+authoritative event-log diagnostics are unavailable or malformed, projected
+reads fail closed and routes use their existing Eventloom fallback paths.
+
 Before any projection backend cutover, verify the current backend:
 
 ```sh

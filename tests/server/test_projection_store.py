@@ -1831,6 +1831,75 @@ def test_deal_route_reads_fresh_projected_visible_deals_when_enabled(
     }
 
 
+def test_projection_readiness_uses_event_log_diagnostics_without_replay(
+    tmp_path,
+    monkeypatch,
+):
+    monkeypatch.setenv("HOLLOW_LODGE_DEAL_PROJECTION_READS", "1")
+    client = TestClient(create_app(data_dir=tmp_path, invite_codes=["a", "b"]))
+    ada = register(client, "a", "Ada")
+    bela = register(client, "b", "Bela")
+    gilt = create_crew(client, ada["token"], "crew-create-gilt", "The Gilt Knives")
+    moth = create_crew(client, bela["token"], "crew-create-moth", "The Moth Choir")
+    proposed = client.post(
+        "/deals",
+        headers=command_auth(ada["token"], "deal-propose"),
+        json=proposed_deal_payload(gilt, moth),
+    )
+    event_log_diagnostics = client.app.state.event_store.diagnostics()
+    diagnostics_calls = {"count": 0}
+
+    def tracked_event_log_diagnostics():
+        diagnostics_calls["count"] += 1
+        return event_log_diagnostics
+
+    client.app.state.event_store.diagnostics = tracked_event_log_diagnostics
+    client.app.state.event_store.read = lambda *args, **kwargs: (_ for _ in ()).throw(
+        AssertionError("projection readiness should not replay the event log")
+    )
+
+    response = client.get("/deals", headers=auth(bela["token"]))
+
+    assert proposed.status_code == 201
+    assert response.status_code == 200
+    assert response.json()["deals"] == [proposed.json()]
+    assert diagnostics_calls["count"] == 1
+
+
+def test_projection_readiness_falls_back_when_event_log_diagnostics_unavailable(
+    tmp_path,
+    monkeypatch,
+):
+    monkeypatch.setenv("HOLLOW_LODGE_DEAL_PROJECTION_READS", "1")
+    client = TestClient(create_app(data_dir=tmp_path, invite_codes=["a", "b"]))
+    ada = register(client, "a", "Ada")
+    bela = register(client, "b", "Bela")
+    gilt = create_crew(client, ada["token"], "crew-create-gilt", "The Gilt Knives")
+    moth = create_crew(client, bela["token"], "crew-create-moth", "The Moth Choir")
+    proposed = client.post(
+        "/deals",
+        headers=command_auth(ada["token"], "deal-propose"),
+        json=proposed_deal_payload(gilt, moth),
+    )
+
+    client.app.state.event_store.diagnostics = lambda: {
+        "backend": "jsonl",
+        "status": "unavailable",
+        "last_sequence": None,
+    }
+    client.app.state.projection_store.read_visible_deals = (
+        lambda player_id, crew_ids=(): (_ for _ in ()).throw(
+            AssertionError("unavailable event-log diagnostics should block projection reads")
+        )
+    )
+
+    response = client.get("/deals", headers=auth(bela["token"]))
+
+    assert proposed.status_code == 201
+    assert response.status_code == 200
+    assert response.json()["deals"] == [proposed.json()]
+
+
 def test_deal_route_falls_back_when_projection_is_stale(tmp_path, monkeypatch):
     monkeypatch.setenv("HOLLOW_LODGE_DEAL_PROJECTION_READS", "1")
     client = TestClient(create_app(data_dir=tmp_path, invite_codes=["a", "b"]))
