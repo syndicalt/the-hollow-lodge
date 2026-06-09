@@ -24,6 +24,7 @@ class RenderPacket(BaseModel):
         "deal_preview",
         "artifact",
         "artifact_graph",
+        "proof_fragment",
         "activity",
         "activity_delta",
         "crew_activity",
@@ -228,6 +229,68 @@ def _shape_proof_fragment(fragment: dict[str, Any]) -> dict[str, Any]:
         for key in ("fragment_id", "summary")
         if key in fragment
     }
+
+
+def _shape_proof_fragment_surface(fragment: dict[str, Any]) -> dict[str, Any]:
+    return {
+        key: fragment[key]
+        for key in (
+            "fragment_id",
+            "content_summary",
+            "source_chain",
+            "provenance_checked",
+            "provenance_flags",
+        )
+        if key in fragment
+    }
+
+
+def build_proof_fragment_packet(fragment: dict[str, Any]) -> RenderPacket:
+    shaped = _shape_proof_fragment_surface(fragment)
+    lines = [
+        f"Proof Fragment: {shaped['fragment_id']}",
+        f"Summary: {shaped.get('content_summary', '')}",
+        f"Provenance checked: {str(shaped.get('provenance_checked', False)).lower()}",
+        "",
+        "Source chain:",
+    ]
+    source_chain = [str(source) for source in shaped.get("source_chain", [])]
+    if source_chain:
+        lines.extend(f"- {source}" for source in source_chain)
+    else:
+        lines.append("- none")
+    provenance_flags = [
+        str(flag) for flag in shaped.get("provenance_flags", []) if str(flag)
+    ]
+    if provenance_flags:
+        lines.extend(["", "Provenance flags:"])
+        lines.extend(f"- {flag}" for flag in provenance_flags)
+    return RenderPacket(
+        surface="proof_fragment",
+        player_markdown="\n".join(lines),
+        agent_context={
+            "fragment": shaped,
+            "mutation": False,
+        },
+        suggested_prompts=[
+            "Check provenance",
+            "Add to dossier",
+            "Transfer fragment",
+        ],
+        actions=[
+            RenderAction(
+                label="Check provenance",
+                intent="check_provenance",
+                requires_confirmation=True,
+            ),
+            RenderAction(label="Add to dossier", intent="dossier_contribute"),
+            RenderAction(
+                label="Transfer fragment",
+                intent="transfer_proof_fragment",
+                requires_confirmation=True,
+            ),
+        ],
+    )
 
 
 def _shape_artifact(artifact: dict[str, Any]) -> dict[str, Any]:
@@ -765,6 +828,8 @@ def _shape_mutation_result(operation: str, result: dict[str, Any]) -> dict[str, 
         return _shape_deal(result)
     if operation in {"inspect_artifact", "transfer_artifact"}:
         return _shape_artifact(result)
+    if operation in {"transfer_proof_fragment", "check_provenance"}:
+        return _shape_proof_fragment_surface(result)
     if operation == "phase_lock":
         return {
             key: result[key]
@@ -785,7 +850,7 @@ def _mutation_result_label(operation: str, result: dict[str, Any]) -> str:
         return str(result["status"])
     if operation == "send_message" and "message_id" in result:
         return str(result["message_id"])
-    for key in ("action_id", "deal_id", "artifact_id", "dossier_id"):
+    for key in ("action_id", "deal_id", "artifact_id", "fragment_id", "dossier_id"):
         if key in result:
             return str(result[key])
     return "accepted"
@@ -824,6 +889,9 @@ def build_mutation_result_packet(
     ]
     if operation in {"propose_deal", "accept_deal", "decline_deal", "cancel_deal"} and shaped_result:
         lines.extend(_render_deal_lines(shaped_result))
+    if operation == "check_provenance" and shaped_result:
+        flags = ", ".join(shaped_result.get("provenance_flags", [])) or "clear"
+        lines.append(f"Provenance: {flags}")
     return RenderPacket(
         surface="mutation",
         player_markdown="\n".join(lines),

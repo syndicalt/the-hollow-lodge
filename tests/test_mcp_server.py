@@ -212,6 +212,36 @@ def test_render_dossier_mcp_call_returns_text_and_structured_packet(monkeypatch)
     assert result.structuredContent["agent_context"]["mutation"] is False
 
 
+def test_render_proof_fragment_mcp_call_returns_text_and_structured_packet(monkeypatch):
+    packet = RenderPacket(
+        surface="proof_fragment",
+        player_markdown="Proof Fragment: fragment_copy",
+        agent_context={
+            "fragment": {"fragment_id": "fragment_copy"},
+            "mutation": False,
+        },
+    )
+
+    class StubSession:
+        def render_proof_fragment(self, fragment_id: str) -> RenderPacket:
+            assert fragment_id == "fragment_copy"
+            return packet
+
+    monkeypatch.setattr(mcp_server, "_session", lambda: StubSession())
+
+    result = asyncio.run(
+        mcp_server.mcp.call_tool(
+            "render_proof_fragment",
+            {"fragment_id": "fragment_copy"},
+        )
+    )
+
+    assert isinstance(result, CallToolResult)
+    assert result.content[0].text == packet.player_markdown
+    assert result.structuredContent["surface"] == "proof_fragment"
+    assert result.structuredContent["agent_context"]["mutation"] is False
+
+
 def test_render_activity_mcp_call_returns_text_and_structured_packet(monkeypatch):
     packet = RenderPacket(
         surface="activity",
@@ -732,6 +762,77 @@ def test_inspect_artifact_mcp_call_passes_confirmation_to_session(monkeypatch):
     assert result.structuredContent["agent_context"]["mutation"] is False
 
 
+def test_transfer_proof_fragment_mcp_call_passes_confirmation(monkeypatch):
+    packet = RenderPacket(
+        surface="mutation",
+        player_markdown="Preview: transfer_proof_fragment\nNo server mutation was submitted.",
+        agent_context={"operation": "transfer_proof_fragment", "mutation": False},
+    )
+
+    class StubSession:
+        def transfer_proof_fragment(
+            self,
+            *,
+            fragment_id: str,
+            recipient_player_id: str,
+            confirm: bool,
+        ) -> RenderPacket:
+            assert fragment_id == "fragment_copy"
+            assert recipient_player_id == "player_0002"
+            assert confirm is False
+            return packet
+
+    monkeypatch.setattr(mcp_server, "_session", lambda: StubSession())
+
+    result = asyncio.run(
+        mcp_server.mcp.call_tool(
+            "transfer_proof_fragment",
+            {
+                "fragment_id": "fragment_copy",
+                "recipient_player_id": "player_0002",
+                "confirm": False,
+            },
+        )
+    )
+
+    assert result.content[0].text == packet.player_markdown
+    assert result.structuredContent["agent_context"]["mutation"] is False
+
+
+def test_check_provenance_mcp_call_passes_confirmation(monkeypatch):
+    packet = RenderPacket(
+        surface="mutation",
+        player_markdown="Preview: check_provenance\nNo server mutation was submitted.",
+        agent_context={"operation": "check_provenance", "mutation": False},
+    )
+
+    class StubSession:
+        def check_provenance(
+            self,
+            *,
+            fragment_id: str,
+            confirm: bool,
+        ) -> RenderPacket:
+            assert fragment_id == "fragment_copy"
+            assert confirm is False
+            return packet
+
+    monkeypatch.setattr(mcp_server, "_session", lambda: StubSession())
+
+    result = asyncio.run(
+        mcp_server.mcp.call_tool(
+            "check_provenance",
+            {
+                "fragment_id": "fragment_copy",
+                "confirm": False,
+            },
+        )
+    )
+
+    assert result.content[0].text == packet.player_markdown
+    assert result.structuredContent["agent_context"]["mutation"] is False
+
+
 def test_phase_lock_mcp_call_passes_confirmation_to_session(monkeypatch):
     packet = RenderPacket(
         surface="mutation",
@@ -785,6 +886,7 @@ def test_public_mcp_tools_do_not_expose_local_path_overrides():
         "render_crew_activity_delta",
         "render_conversations",
         "render_thread",
+        "render_proof_fragment",
         "render_backend_status",
         "check_backend_readiness",
         "send_message",
@@ -802,6 +904,8 @@ def test_public_mcp_tools_do_not_expose_local_path_overrides():
         "decline_deal",
         "cancel_deal",
         "transfer_artifact",
+        "transfer_proof_fragment",
+        "check_provenance",
         "vote_packet_lead",
         "phase_lock",
     ):
@@ -826,6 +930,8 @@ def test_mutating_mcp_tools_require_confirm_argument():
         "decline_deal",
         "cancel_deal",
         "transfer_artifact",
+        "transfer_proof_fragment",
+        "check_provenance",
         "vote_packet_lead",
         "phase_lock",
     ):
@@ -836,3 +942,5 @@ def test_mutating_mcp_tools_require_confirm_argument():
     assert "note" in tools["dossier_contribute"].inputSchema["required"]
     assert "evidence_ids" in tools["dossier_contribute"].inputSchema["required"]
     assert "artifact_id" in tools["inspect_artifact"].inputSchema["required"]
+    assert "fragment_id" in tools["render_proof_fragment"].inputSchema["required"]
+    assert "fragment_id" in tools["check_provenance"].inputSchema["required"]

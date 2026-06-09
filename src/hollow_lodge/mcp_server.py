@@ -87,6 +87,11 @@ def render_artifact(artifact_id: str) -> CallToolResult:
 
 
 @mcp.tool()
+def render_proof_fragment(fragment_id: str) -> CallToolResult:
+    return packet_response(_session().render_proof_fragment(fragment_id))
+
+
+@mcp.tool()
 def inspect_artifact(artifact_id: str, confirm: bool) -> CallToolResult:
     return packet_response(
         _session().inspect_artifact(
@@ -351,6 +356,34 @@ def transfer_artifact(
         _session().transfer_artifact(
             artifact_id=artifact_id,
             recipient_player_id=recipient_player_id,
+            confirm=confirm,
+        )
+    )
+
+
+@mcp.tool()
+def transfer_proof_fragment(
+    fragment_id: str,
+    recipient_player_id: str,
+    confirm: bool,
+) -> CallToolResult:
+    return packet_response(
+        _session().transfer_proof_fragment(
+            fragment_id=fragment_id,
+            recipient_player_id=recipient_player_id,
+            confirm=confirm,
+        )
+    )
+
+
+@mcp.tool()
+def check_provenance(
+    fragment_id: str,
+    confirm: bool,
+) -> CallToolResult:
+    return packet_response(
+        _session().check_provenance(
+            fragment_id=fragment_id,
             confirm=confirm,
         )
     )

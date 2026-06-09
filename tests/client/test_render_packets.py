@@ -9,6 +9,7 @@ from hollow_lodge.client.render_packets import (
     build_dossier_packet,
     build_inbox_packet,
     build_profile_packet,
+    build_proof_fragment_packet,
     build_what_now_packet,
 )
 
@@ -967,6 +968,49 @@ def test_inbox_packet_uses_display_name_without_losing_player_id():
     assert packet.agent_context["player_id"] == "player_0001"
 
 
+def test_proof_fragment_packet_renders_safe_surface():
+    packet = build_proof_fragment_packet(
+        {
+            "fragment_id": "fragment_copy",
+            "content_summary": "A copied ledger hand changes after the chapel seal.",
+            "source_chain": ["archive:ledger", "transfer:player_0001->player_0002"],
+            "provenance_checked": False,
+            "server_notes": "hidden",
+        }
+    )
+
+    assert packet.surface == "proof_fragment"
+    assert "Proof Fragment: fragment_copy" in packet.player_markdown
+    assert "Provenance checked: false" in packet.player_markdown
+    assert "Provenance flags:" not in packet.player_markdown
+    assert packet.agent_context["fragment"] == {
+        "fragment_id": "fragment_copy",
+        "content_summary": "A copied ledger hand changes after the chapel seal.",
+        "source_chain": ["archive:ledger", "transfer:player_0001->player_0002"],
+        "provenance_checked": False,
+    }
+    assert "server_notes" not in str(packet)
+
+
+def test_proof_fragment_packet_renders_confirmed_provenance_flags():
+    packet = build_proof_fragment_packet(
+        {
+            "fragment_id": "fragment_copy",
+            "content_summary": "A copied ledger hand changes after the chapel seal.",
+            "source_chain": ["archive:ledger", "transfer:player_0001->player_0002"],
+            "provenance_checked": True,
+            "provenance_flags": ["copied-hand", "ink-after-binding"],
+        }
+    )
+
+    assert "Provenance checked: true" in packet.player_markdown
+    assert "copied-hand" in packet.player_markdown
+    assert packet.agent_context["fragment"]["provenance_flags"] == [
+        "copied-hand",
+        "ink-after-binding",
+    ]
+
+
 def test_mutation_preview_packet_is_explicit_and_non_mutating():
     packet = build_mutation_result_packet(
         operation="submit_action",
@@ -1102,6 +1146,33 @@ def test_inspect_artifact_mutation_result_uses_visible_shaped_result_only():
     assert "archive:lot-card" not in str(packet.agent_context)
     assert "hidden_flags" not in str(packet.agent_context)
     assert "server_notes" not in str(packet.agent_context)
+
+
+def test_check_provenance_mutation_result_renders_visible_flags():
+    packet = build_mutation_result_packet(
+        operation="check_provenance",
+        confirmed=True,
+        result={
+            "fragment_id": "fragment_copy",
+            "content_summary": "A red ledger rubric names three prior owners.",
+            "source_chain": ["archive:lot-card", "transfer:player_0001->player_0002"],
+            "provenance_checked": True,
+            "provenance_flags": ["copied-hand", "ink-after-binding"],
+            "server_notes": "hidden",
+        },
+    )
+
+    assert "Submitted: check_provenance" in packet.player_markdown
+    assert "Result: fragment_copy" in packet.player_markdown
+    assert "Provenance: copied-hand, ink-after-binding" in packet.player_markdown
+    assert packet.agent_context["result"] == {
+        "fragment_id": "fragment_copy",
+        "content_summary": "A red ledger rubric names three prior owners.",
+        "source_chain": ["archive:lot-card", "transfer:player_0001->player_0002"],
+        "provenance_checked": True,
+        "provenance_flags": ["copied-hand", "ink-after-binding"],
+    }
+    assert "server_notes" not in str(packet)
 
 
 def test_submit_action_mutation_result_includes_safe_rumor_response_mode():

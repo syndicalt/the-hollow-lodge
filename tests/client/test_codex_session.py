@@ -306,6 +306,60 @@ class FakeApi:
             "server_notes": "hidden",
         }
 
+    def proof_fragment(self, *, fragment_id: str):
+        self.calls.append(f"proof_fragment:{fragment_id}")
+        return {
+            "fragment_id": fragment_id,
+            "content_summary": "A copied ledger hand changes after the chapel seal.",
+            "source_chain": ["archive:ledger"],
+            "provenance_checked": False,
+            "server_notes": "hidden",
+        }
+
+    def transfer_proof_fragment(
+        self,
+        *,
+        fragment_id: str,
+        recipient_player_id: str,
+        idempotency_key: str,
+    ):
+        self.calls.append(
+            (
+                "transfer_proof_fragment",
+                {
+                    "fragment_id": fragment_id,
+                    "recipient_player_id": recipient_player_id,
+                    "idempotency_key": idempotency_key,
+                },
+            )
+        )
+        return {
+            "fragment_id": f"{fragment_id}.copy.player_0002.1",
+            "content_summary": "A copied ledger hand changes after the chapel seal.",
+            "source_chain": ["archive:ledger", "transfer:player_0001->player_0002"],
+            "provenance_checked": False,
+            "server_notes": "hidden",
+        }
+
+    def check_provenance(self, *, fragment_id: str, idempotency_key: str):
+        self.calls.append(
+            (
+                "check_provenance",
+                {
+                    "fragment_id": fragment_id,
+                    "idempotency_key": idempotency_key,
+                },
+            )
+        )
+        return {
+            "fragment_id": fragment_id,
+            "content_summary": "A copied ledger hand changes after the chapel seal.",
+            "source_chain": ["archive:ledger", "transfer:player_0001->player_0002"],
+            "provenance_checked": True,
+            "provenance_flags": ["copied-hand", "ink-after-binding"],
+            "server_notes": "hidden",
+        }
+
     def deals(self):
         self.calls.append("deals")
         return {
@@ -1176,6 +1230,29 @@ def test_codex_session_renders_artifact(tmp_path):
     assert fake_api.calls == ["visible_events", "artifact:artifact_ledger_rubric"]
 
 
+def test_codex_session_renders_proof_fragment(tmp_path):
+    config_path = tmp_path / "config.json"
+    log_path = tmp_path / "local.jsonl"
+    fake_api = FakeApi()
+    save_config(
+        config_path,
+        ClientConfig(server_url="http://testserver", player_id="player_0001", token="token"),
+    )
+    session = CodexGameSession(config_path=config_path, local_log_path=log_path, api=fake_api)
+
+    packet = session.render_proof_fragment("fragment_ledger_hand")
+
+    assert packet.surface == "proof_fragment"
+    assert fake_api.calls == ["visible_events", "proof_fragment:fragment_ledger_hand"]
+    assert packet.agent_context["fragment"] == {
+        "fragment_id": "fragment_ledger_hand",
+        "content_summary": "A copied ledger hand changes after the chapel seal.",
+        "source_chain": ["archive:ledger"],
+        "provenance_checked": False,
+    }
+    assert "server_notes" not in str(packet)
+
+
 def test_codex_session_renders_deals(tmp_path):
     config_path = tmp_path / "config.json"
     log_path = tmp_path / "local.jsonl"
@@ -2026,6 +2103,132 @@ def test_codex_session_inspect_artifact_preview_does_not_call_api(tmp_path):
         "preview": {"artifact_id": "artifact_ledger_rubric"},
     }
     assert fake_api.calls == []
+
+
+def test_codex_session_transfer_proof_fragment_preview_does_not_call_api(tmp_path):
+    config_path = tmp_path / "config.json"
+    log_path = tmp_path / "local.jsonl"
+    fake_api = FakeApi()
+    save_config(
+        config_path,
+        ClientConfig(
+            server_url="http://testserver",
+            player_id="player_0001",
+            token="token",
+            active_crew_id="crew_0001",
+        ),
+    )
+    session = CodexGameSession(config_path=config_path, local_log_path=log_path, api=fake_api)
+
+    packet = session.transfer_proof_fragment(
+        fragment_id="fragment_ledger_hand",
+        recipient_player_id="player_0002",
+        confirm=False,
+    )
+
+    assert packet.surface == "mutation"
+    assert packet.agent_context == {
+        "operation": "transfer_proof_fragment",
+        "mutation": False,
+        "confirmed": False,
+        "preview": {
+            "fragment_id": "fragment_ledger_hand",
+            "recipient_player_id": "player_0002",
+        },
+    }
+    assert fake_api.calls == []
+
+
+def test_codex_session_check_provenance_preview_does_not_call_api(tmp_path):
+    config_path = tmp_path / "config.json"
+    log_path = tmp_path / "local.jsonl"
+    fake_api = FakeApi()
+    save_config(
+        config_path,
+        ClientConfig(
+            server_url="http://testserver",
+            player_id="player_0001",
+            token="token",
+            active_crew_id="crew_0001",
+        ),
+    )
+    session = CodexGameSession(config_path=config_path, local_log_path=log_path, api=fake_api)
+
+    packet = session.check_provenance(
+        fragment_id="fragment_ledger_hand",
+        confirm=False,
+    )
+
+    assert packet.surface == "mutation"
+    assert packet.agent_context == {
+        "operation": "check_provenance",
+        "mutation": False,
+        "confirmed": False,
+        "preview": {
+            "fragment_id": "fragment_ledger_hand",
+            "check_type": "provenance",
+        },
+    }
+    assert fake_api.calls == []
+
+
+def test_codex_session_transfer_and_check_proof_fragment_confirm_syncs(tmp_path, monkeypatch):
+    monkeypatch.setattr("hollow_lodge.client.codex_session.new_command_key", lambda prefix: f"{prefix}.fixed")
+    config_path = tmp_path / "config.json"
+    log_path = tmp_path / "local.jsonl"
+    fake_api = FakeApi()
+    save_config(
+        config_path,
+        ClientConfig(
+            server_url="http://testserver",
+            player_id="player_0001",
+            token="token",
+            active_crew_id="crew_0001",
+        ),
+    )
+    session = CodexGameSession(config_path=config_path, local_log_path=log_path, api=fake_api)
+
+    transfer = session.transfer_proof_fragment(
+        fragment_id="fragment_ledger_hand",
+        recipient_player_id="player_0002",
+        confirm=True,
+    )
+    provenance = session.check_provenance(
+        fragment_id="fragment_ledger_hand.copy.player_0002.1",
+        confirm=True,
+    )
+
+    assert transfer.agent_context["result"] == {
+        "fragment_id": "fragment_ledger_hand.copy.player_0002.1",
+        "content_summary": "A copied ledger hand changes after the chapel seal.",
+        "source_chain": ["archive:ledger", "transfer:player_0001->player_0002"],
+        "provenance_checked": False,
+    }
+    assert provenance.agent_context["result"]["provenance_flags"] == [
+        "copied-hand",
+        "ink-after-binding",
+    ]
+    assert "server_notes" not in str(transfer)
+    assert "server_notes" not in str(provenance)
+    assert fake_api.calls == [
+        (
+            "transfer_proof_fragment",
+            {
+                "fragment_id": "fragment_ledger_hand",
+                "recipient_player_id": "player_0002",
+                "idempotency_key": "proof-transfer.fixed",
+            },
+        ),
+        "visible_events",
+        (
+            "check_provenance",
+            {
+                "fragment_id": "fragment_ledger_hand.copy.player_0002.1",
+                "idempotency_key": "proof-provenance.fixed",
+            },
+        ),
+        "visible_events",
+    ]
 
 
 def test_codex_session_dossier_update_framing_rejects_empty_update(tmp_path):

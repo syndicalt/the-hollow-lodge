@@ -34,6 +34,7 @@ from hollow_lodge.client.render_packets import (
     build_inbox_packet,
     build_mutation_result_packet,
     build_profile_packet,
+    build_proof_fragment_packet,
     build_thread_packet,
     build_what_now_packet,
 )
@@ -109,6 +110,12 @@ class CodexGameSession:
     def render_artifact(self, artifact_id: str) -> RenderPacket:
         self.sync()
         return build_artifact_packet(self.api.artifact(artifact_id=artifact_id))
+
+    def render_proof_fragment(self, fragment_id: str) -> RenderPacket:
+        self.sync()
+        return build_proof_fragment_packet(
+            self.api.proof_fragment(fragment_id=fragment_id)
+        )
 
     def inspect_artifact(self, *, artifact_id: str, confirm: bool) -> RenderPacket:
         if not confirm:
@@ -632,6 +639,61 @@ class CodexGameSession:
         self.sync()
         return build_mutation_result_packet(
             operation="transfer_artifact",
+            confirmed=True,
+            result=result,
+        )
+
+    def transfer_proof_fragment(
+        self,
+        *,
+        fragment_id: str,
+        recipient_player_id: str,
+        confirm: bool,
+    ) -> RenderPacket:
+        preview = {
+            "fragment_id": fragment_id,
+            "recipient_player_id": recipient_player_id,
+        }
+        if not confirm:
+            return build_mutation_result_packet(
+                operation="transfer_proof_fragment",
+                confirmed=False,
+                preview_fields=preview,
+            )
+        result = self.api.transfer_proof_fragment(
+            fragment_id=fragment_id,
+            recipient_player_id=recipient_player_id,
+            idempotency_key=new_command_key("proof-transfer"),
+        )
+        self.sync()
+        return build_mutation_result_packet(
+            operation="transfer_proof_fragment",
+            confirmed=True,
+            result=result,
+        )
+
+    def check_provenance(
+        self,
+        *,
+        fragment_id: str,
+        confirm: bool,
+    ) -> RenderPacket:
+        if not confirm:
+            return build_mutation_result_packet(
+                operation="check_provenance",
+                confirmed=False,
+                preview_fields={
+                    "fragment_id": fragment_id,
+                    "check_type": "provenance",
+                },
+            )
+        result = self.api.check_provenance(
+            fragment_id=fragment_id,
+            idempotency_key=new_command_key("proof-provenance"),
+        )
+        self.sync()
+        return build_mutation_result_packet(
+            operation="check_provenance",
             confirmed=True,
             result=result,
         )

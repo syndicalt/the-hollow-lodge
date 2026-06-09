@@ -4372,6 +4372,34 @@ Expected verification:
 - `pytest tests/e2e/test_action_revision_loop.py tests/server/test_action_routes.py tests/server/test_phase_resolution.py tests/client/test_codex_session.py tests/client/test_render_packets.py -q`
 - `pytest -q`
 
+### Slice 181: Codex Proof Fragment Loop
+
+Status: completed.
+
+Close the CLI/API-only gap around proof fragments by exposing a Codex-native
+fragment loop. The client now has `render_proof_fragment`,
+`transfer_proof_fragment`, and `check_provenance` session methods; MCP exposes
+matching `render_proof_fragment`, `transfer_proof_fragment`, and
+`check_provenance` tools; and render packets include a first-class
+`proof_fragment` surface plus safe mutation shaping for proof transfer and
+provenance checks.
+
+The e2e proof has Ada transfer the starter ledger fragment to Grace through
+the Codex session path, Grace render the copied fragment without provenance
+flags, preview and confirm a provenance check, see the official copied-hand
+and ink-after-binding flags in the confirmed check result, then contribute the
+fragment to the crew dossier and render the dossier and activity timeline. The
+proof guards transfer, fragment, provenance, dossier, and activity packets
+against hidden truth, server-only notes, internal transfer events, source
+fragment ids, oracle/provider metadata, hashes, auth material, idempotency
+keys, and raw event envelopes.
+
+Expected verification:
+
+- `pytest tests/e2e/test_proof_fragment_codex_loop.py -q`
+- `pytest tests/e2e/test_proof_fragment_codex_loop.py tests/server/test_proof_routes.py tests/client/test_codex_session.py tests/client/test_render_packets.py tests/test_mcp_server.py -q`
+- `pytest -q`
+
 ## Completion Standard
 
 Each slice must:

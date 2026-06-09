@@ -324,6 +324,9 @@ class HollowLodgeApi:
     def artifact(self, *, artifact_id: str) -> dict[str, Any]:
         return self._get(f"/artifacts/{artifact_id}")
 
+    def proof_fragment(self, *, fragment_id: str) -> dict[str, Any]:
+        return self._get(f"/proofs/fragments/{fragment_id}")
+
     def inspect_artifact(self, *, artifact_id: str, idempotency_key: str) -> dict[str, Any]:
         return self._post(
             f"/artifacts/{artifact_id}/inspect",
