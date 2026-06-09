@@ -274,6 +274,7 @@ def _crew_board_dossier(dossier: dict) -> dict:
             "claim",
             "evidence_ids",
             "artifact_citations",
+            "typed_claims",
             "packet_lead_votes",
             "packet_lead_replacements",
             "reasoning",

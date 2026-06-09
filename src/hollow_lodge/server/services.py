@@ -1667,7 +1667,20 @@ class ContractService:
                     known_edges=tuple(score_input.known_edges),
                     exposed_assets=tuple(score_input.exposed_assets),
                     compiled_actions=tuple(score_input.compiled_actions),
-                    typed_claims=tuple(score_input.typed_claims),
+                    typed_claims=tuple(
+                        {
+                            key: claim[key]
+                            for key in (
+                                "subject_id",
+                                "predicate",
+                                "object_id",
+                                "value",
+                                "citation_artifact_ids",
+                            )
+                            if key in claim
+                        }
+                        for claim in score_input.typed_claims
+                    ),
                     crew_noise=score_input.crew_noise,
                 )
                 for score_input in score_inputs

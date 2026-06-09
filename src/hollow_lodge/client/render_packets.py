@@ -1890,6 +1890,15 @@ def build_dossier_packet(dossier: dict[str, Any]) -> RenderPacket:
     else:
         lines.append("- none")
 
+    lines.append("Typed claims:")
+    typed_claims = shaped.get("typed_claims", [])
+    if typed_claims:
+        for claim in typed_claims:
+            target = claim.get("object_id") or claim.get("value") or "unbound"
+            lines.append(f"- {claim['subject_id']} {claim['predicate']} {target}")
+    else:
+        lines.append("- none")
+
     lines.append("Contributions:")
     contributions = shaped.get("member_contributions", [])
     if contributions:
@@ -1922,6 +1931,7 @@ def build_dossier_packet(dossier: dict[str, Any]) -> RenderPacket:
             "dossier": shaped,
             "evidence_count": len(evidence_ids),
             "artifact_citation_count": len(artifact_citations),
+            "typed_claim_count": len(typed_claims),
             "contribution_count": len(contributions),
             "mutation": False,
         },
@@ -2246,6 +2256,14 @@ def build_crew_board_packet(board: dict[str, Any]) -> RenderPacket:
     if artifact_citations:
         for citation in artifact_citations:
             lines.append(f"- {citation['artifact_id']}: {citation['claim']}")
+    else:
+        lines.append("- none")
+    lines.append("Typed claims:")
+    typed_claims = dossier.get("typed_claims", [])
+    if typed_claims:
+        for claim in typed_claims:
+            target = claim.get("object_id") or claim.get("value") or "unbound"
+            lines.append(f"- {claim['subject_id']} {claim['predicate']} {target}")
     else:
         lines.append("- none")
     lines.append("Contributions:")

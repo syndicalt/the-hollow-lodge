@@ -23,6 +23,8 @@ def test_full_game_loop_with_escrow_trade(tmp_path):
     assert {deal["status"] for deal in result["moth_board"]["deals"]} == {"fulfilled"}
     assert result["gilt_board"]["dossier"]["artifact_citations"]
     assert result["moth_board"]["dossier"]["artifact_citations"]
+    assert result["gilt_board"]["dossier"]["typed_claims"]
+    assert result["moth_board"]["dossier"]["typed_claims"]
     assert result["reveal"]["standings"]
     assert result["codex_packets"][0] == "what_now"
     assert result["codex_packets"][1:3] == ["contract_board", "artifact_graph"]
@@ -46,6 +48,10 @@ def test_full_game_loop_with_escrow_trade(tmp_path):
         "deal_preview",
         "inbox",
         "deal_preview",
+        "mutation",
+        "mutation",
+        "mutation",
+        "mutation",
         "mutation",
         "mutation",
         "mutation",
@@ -91,6 +97,10 @@ def test_full_game_loop_with_escrow_trade(tmp_path):
         {"operation": "dossier_cite_artifact", "confirmed": True},
         {"operation": "dossier_cite_artifact", "confirmed": False},
         {"operation": "dossier_cite_artifact", "confirmed": True},
+        {"operation": "dossier_add_typed_claim", "confirmed": False},
+        {"operation": "dossier_add_typed_claim", "confirmed": True},
+        {"operation": "dossier_add_typed_claim", "confirmed": False},
+        {"operation": "dossier_add_typed_claim", "confirmed": True},
         {"operation": "dossier_contribute", "confirmed": False},
         {"operation": "dossier_contribute", "confirmed": True},
         {"operation": "dossier_update_framing", "confirmed": False},
@@ -340,8 +350,8 @@ def test_full_game_loop_with_escrow_trade(tmp_path):
     final_delta = result["final_activity_delta"]
     assert final_delta["surface"] == "activity_delta"
     assert final_delta["agent_context"]["mutation"] is False
-    assert final_delta["agent_context"]["checkpoint_sequence"] == 34
-    assert final_delta["agent_context"]["max_sequence"] == 42
+    assert final_delta["agent_context"]["checkpoint_sequence"] == 36
+    assert final_delta["agent_context"]["max_sequence"] == 44
     assert final_delta["agent_context"]["synced_event_count"] == 6
     assert final_delta["agent_context"]["activity_event_count"] == 6
     assert final_delta["agent_context"]["event_type_counts"] == {
@@ -354,7 +364,7 @@ def test_full_game_loop_with_escrow_trade(tmp_path):
     assert [
         event["sequence"]
         for event in final_delta["agent_context"]["recent_events"]
-    ] == [35, 38, 39, 40, 41, 42]
+    ] == [37, 40, 41, 42, 43, 44]
     assert [
         event["type"]
         for event in final_delta["agent_context"]["recent_events"]
@@ -375,11 +385,11 @@ def test_full_game_loop_with_escrow_trade(tmp_path):
     assert final_delta["agent_context"]["recent_events"][5]["legacy_delta"]["crew_id"] == (
         result["gilt_crew_id"]
     )
-    assert "What changed since sequence 34:" in final_delta["player_markdown"]
-    assert "- 35 contract.phase.locked" in final_delta["player_markdown"]
-    assert "- 38 phase result: crew_0002 Strong lead 70" in final_delta["player_markdown"]
-    assert "- 41 legacy crew_0002: Strong lead" in final_delta["player_markdown"]
-    assert "- 42 legacy crew_0001: Weak" in final_delta["player_markdown"]
+    assert "What changed since sequence 36:" in final_delta["player_markdown"]
+    assert "- 37 contract.phase.locked" in final_delta["player_markdown"]
+    assert "- 40 phase result: crew_0002 Strong lead 74" in final_delta["player_markdown"]
+    assert "- 43 legacy crew_0002: Strong lead" in final_delta["player_markdown"]
+    assert "- 44 legacy crew_0001: Weak" in final_delta["player_markdown"]
     serialized_delta = str(final_delta)
     for forbidden in (
         "hidden_truth",

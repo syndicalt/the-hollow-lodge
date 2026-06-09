@@ -167,6 +167,38 @@ def run_mock(data_dir: str) -> dict[str, Any]:
         confirm=True,
         crew_id=moth["crew_id"],
     )
+    gilt_typed_claim_preview = ada_session.dossier_add_typed_claim(
+        subject_id=gilt_received,
+        predicate="supports_leverage_against",
+        object_id="artifact_lot_card",
+        citation_artifact_ids=[gilt_received],
+        confirm=False,
+        crew_id=gilt["crew_id"],
+    )
+    gilt_typed_claim_packet = ada_session.dossier_add_typed_claim(
+        subject_id=gilt_received,
+        predicate="supports_leverage_against",
+        object_id="artifact_lot_card",
+        citation_artifact_ids=[gilt_received],
+        confirm=True,
+        crew_id=gilt["crew_id"],
+    )
+    moth_typed_claim_preview = bela_session.dossier_add_typed_claim(
+        subject_id=moth_received,
+        predicate="contradicts_clean_provenance",
+        object_id="artifact_lot_card",
+        citation_artifact_ids=[moth_received],
+        confirm=False,
+        crew_id=moth["crew_id"],
+    )
+    moth_typed_claim_packet = bela_session.dossier_add_typed_claim(
+        subject_id=moth_received,
+        predicate="contradicts_clean_provenance",
+        object_id="artifact_lot_card",
+        citation_artifact_ids=[moth_received],
+        confirm=True,
+        crew_id=moth["crew_id"],
+    )
     grace_session = _codex_session(
         client,
         data_dir=Path(data_dir),
@@ -305,6 +337,10 @@ def run_mock(data_dir: str) -> dict[str, Any]:
         gilt_citation_packet,
         moth_citation_preview,
         moth_citation_packet,
+        gilt_typed_claim_preview,
+        gilt_typed_claim_packet,
+        moth_typed_claim_preview,
+        moth_typed_claim_packet,
         grace_contribution_preview,
         grace_contribution_packet,
         gilt_framing_preview,
@@ -394,6 +430,9 @@ def run_mock(data_dir: str) -> dict[str, Any]:
         f"deal accepted: {fulfilled['deal_id']} {fulfilled['status']}",
         f"gilt received: {gilt_received}",
         f"moth received: {moth_received}",
+        "typed claims committed:",
+        gilt_typed_claim_packet.player_markdown,
+        moth_typed_claim_packet.player_markdown,
         "grace dossier contribution:",
         grace_contribution_packet.player_markdown,
         f"actions submitted: {gilt_action['action_id']} {moth_action['action_id']}",
@@ -654,6 +693,32 @@ class _TestClientCodexApi:
                 "note": note,
                 "evidence_ids": list(evidence_ids),
             },
+            idempotency_key=idempotency_key,
+        )
+
+    def add_typed_dossier_claim(
+        self,
+        *,
+        crew_id: str,
+        subject_id: str,
+        predicate: str,
+        object_id: str | None = None,
+        value: str | None = None,
+        citation_artifact_ids: list[str] | tuple[str, ...] = (),
+        idempotency_key: str,
+    ) -> dict[str, Any]:
+        payload: dict[str, Any] = {
+            "subject_id": subject_id,
+            "predicate": predicate,
+            "citation_artifact_ids": list(citation_artifact_ids),
+        }
+        if object_id is not None:
+            payload["object_id"] = object_id
+        if value is not None:
+            payload["value"] = value
+        return self._post(
+            f"/proofs/dossiers/{crew_id}/typed-claims",
+            json=payload,
             idempotency_key=idempotency_key,
         )
 
