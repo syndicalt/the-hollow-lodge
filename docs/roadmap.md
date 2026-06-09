@@ -2895,6 +2895,30 @@ Expected verification:
 - `pytest tests/e2e/test_projection_backend_smoke.py tests/client/test_cli_commands.py tests/server/test_app_config.py -q`
 - `pytest -q`
 
+### Slice 115: Hosted Maintenance Diagnostics Deployment
+
+Status: completed.
+
+Deploy the maintenance diagnostics and freeze-smoke support to the live
+`hollow-lodge-server` service without enabling read-only mode yet. Production
+now exposes `/diagnostics.data.maintenance` with
+`read_only=false`, while the normal staged projection-read smoke still passes
+for the current topology: JSONL authoritative Eventloom plus Postgres
+projections.
+
+This confirms the server is ready for the next event-log migration step. The
+pre-export freeze smoke with `--require-maintenance-read-only` intentionally
+fails until `HOLLOW_LODGE_MAINTENANCE_READ_ONLY=1` is set for the actual
+maintenance window.
+
+Expected verification:
+
+- `railway up --service hollow-lodge-server --detach`
+- `curl -fsS https://server.thehollowlodge.com/diagnostics` reports
+  `data.maintenance.read_only=false`
+- `python scripts/smoke_projection_backend.py --server-url https://server.thehollowlodge.com --expected-backend postgres --expected-event-backend jsonl --require-projection-reads --require-current-projection-read-surfaces --require-current-projection-schema --require-sequence-alignment --require-projection-refresh-ok --require-postgres-projection-guard`
+- `python scripts/smoke_projection_backend.py --server-url https://server.thehollowlodge.com --expected-backend postgres --expected-event-backend jsonl --require-maintenance-read-only` fails with `maintenance read-only mode is not enabled`
+
 ## Completion Standard
 
 Each slice must:

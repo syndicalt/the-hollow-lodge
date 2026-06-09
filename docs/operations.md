@@ -14,6 +14,7 @@ Current server storage state, verified on 2026-06-09:
 - projection reads: enabled for all implemented surfaces
 - startup guards: Postgres projection guard enabled; Postgres event-log guard
   not yet enabled
+- maintenance diagnostics: deployed; read-only mode is currently disabled
 
 Deploy the server from the repository root:
 
