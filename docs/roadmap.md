@@ -1565,6 +1565,27 @@ Expected verification:
 - `pytest tests/server/test_app_config.py tests/e2e/test_projection_backend_smoke.py -q`
 - `pytest -q`
 
+### Slice 62: Checkpointed Activity Delta Surface
+
+Status: completed.
+
+Make the Milestone 2 "what changed since my last sync" question explicit
+inside Codex. The render layer now has an `activity_delta` packet that reports
+the prior local checkpoint sequence, max sequence after sync, synced event
+count, filtered activity event count, safe event type counts, and recent
+visibility-scoped events. `CodexGameSession` captures the local log checkpoint
+before syncing and calls `/events?since_sequence=<checkpoint>` instead of
+re-fetching the full activity stream. MCP now exposes `render_activity_delta`
+for all visible changes and `render_crew_activity_delta` for active-crew or
+specified-crew changes, preserving the same hidden-field stripping and
+confirmation-free read behavior as the existing activity surfaces.
+
+Expected verification:
+
+- `pytest tests/client/test_render_packets.py::test_activity_delta_packet_reports_checkpoint_and_safe_new_events tests/client/test_render_packets.py::test_activity_delta_packet_filters_to_crew_when_requested tests/client/test_codex_session.py::test_codex_session_renders_activity_delta_since_local_checkpoint tests/client/test_codex_session.py::test_codex_session_renders_crew_activity_delta_with_active_crew tests/test_mcp_server.py::test_render_activity_delta_mcp_call_returns_text_and_structured_packet tests/test_mcp_server.py::test_render_crew_activity_delta_mcp_call_returns_text_and_structured_packet tests/test_mcp_server.py::test_public_mcp_tools_do_not_expose_local_path_overrides -q`
+- `pytest tests/client/test_render_packets.py tests/client/test_codex_session.py tests/test_mcp_server.py tests/e2e/test_full_game_loop_with_escrow.py -q`
+- `pytest -q`
+
 ## Completion Standard
 
 Each slice must:

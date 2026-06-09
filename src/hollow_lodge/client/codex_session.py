@@ -13,6 +13,7 @@ from hollow_lodge.client.local_log import LocalEventLog
 from hollow_lodge.client.paths import DEFAULT_CONFIG_PATH, DEFAULT_LOCAL_LOG_PATH
 from hollow_lodge.client.render_packets import (
     RenderPacket,
+    build_activity_delta_packet,
     build_activity_summary_packet,
     build_deal_acceptance_preview_packet,
     build_deals_packet,
@@ -107,11 +108,31 @@ class CodexGameSession:
         self.sync()
         return build_activity_summary_packet(self._visible_server_events())
 
+    def render_activity_delta(self) -> RenderPacket:
+        checkpoint = self.local_log.max_server_sequence()
+        events = self.api.visible_events_since(since_sequence=checkpoint)
+        self.local_log.sync_visible_server_events(events)
+        return build_activity_delta_packet(
+            events,
+            checkpoint_sequence=checkpoint,
+        )
+
     def render_crew_activity(self, crew_id: str | None = None) -> RenderPacket:
         self.sync()
         target_crew_id = self._target_crew_id(crew_id)
         return build_crew_activity_packet(
             self._visible_server_events(),
+            crew_id=target_crew_id,
+        )
+
+    def render_crew_activity_delta(self, crew_id: str | None = None) -> RenderPacket:
+        target_crew_id = self._target_crew_id(crew_id)
+        checkpoint = self.local_log.max_server_sequence()
+        events = self.api.visible_events_since(since_sequence=checkpoint)
+        self.local_log.sync_visible_server_events(events)
+        return build_activity_delta_packet(
+            events,
+            checkpoint_sequence=checkpoint,
             crew_id=target_crew_id,
         )
 

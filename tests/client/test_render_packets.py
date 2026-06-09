@@ -1989,6 +1989,99 @@ def test_activity_summary_packet_shapes_visible_events_without_server_only_field
     ]
 
 
+def test_activity_delta_packet_reports_checkpoint_and_safe_new_events():
+    assert hasattr(render_packets, "build_activity_delta_packet")
+    packet = render_packets.build_activity_delta_packet(
+        [
+            {
+                "origin": "server",
+                "event_id": "evt_3",
+                "sequence": 3,
+                "type": "chat.message.created",
+                "payload": {
+                    "message_id": "msg_3",
+                    "sender_player_id": "player_0002",
+                    "sender_crew_id": "crew_0001",
+                    "recipient_crew_id": "crew_0002",
+                    "body": "The chapel mark changed hands.",
+                    "server_only_note": "hidden",
+                },
+            },
+            {
+                "origin": "server",
+                "event_id": "evt_4",
+                "sequence": 4,
+                "type": "action.submitted",
+                "payload": {
+                    "action": {
+                        "action_id": "action_000004",
+                        "crew_id": "crew_0001",
+                        "intent": "Inspect the red ledger margin.",
+                        "server_notes": "hidden",
+                    }
+                },
+            },
+        ],
+        checkpoint_sequence=2,
+    )
+
+    assert packet.surface == "activity_delta"
+    assert "What changed since sequence 2:" in packet.player_markdown
+    assert "3 chat player_0002: The chapel mark changed hands." in packet.player_markdown
+    assert "4 action action_000004: Inspect the red ledger margin." in packet.player_markdown
+    assert "hidden" not in packet.player_markdown
+    assert packet.agent_context["checkpoint_sequence"] == 2
+    assert packet.agent_context["max_sequence"] == 4
+    assert packet.agent_context["synced_event_count"] == 2
+    assert packet.agent_context["activity_event_count"] == 2
+    assert packet.agent_context["mutation"] is False
+    assert "hidden" not in str(packet.agent_context)
+
+
+def test_activity_delta_packet_filters_to_crew_when_requested():
+    packet = render_packets.build_activity_delta_packet(
+        [
+            {
+                "origin": "server",
+                "event_id": "evt_5",
+                "sequence": 5,
+                "type": "chat.message.created",
+                "payload": {
+                    "message_id": "msg_5",
+                    "sender_player_id": "player_0002",
+                    "sender_crew_id": "crew_0001",
+                    "recipient_crew_id": "crew_0002",
+                    "body": "Crew-relevant.",
+                },
+            },
+            {
+                "origin": "server",
+                "event_id": "evt_6",
+                "sequence": 6,
+                "type": "chat.message.created",
+                "payload": {
+                    "message_id": "msg_6",
+                    "sender_player_id": "player_0008",
+                    "sender_crew_id": "crew_9999",
+                    "recipient_crew_id": "crew_8888",
+                    "body": "Not relevant.",
+                },
+            },
+        ],
+        checkpoint_sequence=4,
+        crew_id="crew_0001",
+    )
+
+    assert packet.surface == "activity_delta"
+    assert "Crew changes since sequence 4: crew_0001" in packet.player_markdown
+    assert "Crew-relevant." in packet.player_markdown
+    assert "Not relevant." not in packet.player_markdown
+    assert packet.agent_context["crew_id"] == "crew_0001"
+    assert packet.agent_context["synced_event_count"] == 2
+    assert packet.agent_context["activity_event_count"] == 1
+    assert packet.agent_context["skipped_visible_event_count"] == 1
+
+
 def test_crew_activity_packet_filters_visible_events_to_named_crew_without_hidden_fields():
     assert hasattr(render_packets, "build_crew_activity_packet")
     packet = render_packets.build_crew_activity_packet(

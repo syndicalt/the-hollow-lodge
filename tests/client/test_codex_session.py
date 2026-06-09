@@ -29,6 +29,36 @@ class FakeApi:
             }
         ]
 
+    def visible_events_since(self, *, since_sequence: int):
+        self.calls.append(("visible_events_since", since_sequence))
+        return [
+            {
+                "event_id": f"evt_{since_sequence + 1}",
+                "sequence": since_sequence + 1,
+                "type": "chat.message.created",
+                "payload": {
+                    "message_id": f"msg_{since_sequence + 1}",
+                    "sender_player_id": "player_0002",
+                    "sender_crew_id": "crew_0001",
+                    "recipient_crew_id": "crew_0002",
+                    "body": "New after checkpoint.",
+                    "server_only_note": "hidden",
+                },
+            },
+            {
+                "event_id": f"evt_{since_sequence + 2}",
+                "sequence": since_sequence + 2,
+                "type": "chat.message.created",
+                "payload": {
+                    "message_id": f"msg_{since_sequence + 2}",
+                    "sender_player_id": "player_0009",
+                    "sender_crew_id": "crew_9999",
+                    "recipient_crew_id": "crew_8888",
+                    "body": "Other crew delta.",
+                },
+            },
+        ]
+
     def inbox(self):
         self.calls.append("inbox")
         return {
@@ -700,6 +730,43 @@ def test_codex_session_renders_activity_from_synced_visible_events(tmp_path):
     assert packet.agent_context["recent_events"][0]["message"]["message_id"] == "msg_1"
 
 
+def test_codex_session_renders_activity_delta_since_local_checkpoint(tmp_path):
+    config_path = tmp_path / "config.json"
+    log_path = tmp_path / "local.jsonl"
+    fake_api = FakeApi()
+    save_config(
+        config_path,
+        ClientConfig(server_url="http://testserver", player_id="player_0001", token="token"),
+    )
+    session = CodexGameSession(config_path=config_path, local_log_path=log_path, api=fake_api)
+    session.local_log.sync_visible_server_events(
+        [
+            {
+                "event_id": "evt_5",
+                "sequence": 5,
+                "type": "chat.message.created",
+                "payload": {
+                    "message_id": "msg_5",
+                    "sender_player_id": "player_0001",
+                    "body": "already synced",
+                },
+            }
+        ]
+    )
+
+    packet = session.render_activity_delta()
+
+    assert packet.surface == "activity_delta"
+    assert fake_api.calls == [("visible_events_since", 5)]
+    assert "What changed since sequence 5:" in packet.player_markdown
+    assert "6 chat player_0002: New after checkpoint." in packet.player_markdown
+    assert packet.agent_context["checkpoint_sequence"] == 5
+    assert packet.agent_context["max_sequence"] == 7
+    assert packet.agent_context["synced_event_count"] == 2
+    assert session.local_log.max_server_sequence() == 7
+    assert "hidden" not in packet.player_markdown
+
+
 def test_codex_session_renders_crew_activity_with_active_crew(tmp_path):
     config_path = tmp_path / "config.json"
     log_path = tmp_path / "local.jsonl"
@@ -723,6 +790,47 @@ def test_codex_session_renders_crew_activity_with_active_crew(tmp_path):
     assert packet.agent_context["crew_id"] == "crew_0001"
     assert packet.agent_context["crew_event_count"] == 1
     assert "hidden" not in packet.player_markdown
+
+
+def test_codex_session_renders_crew_activity_delta_with_active_crew(tmp_path):
+    config_path = tmp_path / "config.json"
+    log_path = tmp_path / "local.jsonl"
+    fake_api = FakeApi()
+    save_config(
+        config_path,
+        ClientConfig(
+            server_url="http://testserver",
+            player_id="player_0001",
+            token="token",
+            active_crew_id="crew_0001",
+        ),
+    )
+    session = CodexGameSession(config_path=config_path, local_log_path=log_path, api=fake_api)
+    session.local_log.sync_visible_server_events(
+        [
+            {
+                "event_id": "evt_3",
+                "sequence": 3,
+                "type": "chat.message.created",
+                "payload": {
+                    "message_id": "msg_3",
+                    "sender_player_id": "player_0001",
+                    "body": "already synced",
+                },
+            }
+        ]
+    )
+
+    packet = session.render_crew_activity_delta()
+
+    assert packet.surface == "activity_delta"
+    assert fake_api.calls == [("visible_events_since", 3)]
+    assert "Crew changes since sequence 3: crew_0001" in packet.player_markdown
+    assert "4 chat player_0002: New after checkpoint." in packet.player_markdown
+    assert "Other crew delta." not in packet.player_markdown
+    assert packet.agent_context["crew_id"] == "crew_0001"
+    assert packet.agent_context["synced_event_count"] == 2
+    assert packet.agent_context["activity_event_count"] == 1
 
 
 def test_codex_session_renders_thread_with_cli_compatible_matching(tmp_path):

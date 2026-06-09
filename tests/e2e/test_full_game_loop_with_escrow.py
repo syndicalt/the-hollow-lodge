@@ -32,6 +32,7 @@ def test_full_game_loop_with_escrow_trade(tmp_path):
         "inbox",
         "crew_board",
         "dossier",
+        "activity_delta",
         "what_now",
         "contract_board",
         "crew_activity",
@@ -41,10 +42,15 @@ def test_full_game_loop_with_escrow_trade(tmp_path):
     assert "The Saint's False Finger" in "\n".join(result["lines"])
     assert "Visible artifacts:" in "\n".join(result["lines"])
     assert "Phase result:" in "\n".join(result["lines"])
+    assert "What changed since sequence" in "\n".join(result["lines"])
     assert "What Now: Ada Corelumen" in "\n".join(result["lines"])
     assert result["final_dossier"]["agent_context"]["dossier"]["packet_lead_votes"]
     assert result["final_dossier"]["agent_context"]["dossier"]["packet_lead_replacements"]
     assert result["final_what_now"]["surface"] == "what_now"
+    assert result["final_activity_delta"]["surface"] == "activity_delta"
+    assert result["final_activity_delta"]["agent_context"]["checkpoint_sequence"] > 0
+    assert result["final_activity_delta"]["agent_context"]["synced_event_count"] > 0
+    assert result["final_activity_delta"]["agent_context"]["activity_event_count"] > 0
     assert (
         result["final_what_now"]["agent_context"]["summary_counts"]["active_contracts"]
         == 1

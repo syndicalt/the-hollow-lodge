@@ -184,6 +184,7 @@ def run_mock(data_dir: str) -> dict[str, Any]:
         json={"hours_elapsed": 6},
         expected_status=200,
     )
+    final_activity_delta_packet = ada_session.render_activity_delta()
     final_what_now_packet = ada_session.render_what_now()
     final_contract_packet = ada_session.render_contract_board()
     final_crew_activity_packet = ada_session.render_crew_activity()
@@ -196,6 +197,7 @@ def run_mock(data_dir: str) -> dict[str, Any]:
         moth_inbox_packet,
         gilt_board_packet,
         final_dossier_packet,
+        final_activity_delta_packet,
         final_what_now_packet,
         final_contract_packet,
         final_crew_activity_packet,
@@ -235,6 +237,8 @@ def run_mock(data_dir: str) -> dict[str, Any]:
             f"- {standing['crew_id']}: {standing['standing']} ({standing['score']})"
             for standing in reveal["standings"]
         ],
+        "activity delta after phase lock:",
+        final_activity_delta_packet.player_markdown,
         "final what now:",
         final_what_now_packet.player_markdown,
         "final contract board:",
@@ -253,6 +257,7 @@ def run_mock(data_dir: str) -> dict[str, Any]:
         "timeline": timeline,
         "codex_packets": [packet.surface for packet in codex_packets],
         "final_dossier": final_dossier_packet.model_dump(mode="json"),
+        "final_activity_delta": final_activity_delta_packet.model_dump(mode="json"),
         "final_what_now": final_what_now_packet.model_dump(mode="json"),
         "final_crew_activity": final_crew_activity_packet.model_dump(mode="json"),
         "final_activity": final_activity_packet.model_dump(mode="json"),
@@ -267,6 +272,9 @@ class _TestClientCodexApi:
 
     def visible_events(self) -> list[dict[str, Any]]:
         return self._get("/events")["events"]
+
+    def visible_events_since(self, *, since_sequence: int) -> list[dict[str, Any]]:
+        return self._get(f"/events?since_sequence={since_sequence}")["events"]
 
     def contracts(self) -> dict[str, Any]:
         return self._get("/contracts")

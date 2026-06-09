@@ -166,6 +166,32 @@ def test_render_activity_mcp_call_returns_text_and_structured_packet(monkeypatch
     assert result.structuredContent["agent_context"]["visible_event_count"] == 1
 
 
+def test_render_activity_delta_mcp_call_returns_text_and_structured_packet(monkeypatch):
+    packet = RenderPacket(
+        surface="activity_delta",
+        player_markdown="What changed since sequence 5:\n- 6 chat player_0002: New.",
+        agent_context={
+            "checkpoint_sequence": 5,
+            "synced_event_count": 1,
+            "mutation": False,
+        },
+    )
+
+    class StubSession:
+        def render_activity_delta(self) -> RenderPacket:
+            return packet
+
+    monkeypatch.setattr(mcp_server, "_session", lambda: StubSession())
+
+    result = asyncio.run(mcp_server.mcp.call_tool("render_activity_delta", {}))
+
+    assert isinstance(result, CallToolResult)
+    assert result.content[0].text == packet.player_markdown
+    assert result.structuredContent["surface"] == "activity_delta"
+    assert result.structuredContent["agent_context"]["checkpoint_sequence"] == 5
+    assert result.structuredContent["agent_context"]["mutation"] is False
+
+
 def test_render_crew_activity_mcp_call_returns_text_and_structured_packet(monkeypatch):
     packet = RenderPacket(
         surface="crew_activity",
@@ -191,6 +217,41 @@ def test_render_crew_activity_mcp_call_returns_text_and_structured_packet(monkey
     assert result.content[0].text == packet.player_markdown
     assert result.structuredContent["surface"] == "crew_activity"
     assert result.structuredContent["agent_context"]["crew_id"] == "crew_0001"
+
+
+def test_render_crew_activity_delta_mcp_call_returns_text_and_structured_packet(
+    monkeypatch,
+):
+    packet = RenderPacket(
+        surface="activity_delta",
+        player_markdown="Crew changes since sequence 5: crew_0001\n- 6 chat player_0002: New.",
+        agent_context={
+            "crew_id": "crew_0001",
+            "checkpoint_sequence": 5,
+            "activity_event_count": 1,
+            "mutation": False,
+        },
+    )
+
+    class StubSession:
+        def render_crew_activity_delta(self, crew_id: str | None = None) -> RenderPacket:
+            assert crew_id == "crew_0001"
+            return packet
+
+    monkeypatch.setattr(mcp_server, "_session", lambda: StubSession())
+
+    result = asyncio.run(
+        mcp_server.mcp.call_tool(
+            "render_crew_activity_delta",
+            {"crew_id": "crew_0001"},
+        )
+    )
+
+    assert isinstance(result, CallToolResult)
+    assert result.content[0].text == packet.player_markdown
+    assert result.structuredContent["surface"] == "activity_delta"
+    assert result.structuredContent["agent_context"]["crew_id"] == "crew_0001"
+    assert result.structuredContent["agent_context"]["mutation"] is False
 
 
 def test_render_thread_mcp_call_returns_matching_thread_packet(monkeypatch):
@@ -343,7 +404,9 @@ def test_public_mcp_tools_do_not_expose_local_path_overrides():
         "render_crew_board",
         "render_dossier",
         "render_activity",
+        "render_activity_delta",
         "render_crew_activity",
+        "render_crew_activity_delta",
         "render_thread",
         "render_deals",
         "preview_deal_acceptance",

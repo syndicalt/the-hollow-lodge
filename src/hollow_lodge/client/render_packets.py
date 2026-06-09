@@ -25,6 +25,7 @@ class RenderPacket(BaseModel):
         "artifact",
         "artifact_graph",
         "activity",
+        "activity_delta",
         "crew_activity",
         "thread",
         "mutation",
@@ -762,6 +763,69 @@ def build_activity_summary_packet(
             "Open a conversation thread",
             "Review inbox",
             "Open the contract board",
+        ],
+    )
+
+
+def build_activity_delta_packet(
+    events: list[dict[str, Any]],
+    *,
+    checkpoint_sequence: int,
+    crew_id: str | None = None,
+    recent_limit: int = 10,
+) -> RenderPacket:
+    visible_events = sorted(events, key=lambda event: int(event["sequence"]))
+    if crew_id is None:
+        activity_events = visible_events
+        lines = [f"What changed since sequence {checkpoint_sequence}:"]
+    else:
+        activity_events = [
+            event
+            for event in visible_events
+            if event_matches_crew_activity(event, crew_id)
+        ]
+        lines = [
+            f"Crew changes since sequence {checkpoint_sequence}: {crew_id}",
+        ]
+    recent_events = activity_events[-recent_limit:]
+    if recent_events:
+        lines.extend(f"- {_render_activity_event(event)}" for event in recent_events)
+    else:
+        lines.append("- no new visible activity")
+    max_sequence = max(
+        (int(event["sequence"]) for event in visible_events),
+        default=checkpoint_sequence,
+    )
+    agent_context = {
+        "checkpoint_sequence": checkpoint_sequence,
+        "max_sequence": max_sequence,
+        "synced_event_count": len(visible_events),
+        "activity_event_count": len(activity_events),
+        "event_type_counts": dict(Counter(event["type"] for event in activity_events)),
+        "recent_events": [
+            _shape_activity_event(event)
+            for event in recent_events
+        ],
+        "mutation": False,
+    }
+    if crew_id is not None:
+        agent_context["crew_id"] = crew_id
+        agent_context["skipped_visible_event_count"] = (
+            len(visible_events) - len(activity_events)
+        )
+    return RenderPacket(
+        surface="activity_delta",
+        player_markdown="\n".join(lines),
+        agent_context=agent_context,
+        suggested_prompts=[
+            "Open inbox",
+            "Open crew board",
+            "Review recent activity",
+        ],
+        actions=[
+            RenderAction(label="Open inbox", intent="render_inbox"),
+            RenderAction(label="Open crew board", intent="render_crew_board"),
+            RenderAction(label="Review recent activity", intent="render_activity"),
         ],
     )
 
