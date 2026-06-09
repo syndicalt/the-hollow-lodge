@@ -6,6 +6,7 @@ from fastapi.testclient import TestClient
 
 from hollow_lodge import mcp_server
 from hollow_lodge.client.config import ClientConfig, save_config
+from hollow_lodge.domain.events import EventVisibility
 from hollow_lodge.server.app import create_app
 
 
@@ -114,6 +115,149 @@ def _assert_packet(result, *, surface: str) -> dict[str, Any]:
     assert not result.content[0].text.startswith("{")
     assert result.structuredContent["surface"] == surface
     return result.structuredContent
+
+
+def test_player_can_render_persistent_profile_through_actual_mcp_tools(
+    tmp_path,
+    monkeypatch,
+):
+    app = create_app(data_dir=tmp_path / "server", invite_codes=["ada"])
+    client = TestClient(app)
+    ada = _register(client, "ada", "Ada Corelumen")
+    crew = _create_crew(
+        client,
+        token=ada["token"],
+        name="The Gilt Knives",
+        key="crew-create-gilt",
+    )
+    client.app.state.event_store.append(
+        event_type="crew.legacy.delta.recorded",
+        actor_id="server",
+        visibility=EventVisibility.public(),
+        payload={
+            "crew_id": crew["crew_id"],
+            "contract_id": "contract_false_finger",
+            "contract_title": "The Saint's False Finger",
+            "phase": "Auction Preview",
+            "standing": "Strong lead",
+            "score": 82,
+            "outcome": "lead",
+            "deltas": {
+                "reputation": 2,
+                "heat": 1,
+                "favors": 1,
+                "debts": 0,
+                "scars": [],
+            },
+            "summary": "Strong lead: reputation +2, heat +1, favors +1.",
+            "hidden_source": "server-only oracle notes",
+        },
+    )
+
+    config_path = tmp_path / "config.json"
+    local_log_path = tmp_path / "local.jsonl"
+    _write_config(
+        config_path,
+        player=ada,
+        active_crew_id=crew["crew_id"],
+        display_name="Ada Corelumen",
+    )
+    monkeypatch.setattr(mcp_server, "DEFAULT_CONFIG_PATH", config_path)
+    monkeypatch.setattr(mcp_server, "DEFAULT_LOCAL_LOG_PATH", local_log_path)
+    _install_httpx_test_bridge(monkeypatch, client)
+
+    profile = _assert_packet(_call_tool("render_profile"), surface="profile")
+
+    assert profile["agent_context"]["player_id"] == ada["player_id"]
+    assert profile["agent_context"]["display_name"] == "Ada Corelumen"
+    assert profile["agent_context"]["crew_count"] == 1
+    assert len(profile["agent_context"]["crews"]) == 1
+    profile_crew = profile["agent_context"]["crews"][0]
+    assert profile_crew["crew_id"] == crew["crew_id"]
+    assert profile_crew["name"] == "The Gilt Knives"
+    assert profile_crew["member_count"] == 1
+    assert profile_crew["ready_for_full_contracts"] is False
+    legacy = profile_crew["legacy"]
+    assert legacy["reputation"] == 2
+    assert legacy["heat"] == 1
+    assert legacy["favors"] == 1
+    assert legacy["debts"] == 0
+    assert legacy["deal_conduct"] == {
+        "score": 0,
+        "fulfilled_count": 0,
+        "canceled_count": 0,
+        "declined_count": 0,
+        "open_count": 0,
+        "reliability": "unproven",
+    }
+    assert legacy["completed_contracts"] == [
+        {
+            "contract_id": "contract_false_finger",
+            "title": "The Saint's False Finger",
+            "phase": "Auction Preview",
+            "standing": "Strong lead",
+            "score": 82,
+            "outcome": "lead",
+        }
+    ]
+    assert legacy["future_opportunities"] == [
+        {
+            "contract_id": "contract_false_finger",
+            "title": "The Saint's False Finger",
+            "modifiers": [
+                {
+                    "kind": "reputation_leverage",
+                    "label": "Reputation leverage",
+                    "description": (
+                        "Prior strong work gives this crew an opening on "
+                        "The Saint's False Finger."
+                    ),
+                    "value": 2,
+                },
+                {
+                    "kind": "heat_attention",
+                    "label": "Heat attention",
+                    "description": (
+                        "Prior heat makes The Saint's False Finger riskier "
+                        "for this crew."
+                    ),
+                    "value": 1,
+                },
+            ],
+        }
+    ]
+    assert "Profile: Ada Corelumen" in profile["player_markdown"]
+    assert f"Player ID: {ada['player_id']}" in profile["player_markdown"]
+    assert "- The Gilt Knives (crew_0001): 1 member; starter-ready" in (
+        profile["player_markdown"]
+    )
+    assert "Legacy: reputation 2; heat 1; favors 1; debts 0" in (
+        profile["player_markdown"]
+    )
+    assert "- The Saint's False Finger: Strong lead (82)" in (
+        profile["player_markdown"]
+    )
+    assert profile["suggested_prompts"] == [
+        "Open inbox",
+        "Review crew board",
+        "Review recent activity",
+    ]
+
+    serialized_profile = str(profile)
+    for forbidden in (
+        "hidden_source",
+        "server-only oracle notes",
+        "token",
+        "token_hash",
+        "join_code",
+        "ada",
+        "idempotency_key",
+        "event_id",
+        "event_hash",
+        "origin",
+        "payload",
+    ):
+        assert forbidden not in serialized_profile
 
 
 def test_player_can_transfer_and_check_proof_fragment_through_actual_mcp_tools(

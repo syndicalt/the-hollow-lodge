@@ -4679,6 +4679,29 @@ Expected verification:
 - `pytest tests/server/test_deal_routes.py tests/client/test_deal_cli.py tests/client/test_codex_session.py tests/client/test_render_packets.py tests/test_mcp_server.py -q`
 - `pytest -q`
 
+### Slice 193: Actual MCP Profile Persistence Proof Gate
+
+Status: completed.
+
+Close the actual-MCP boundary gap around persistent player identity. The MCP
+e2e now renders `render_profile` through real `mcp.call_tool` calls for a
+registered player with a crew and legacy delta, proving that the Codex-facing
+profile surface shows the selected display name, stable player id, crew
+membership, readiness state, reputation/heat/favor/debt legacy, completed
+contract history, and safe derived future-opportunity modifiers.
+
+The proof deliberately seeds a legacy event containing a hidden source field
+and verifies that the serialized MCP profile packet excludes hidden source
+text, tokens, token hashes, join codes, invite codes, idempotency keys, event
+hashes, raw event origins, and raw event payload envelopes.
+
+Expected verification:
+
+- `pytest tests/e2e/test_mcp_codex_play_loop.py::test_player_can_render_persistent_profile_through_actual_mcp_tools -q`
+- `pytest tests/e2e/test_mcp_codex_play_loop.py -q`
+- `pytest tests/server/test_identity_routes.py::test_player_profile_returns_safe_crew_memberships_without_auth_material tests/server/test_identity_routes.py::test_player_profile_includes_safe_crew_legacy_without_hidden_sources tests/server/test_identity_routes.py::test_player_profile_reads_fresh_projected_crew_legacy_when_enabled tests/client/test_api.py::test_api_gets_player_profile tests/client/test_render_packets.py::test_profile_packet_renders_persistent_identity_and_crew_memberships_without_hidden_fields tests/client/test_codex_session.py::test_codex_session_renders_profile tests/test_mcp_server.py::test_render_profile_mcp_call_returns_text_and_structured_packet -q`
+- `pytest -q`
+
 ## Completion Standard
 
 Each slice must:
