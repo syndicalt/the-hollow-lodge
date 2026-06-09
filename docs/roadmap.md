@@ -3617,6 +3617,27 @@ Expected verification:
 - `pytest tests/client/test_cli_commands.py tests/client/test_installer_script.py tests/client/test_codex_mcp_config.py tests/client/test_local_log.py tests/client/test_codex_session.py -q`
 - `pytest -q`
 
+### Slice 147: Installer Execution Smoke Coverage
+
+Status: completed.
+
+Add hermetic executable coverage for the public installer shell flow. The
+installer tests now run `scripts/install.sh` with fake `uv` and `hollow-lodge`
+commands on `PATH`, proving command order without touching the network or the
+developer's installed tools.
+
+The smoke covers the normal install path, `HOLLOW_LODGE_SKIP_DOCTOR=1`, and
+`HOLLOW_LODGE_SKIP_ONBOARD=1`. This protects the clean-machine install gate
+from regressions where static text checks still pass but the shell script stops
+running onboarding, MCP setup, or the non-strict doctor readiness report in the
+intended order.
+
+Expected verification:
+
+- `pytest tests/client/test_installer_script.py -q`
+- `pytest tests/client/test_cli_commands.py tests/client/test_installer_script.py tests/client/test_codex_mcp_config.py tests/client/test_local_log.py tests/client/test_codex_session.py -q`
+- `pytest -q`
+
 ## Completion Standard
 
 Each slice must:
