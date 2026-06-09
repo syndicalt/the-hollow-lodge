@@ -3746,6 +3746,28 @@ Expected verification:
 - `pytest tests/client/test_cli_commands.py tests/client/test_installer_script.py tests/client/test_codex_mcp_config.py tests/client/test_local_log.py tests/client/test_codex_session.py -q`
 - `pytest -q`
 
+### Slice 153: CLI What-Now Landing Surface
+
+Status: completed.
+
+Keep CLI and MCP read surfaces aligned for the main Codex landing state.
+`hollow-lodge what-now` now renders the same `CodexGameSession.render_what_now()`
+packet used by the MCP `render_what_now` tool and the doctor readiness check.
+The command syncs visible events into the configured local perspective log,
+aggregates profile, inbox, deals, active crew, and recent activity, and supports
+`--json` for the structured render packet.
+
+This gives operators and players a shell-visible diagnostic for the same
+"what is happening now" state that agents should open first inside Codex,
+without duplicating the packet assembly logic or creating a separate CLI-only
+view.
+
+Expected verification:
+
+- `pytest tests/client/test_cli_commands.py::test_what_now_command_renders_codex_landing_surface tests/client/test_cli_commands.py::test_what_now_command_can_emit_render_packet_json -q`
+- `pytest tests/client/test_cli_commands.py tests/client/test_installer_script.py tests/client/test_codex_mcp_config.py tests/client/test_local_log.py tests/client/test_codex_session.py tests/test_mcp_server.py -q`
+- `pytest -q`
+
 ## Completion Standard
 
 Each slice must:

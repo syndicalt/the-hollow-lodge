@@ -10,7 +10,7 @@ from hollow_lodge.client.backend_smoke import (
     CURRENT_PROJECTION_SCHEMA_VERSION,
 )
 from hollow_lodge.client.event_log_migration import create_event_log_manifest
-from hollow_lodge.client import cli
+from hollow_lodge.client import cli, codex_session
 from hollow_lodge.client.config import (
     ClientConfig,
     OnboardingConfig,
@@ -3310,6 +3310,88 @@ def test_thread_command_renders_crew_to_crew_conversation_id(tmp_path, monkeypat
 
     assert result.exit_code == 0
     assert "No public claims until lock." in result.output
+
+
+def test_what_now_command_renders_codex_landing_surface(tmp_path, monkeypatch):
+    runner = CliRunner()
+    created_clients: list[FakeApi] = []
+
+    def fake_client(**kwargs):
+        client = FakeApi(**kwargs)
+        created_clients.append(client)
+        return client
+
+    monkeypatch.setattr(cli, "HollowLodgeApi", fake_client)
+    monkeypatch.setattr(codex_session, "HollowLodgeApi", fake_client)
+    config_path = tmp_path / "config.json"
+    local_log_path = tmp_path / "local.jsonl"
+    save_config(
+        config_path,
+        ClientConfig(
+            server_url="http://testserver",
+            player_id="player_0001",
+            token="token",
+            display_name="Ada",
+            active_crew_id="crew_0001",
+        ),
+    )
+
+    result = runner.invoke(
+        cli.app,
+        [
+            "what-now",
+            "--config",
+            str(config_path),
+            "--local-log",
+            str(local_log_path),
+        ],
+    )
+
+    assert result.exit_code == 0
+    assert "What Now: Ada" in result.output
+    assert "Player ID: player_0001" in result.output
+    assert "The Saint's False Finger" in result.output
+    assert created_clients[0].calls == [
+        ("visible_events", {}),
+        ("profile", {}),
+        ("inbox", {}),
+        ("deals", {}),
+    ]
+
+
+def test_what_now_command_can_emit_render_packet_json(tmp_path, monkeypatch):
+    runner = CliRunner()
+
+    monkeypatch.setattr(cli, "HollowLodgeApi", FakeApi)
+    monkeypatch.setattr(codex_session, "HollowLodgeApi", FakeApi)
+    config_path = tmp_path / "config.json"
+    local_log_path = tmp_path / "local.jsonl"
+    save_config(
+        config_path,
+        ClientConfig(
+            server_url="http://testserver",
+            player_id="player_0001",
+            token="token",
+            display_name="Ada",
+            active_crew_id="crew_0001",
+        ),
+    )
+
+    result = runner.invoke(
+        cli.app,
+        [
+            "what-now",
+            "--json",
+            "--config",
+            str(config_path),
+            "--local-log",
+            str(local_log_path),
+        ],
+    )
+
+    assert result.exit_code == 0
+    assert '"surface":"what_now"' in result.output
+    assert '"mutation":false' in result.output
 
 
 def test_crew_chat_commands_use_active_crew(tmp_path, monkeypatch):

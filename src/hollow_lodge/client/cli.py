@@ -1021,6 +1021,21 @@ def thread(
 
 
 @app.command()
+def what_now(
+    config: Path = typer.Option(DEFAULT_CONFIG_PATH, "--config", help="Local config path."),
+    local_log: Path = typer.Option(
+        DEFAULT_LOCAL_LOG_PATH,
+        "--local-log",
+        help="Local perspective event log path used by Codex render surfaces.",
+    ),
+    as_json: bool = typer.Option(False, "--json", help="Emit Codex render packet JSON."),
+) -> None:
+    """Show the current Codex landing state."""
+    packet = CodexGameSession(config_path=config, local_log_path=local_log).render_what_now()
+    _echo_packet(packet, as_json=as_json)
+
+
+@app.command()
 def contracts(
     config: Path = typer.Option(DEFAULT_CONFIG_PATH, "--config", help="Local config path."),
     as_json: bool = typer.Option(False, "--json", help="Emit Codex render packet JSON."),
