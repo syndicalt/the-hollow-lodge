@@ -4221,6 +4221,28 @@ Expected verification:
 - `pytest tests/e2e/test_full_game_loop_with_escrow.py tests/client/test_render_packets.py tests/client/test_codex_session.py tests/test_mcp_server.py tests/server/test_event_sync.py -q`
 - `pytest -q`
 
+### Slice 175: Full Loop Incoming Deal Decision Proof Gate
+
+Status: completed.
+
+Strengthen the playable-loop smoke so an escrowed deal is not only proposed
+and accepted, but is visible as an actionable pending decision before the
+recipient acts. The full-loop mock now returns Moth's inbox packet from the
+moment after Gilt proposes the artifact swap and before Bela accepts it.
+
+The e2e proof verifies that the inbox renders an `incoming_deal` decision as
+the first urgent item, includes the participant-visible proposed deal terms,
+and keeps the decision shape bounded to kind, label, description, crew,
+contract, and deal id. It also guards the inbox packet against hidden truth,
+server-only metadata, raw event envelopes, oracle/provider fields, auth
+tokens, join codes, hashes, and idempotency keys.
+
+Expected verification:
+
+- `pytest tests/e2e/test_full_game_loop_with_escrow.py::test_full_game_loop_with_escrow_trade -q`
+- `pytest tests/e2e/test_full_game_loop_with_escrow.py tests/client/test_render_packets.py tests/server/test_pending_decisions.py tests/server/test_deal_routes.py tests/server/test_crew_routes.py tests/test_mcp_server.py -q`
+- `pytest -q`
+
 ## Completion Standard
 
 Each slice must:

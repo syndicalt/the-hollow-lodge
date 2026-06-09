@@ -435,6 +435,7 @@ def run_mock(data_dir: str) -> dict[str, Any]:
         "codex_packets": [packet.surface for packet in codex_packets],
         "codex_mutations": codex_mutations,
         "initial_what_now": initial_what_now_packet.model_dump(mode="json"),
+        "moth_inbox_before_deal_acceptance": moth_inbox_packet.model_dump(mode="json"),
         "final_dossier": final_dossier_packet.model_dump(mode="json"),
         "thread": thread_packet.model_dump(mode="json"),
         "final_activity_delta": final_activity_delta_packet.model_dump(mode="json"),

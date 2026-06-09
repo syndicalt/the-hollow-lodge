@@ -203,6 +203,94 @@ def test_full_game_loop_with_escrow_trade(tmp_path):
     assert "visibility" not in str(thread)
     assert "server_only" not in str(thread)
     assert "hidden" not in str(thread)
+    moth_inbox = result["moth_inbox_before_deal_acceptance"]
+    assert moth_inbox["surface"] == "inbox"
+    assert "Inbox: Bela Moth" in moth_inbox["player_markdown"]
+    assert (
+        "- Incoming deal needs response: Deal deal_000001 from crew_0001 needs a response."
+        in moth_inbox["player_markdown"]
+    )
+    assert "Incoming deals:" in moth_inbox["player_markdown"]
+    assert (
+        "- deal_000001 proposed: crew_0001 offers artifact_ledger_rubric for artifact_chapel_debt_mark"
+        in moth_inbox["player_markdown"]
+    )
+    assert "Soft term: Do not cite our crew as source until Auction Lock." in (
+        moth_inbox["player_markdown"]
+    )
+    incoming_deal_decisions = [
+        decision
+        for decision in moth_inbox["agent_context"]["pending_decisions"]
+        if decision["kind"] == "incoming_deal"
+    ]
+    assert incoming_deal_decisions == [
+        {
+            "kind": "incoming_deal",
+            "label": "Incoming deal needs response",
+            "description": "Deal deal_000001 from crew_0001 needs a response.",
+            "crew_id": result["moth_crew_id"],
+            "contract_id": "contract_false_finger",
+            "deal_id": "deal_000001",
+        }
+    ]
+    forbidden_pending_decision_fields = {
+        "offered_artifact_ids",
+        "requested_artifact_ids",
+        "soft_terms",
+        "expires_phase",
+        "proposer_received_artifact_ids",
+        "recipient_received_artifact_ids",
+        "proposer_player_id",
+        "accepted_by_player_id",
+        "idempotency_key",
+        "payload",
+        "event_id",
+        "event_hash",
+        "origin",
+    }
+    assert not (
+        set(incoming_deal_decisions[0]) & forbidden_pending_decision_fields
+    )
+    assert moth_inbox["agent_context"]["urgent_items"][0] == incoming_deal_decisions[0]
+    assert moth_inbox["agent_context"]["deals"] == [
+        {
+            "deal_id": "deal_000001",
+            "contract_id": "contract_false_finger",
+            "proposer_crew_id": result["gilt_crew_id"],
+            "recipient_crew_id": result["moth_crew_id"],
+            "status": "proposed",
+            "offered_artifact_ids": ["artifact_ledger_rubric"],
+            "requested_artifact_ids": ["artifact_chapel_debt_mark"],
+            "soft_terms": ["Do not cite our crew as source until Auction Lock."],
+            "expires_phase": "Auction Preview",
+            "proposer_received_artifact_ids": [],
+            "recipient_received_artifact_ids": [],
+        }
+    ]
+    serialized_moth_inbox = str(moth_inbox)
+    for forbidden in (
+        "hidden_truth",
+        "hidden_truth_summary",
+        "server_only",
+        "server_notes",
+        "visibility",
+        "accepted_output",
+        "accepted_output_hash",
+        "input_packet_hash",
+        "provider",
+        "model",
+        "prompt_version",
+        "validation_status",
+        "fallback_reason",
+        "token",
+        "join_code",
+        "idempotency_key",
+        "event_id",
+        "event_hash",
+        "origin",
+        "payload",
+    ):
+        assert forbidden not in serialized_moth_inbox
     assert result["final_what_now"]["surface"] == "what_now"
     assert result["final_contract"]["surface"] == "contract_board"
     final_contracts = result["final_contract"]["agent_context"]["contracts"]
