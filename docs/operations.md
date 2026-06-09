@@ -7,6 +7,14 @@ The production Railway project has two services:
 - `hollow-lodge-server` serves `https://server.thehollowlodge.com`.
 - `the-hollow-lodge` serves `https://www.thehollowlodge.com`.
 
+Current server storage state, verified on 2026-06-09:
+
+- authoritative event log: JSONL on the server volume
+- projection database: Railway Postgres
+- projection reads: enabled for all implemented surfaces
+- startup guards: Postgres projection guard enabled; Postgres event-log guard
+  not yet enabled
+
 Deploy the server from the repository root:
 
 ```sh

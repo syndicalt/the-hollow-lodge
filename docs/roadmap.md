@@ -2825,6 +2825,31 @@ Expected verification:
 - `pytest tests/e2e/test_projection_backend_smoke.py tests/client/test_cli_commands.py tests/server/test_app_config.py -q`
 - `pytest -q`
 
+### Slice 112: Hosted Projection Read Cutover
+
+Status: completed.
+
+Deploy the current server to Railway and enable projection-backed reads on the
+live `hollow-lodge-server` service. Production now runs current diagnostics and
+projection schema `10`, uses Postgres for the projection database, keeps the
+authoritative event log on JSONL for the next staged event-log migration, has
+`HOLLOW_LODGE_REQUIRE_POSTGRES_PROJECTION=1` enforced, and has
+`HOLLOW_LODGE_PROJECTION_READS=1` enabled across all implemented read surfaces.
+
+The production readiness evidence is the staged smoke gate for the actual
+current storage topology: Postgres projections plus JSONL authoritative
+Eventloom. The full `--production-postgres` preset remains intentionally red
+until the separate authoritative event-log Postgres migration is performed and
+`HOLLOW_LODGE_REQUIRE_POSTGRES_EVENT_LOG=1` is enabled.
+
+Expected verification:
+
+- `railway up --service hollow-lodge-server --detach`
+- `railway variable set --service hollow-lodge-server HOLLOW_LODGE_PROJECTION_READS=1`
+- `python scripts/smoke_projection_backend.py --server-url https://server.thehollowlodge.com --expected-backend postgres --expected-event-backend jsonl --require-projection-reads --require-current-projection-read-surfaces --require-current-projection-schema --require-sequence-alignment --require-projection-refresh-ok --require-postgres-projection-guard`
+- Render a live MCP inbox for `corelumen` and confirm the contract surface loads
+  through the deployed server after projection reads are enabled.
+
 ## Completion Standard
 
 Each slice must:
