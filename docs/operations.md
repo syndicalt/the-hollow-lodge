@@ -55,6 +55,18 @@ Postgres projection storage can be enabled explicitly with:
 HOLLOW_LODGE_PROJECTION_DATABASE_URL=postgresql://user:password@host:5432/database
 ```
 
+Production deployments can require Postgres and fail fast instead of silently
+falling back to local SQLite:
+
+```sh
+HOLLOW_LODGE_REQUIRE_POSTGRES_PROJECTION=1
+```
+
+When this guard is enabled, server startup rejects a missing projection URL or
+any `sqlite:///` projection URL. Local development and tests should leave the
+guard unset unless they are intentionally exercising the production cutover
+path.
+
 Only the projection database moves to Postgres. The Eventloom JSONL log remains
 authoritative. `/diagnostics` reports the active projection backend and redacts
 the configured Postgres password before returning operational status.
@@ -75,6 +87,10 @@ python scripts/smoke_projection_backend.py \
   --server-url https://server.thehollowlodge.com \
   --expected-backend postgres
 ```
+
+After the Postgres smoke passes, set `HOLLOW_LODGE_REQUIRE_POSTGRES_PROJECTION=1`
+on the server service and redeploy once more. This turns the cutover from a
+best-effort configuration into a startup invariant.
 
 The smoke fails if `/health` is not ok, the projection backend is not the
 expected backend, projection status is not `available`, projection lag is not

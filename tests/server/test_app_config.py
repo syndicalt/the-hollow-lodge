@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from pathlib import Path
 
+import pytest
 from fastapi.testclient import TestClient
 
 from hollow_lodge.server.app import create_app
@@ -142,6 +143,89 @@ def test_postgres_projection_database_url_selects_postgres_backend(
     assert "create table if not exists projection_meta" in all_sql
     assert "insert into contract_board" in all_sql
     assert any(connection.committed for connection in fake.connections)
+
+
+def test_require_postgres_projection_rejects_missing_database_url(
+    tmp_path,
+    monkeypatch,
+):
+    monkeypatch.setenv("HOLLOW_LODGE_REQUIRE_POSTGRES_PROJECTION", "1")
+    monkeypatch.delenv("HOLLOW_LODGE_PROJECTION_DATABASE_URL", raising=False)
+
+    with pytest.raises(RuntimeError) as exc_info:
+        create_app(data_dir=tmp_path)
+
+    assert "HOLLOW_LODGE_REQUIRE_POSTGRES_PROJECTION=1 requires" in str(exc_info.value)
+    assert "HOLLOW_LODGE_PROJECTION_DATABASE_URL=postgresql://..." in str(
+        exc_info.value
+    )
+
+
+def test_require_postgres_projection_rejects_sqlite_url_without_secret_leak(
+    tmp_path,
+    monkeypatch,
+):
+    projection_path = tmp_path / "projection.sqlite3"
+    monkeypatch.setenv("HOLLOW_LODGE_REQUIRE_POSTGRES_PROJECTION", "true")
+    monkeypatch.setenv(
+        "HOLLOW_LODGE_PROJECTION_DATABASE_URL",
+        f"sqlite:///{projection_path}",
+    )
+
+    with pytest.raises(RuntimeError) as exc_info:
+        create_app(data_dir=tmp_path)
+
+    message = str(exc_info.value)
+    assert "rejects SQLite projection URLs" in message
+    assert str(projection_path) in message
+
+
+def test_require_postgres_projection_allows_postgres_backend(
+    tmp_path,
+    monkeypatch,
+):
+    from hollow_lodge.server.projection_postgres_store import PostgresProjectionStore
+
+    monkeypatch.setenv("HOLLOW_LODGE_REQUIRE_POSTGRES_PROJECTION", "yes")
+    monkeypatch.setenv(
+        "HOLLOW_LODGE_PROJECTION_DATABASE_URL",
+        "postgresql://user:secret@example.com:5432/hollow_lodge",
+    )
+    fake = FakePostgresConnector(
+        meta_rows=[
+            ("schema_version", "1"),
+            ("last_sequence", "100"),
+            ("contract_count", "1"),
+            ("crew_count", "0"),
+            ("deal_count", "0"),
+            ("crew_legacy_count", "0"),
+            ("visible_event_count", "1"),
+            ("public_artifact_count", "2"),
+            ("scoped_artifact_count", "0"),
+        ]
+    )
+    monkeypatch.setattr(PostgresProjectionStore, "_connect", lambda self: fake())
+
+    client = TestClient(create_app(data_dir=tmp_path))
+
+    projection = client.get("/diagnostics").json()["data"]["projection_db"]
+    assert client.app.state.projection_store.backend == "postgres"
+    assert projection["backend"] == "postgres"
+    assert projection["database_url"] == "postgresql://user:***@example.com:5432/hollow_lodge"
+
+
+def test_require_postgres_projection_rejects_invalid_flag_value(
+    tmp_path,
+    monkeypatch,
+):
+    monkeypatch.setenv("HOLLOW_LODGE_REQUIRE_POSTGRES_PROJECTION", "sometimes")
+
+    with pytest.raises(RuntimeError) as exc_info:
+        create_app(data_dir=tmp_path)
+
+    assert "HOLLOW_LODGE_REQUIRE_POSTGRES_PROJECTION must be one of" in str(
+        exc_info.value
+    )
 
 
 def test_server_docker_image_installs_openai_client_for_openai_oracle():

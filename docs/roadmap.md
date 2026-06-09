@@ -1546,6 +1546,25 @@ Expected verification:
 - `pytest tests/server/test_packet_lead.py tests/client/test_render_packets.py tests/e2e/test_full_game_loop_with_escrow.py -q`
 - `pytest -q`
 
+### Slice 61: Required Postgres Projection Guard
+
+Status: completed.
+
+Harden the database cutover path without moving game authority out of the
+Eventloom JSONL log. Server configuration now supports
+`HOLLOW_LODGE_REQUIRE_POSTGRES_PROJECTION=1`, which rejects missing projection
+database URLs and rejects `sqlite:///` projection URLs at startup. Local
+development keeps the SQLite default, while production can make the Postgres
+projection backend an explicit invariant after the hosted Postgres smoke
+passes. Error messages identify the misconfiguration while preserving the
+existing redaction boundary for database URLs.
+
+Expected verification:
+
+- `pytest tests/server/test_app_config.py::test_require_postgres_projection_rejects_missing_database_url tests/server/test_app_config.py::test_require_postgres_projection_rejects_sqlite_url_without_secret_leak tests/server/test_app_config.py::test_require_postgres_projection_allows_postgres_backend tests/server/test_app_config.py::test_require_postgres_projection_rejects_invalid_flag_value -q`
+- `pytest tests/server/test_app_config.py tests/e2e/test_projection_backend_smoke.py -q`
+- `pytest -q`
+
 ## Completion Standard
 
 Each slice must:
