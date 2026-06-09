@@ -181,6 +181,51 @@ def test_api_gets_admin_player_detail_with_admin_token(monkeypatch):
     ]
 
 
+def test_api_lists_oracle_audits_with_admin_token(monkeypatch):
+    calls = []
+
+    class Response:
+        def raise_for_status(self):
+            calls.append("raise_for_status")
+
+        def json(self):
+            return {
+                "audits": [
+                    {
+                        "sequence": 12,
+                        "event_type": "oracle.resolution.completed",
+                        "contract_id": "contract_false_finger",
+                        "phase": "auction-preview",
+                    }
+                ]
+            }
+
+    def fake_get(url, *, headers, timeout):
+        calls.append(
+            {
+                "url": url,
+                "headers": headers,
+                "timeout": timeout,
+            }
+        )
+        return Response()
+
+    monkeypatch.setattr("httpx.get", fake_get)
+    api = HollowLodgeApi(server_url="http://testserver")
+
+    result = api.list_oracle_audits(admin_token="admin-secret")
+
+    assert result["audits"][0]["sequence"] == 12
+    assert calls == [
+        {
+            "url": "http://testserver/admin/oracle/audits",
+            "headers": {"X-Hollow-Lodge-Admin-Token": "admin-secret"},
+            "timeout": 10,
+        },
+        "raise_for_status",
+    ]
+
+
 def test_api_gets_player_profile(monkeypatch):
     calls = []
 

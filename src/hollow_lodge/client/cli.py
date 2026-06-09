@@ -329,6 +329,45 @@ def admin_event_log_export(
     typer.echo(f"wrote {output}")
 
 
+@admin_app.command("oracle-audits")
+def admin_oracle_audits(
+    server: str = typer.Option(
+        DEFAULT_SERVER_URL,
+        "--server",
+        help="Authoritative server URL. Defaults to the official Lodge.",
+    ),
+    admin_token: str = typer.Option(
+        ...,
+        "--admin-token",
+        envvar="HOLLOW_LODGE_ADMIN_TOKEN",
+        help="Server admin token.",
+    ),
+) -> None:
+    """List redacted oracle resolution audit records."""
+    response = HollowLodgeApi(server_url=server).list_oracle_audits(
+        admin_token=admin_token,
+    )
+    for audit in response["audits"]:
+        provider = audit.get("provider") or audit.get("provider_attempted") or "-"
+        model = audit.get("model") or "-"
+        validation = audit.get("validation_status") or "-"
+        fallback = "fallback" if audit.get("fallback") else "primary"
+        counts = (
+            f"crews={audit.get('crew_count', '-')}"
+            f" standings={audit.get('standing_count', '-')}"
+            f" warnings={audit.get('warning_count', '-')}"
+        )
+        hashes = (
+            f" input={audit.get('input_packet_hash', '-')}"
+            f" output={audit.get('accepted_output_hash', '-')}"
+        )
+        typer.echo(
+            f"{audit['sequence']} {audit['event_type']} "
+            f"{audit['contract_id']} {audit['phase']} "
+            f"{provider}/{model} {validation} {fallback} {counts}{hashes}"
+        )
+
+
 @admin_app.command("key-request-approve")
 def admin_key_request_approve(
     request_id: str = typer.Argument(..., help="Access-key request id."),

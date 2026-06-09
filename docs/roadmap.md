@@ -1771,6 +1771,25 @@ Expected verification:
 - `pytest tests/server/test_app_config.py tests/server/test_projection_store.py tests/e2e/test_projection_backend_smoke.py -q`
 - `pytest -q`
 
+### Slice 71: Admin Oracle Audit CLI
+
+Status: completed.
+
+Make Milestone 3 oracle audit evidence operable from the same first-party admin
+CLI used for other production tasks. `HollowLodgeApi` now wraps
+`GET /admin/oracle/audits`, and `hollow-lodge admin oracle-audits` prints a
+compact redacted row for each oracle audit event: sequence, event type,
+contract, phase, provider/model, validation state, fallback state, safe counts,
+and packet/output hashes. The CLI intentionally ignores unexpected raw response
+fields such as `accepted_output` or hidden truth summaries so operator tooling
+does not widen the player-safe audit boundary.
+
+Expected verification:
+
+- `pytest tests/client/test_api.py::test_api_lists_oracle_audits_with_admin_token tests/client/test_cli_commands.py::test_admin_oracle_audits_command_lists_redacted_audits -q`
+- `pytest tests/client/test_api.py tests/client/test_cli_commands.py tests/server/test_resolution_oracle.py -q`
+- `pytest -q`
+
 ## Completion Standard
 
 Each slice must:

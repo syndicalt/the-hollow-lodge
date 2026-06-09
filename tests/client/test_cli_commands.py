@@ -145,6 +145,31 @@ class FakeApi:
         self.calls.append(("export_event_log", {"admin_token": admin_token}))
         return {"events": [{"sequence": 1, "type": "identity.player.registered"}]}
 
+    def list_oracle_audits(self, *, admin_token: str):
+        self.calls.append(("list_oracle_audits", {"admin_token": admin_token}))
+        return {
+            "audits": [
+                {
+                    "sequence": 9,
+                    "event_id": "event_0009",
+                    "event_type": "oracle.resolution.completed",
+                    "contract_id": "contract_false_finger",
+                    "phase": "auction-preview",
+                    "provider": "deterministic",
+                    "model": "deterministic-v1",
+                    "validation_status": "validated",
+                    "fallback": False,
+                    "crew_count": 2,
+                    "standing_count": 2,
+                    "warning_count": 1,
+                    "input_packet_hash": "input-hash",
+                    "accepted_output_hash": "output-hash",
+                    "accepted_output": {"raw": "must not print"},
+                    "hidden_truth_summary": "must not print",
+                }
+            ]
+        }
+
     def activate_contract_seed(
         self,
         *,
@@ -981,6 +1006,43 @@ def test_admin_event_log_commands_verify_and_export(tmp_path, monkeypatch):
     assert '"identity.player.registered"' in output_path.read_text(encoding="utf-8")
     assert created_clients[0].calls == [("verify_event_log", {"admin_token": "admin-secret"})]
     assert created_clients[1].calls == [("export_event_log", {"admin_token": "admin-secret"})]
+
+
+def test_admin_oracle_audits_command_lists_redacted_audits(tmp_path, monkeypatch):
+    runner = CliRunner()
+    created_clients: list[FakeApi] = []
+
+    def fake_client(**kwargs):
+        client = FakeApi(**kwargs)
+        created_clients.append(client)
+        return client
+
+    monkeypatch.setattr(cli, "HollowLodgeApi", fake_client)
+
+    result = runner.invoke(
+        cli.app,
+        [
+            "admin",
+            "oracle-audits",
+            "--server",
+            "http://testserver",
+            "--admin-token",
+            "admin-secret",
+        ],
+    )
+
+    assert result.exit_code == 0
+    assert (
+        "9 oracle.resolution.completed contract_false_finger auction-preview "
+        "deterministic/deterministic-v1 validated primary "
+        "crews=2 standings=2 warnings=1 input=input-hash output=output-hash"
+    ) in result.output
+    assert "accepted_output" not in result.output
+    assert "hidden_truth_summary" not in result.output
+    assert "must not print" not in result.output
+    assert created_clients[0].calls == [
+        ("list_oracle_audits", {"admin_token": "admin-secret"})
+    ]
 
 
 def test_admin_contract_activate_command_reads_seed_file(tmp_path, monkeypatch):

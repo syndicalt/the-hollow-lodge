@@ -133,6 +133,12 @@ Phase resolution writes server-only oracle audit events into the authoritative
 Eventloom log. Operators can inspect a redacted audit summary with:
 
 ```sh
+hollow-lodge admin oracle-audits
+```
+
+or directly against the server:
+
+```sh
 curl -fsS https://server.thehollowlodge.com/admin/oracle/audits \
   -H "X-Hollow-Lodge-Admin-Token: $HOLLOW_LODGE_ADMIN_TOKEN"
 ```

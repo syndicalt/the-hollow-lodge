@@ -110,6 +110,15 @@ class HollowLodgeApi:
         response.raise_for_status()
         return response.json()
 
+    def list_oracle_audits(self, *, admin_token: str) -> dict[str, Any]:
+        response = httpx.get(
+            f"{self.server_url}/admin/oracle/audits",
+            headers={"X-Hollow-Lodge-Admin-Token": admin_token},
+            timeout=10,
+        )
+        response.raise_for_status()
+        return response.json()
+
     def approve_key_request(
         self,
         *,
