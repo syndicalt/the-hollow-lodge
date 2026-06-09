@@ -252,6 +252,10 @@ Status:
   manifests for authoritative event-log exports, validating the hash chain and
   recording count, sequence range, chain head, schema versions, and a digest
   over event hashes without exposing event payloads or auth material.
+- Manifest-bound event-log import completed: Postgres migration dry-runs and
+  imports can now require a matching content-safe backup manifest before
+  writing, catching wrong-export or stale-manifest operator mistakes before the
+  authoritative event-log backend is changed.
 
 Proof gate:
 
@@ -403,6 +407,10 @@ Status:
   `hollow-lodge admin event-log-manifest` can validate an existing export and
   write the same chain summary without exposing payloads, actors, visibility,
   idempotency keys, invite hashes, or auth material.
+- Manifest-bound event-log import completed: repository and installed-client
+  migration commands accept `--manifest`, verify that the manifest matches the
+  validated source export before dry-run or import, and report when the manifest
+  was verified without printing sensitive export contents.
 - Admin oracle audit surface completed: operators can inspect redacted
   provider, validation, fallback, count, and hash evidence for server-only
   oracle audit events without exposing raw oracle inputs, hidden truth, or
@@ -2088,6 +2096,27 @@ migration sources without opening sensitive exports.
 Expected verification:
 
 - `pytest tests/e2e/test_event_log_migration.py::test_event_log_manifest_summarizes_validated_chain_without_payloads tests/client/test_cli_commands.py::test_admin_event_log_export_writes_safe_manifest tests/client/test_cli_commands.py::test_admin_event_log_manifest_command_writes_safe_summary tests/client/test_cli_commands.py::test_admin_event_log_manifest_rejects_corrupted_export -q`
+- `pytest tests/e2e/test_event_log_migration.py tests/client/test_cli_commands.py -q`
+- `pytest -q`
+
+### Slice 84: Manifest-Bound Event Log Import
+
+Status: completed.
+
+Bind authoritative event-log Postgres migration to the backup manifest when an
+operator supplies one. `migrate_event_log_to_postgres`, the repository
+`scripts/migrate_event_log_to_postgres.py` wrapper, and
+`hollow-lodge admin event-log-import-postgres` now accept a manifest path,
+recompute the content-safe manifest from the validated source export, and fail
+before dry-run success or Postgres writes if the manifest is missing, invalid,
+contains unexpected fields, has an unsupported type/version, or does not match
+the source export's count, sequence range, event IDs, event hashes, schema
+versions, or chain digest. Successful dry-run/import output reports
+`manifest verified` without printing export payloads or credentials.
+
+Expected verification:
+
+- `pytest tests/e2e/test_event_log_migration.py::test_event_log_migration_dry_run_verifies_matching_manifest tests/e2e/test_event_log_migration.py::test_event_log_migration_rejects_mismatched_manifest tests/client/test_cli_commands.py::test_admin_event_log_import_postgres_dry_run_verifies_manifest -q`
 - `pytest tests/e2e/test_event_log_migration.py tests/client/test_cli_commands.py -q`
 - `pytest -q`
 

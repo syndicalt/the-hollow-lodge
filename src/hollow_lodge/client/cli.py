@@ -447,6 +447,11 @@ def admin_event_log_import_postgres(
         "--source",
         help="Event export file. Accepts admin export JSON, JSON array, or JSONL rows.",
     ),
+    manifest: Path | None = typer.Option(
+        None,
+        "--manifest",
+        help="Optional backup manifest that must match the source before import.",
+    ),
     database_url: str = typer.Option(
         "",
         "--database-url",
@@ -464,17 +469,24 @@ def admin_event_log_import_postgres(
         result = migrate_event_log_to_postgres(
             source=source,
             database_url=database_url,
+            manifest=manifest,
             dry_run=dry_run,
         )
     except RuntimeError as exc:
         typer.echo(f"Error: {exc}", err=True)
         raise typer.Exit(1) from exc
     if result["dry_run"]:
-        typer.echo(f"event log import dry-run ok: {result['event_count']} events")
+        manifest_note = " manifest verified" if result.get("manifest_verified") else ""
+        typer.echo(
+            f"event log import dry-run ok: {result['event_count']} events"
+            f"{manifest_note}"
+        )
         return
+    manifest_note = " manifest verified" if result.get("manifest_verified") else ""
     typer.echo(
         "event log import ok: "
         f"{result['event_count']} events into {result['database_url']}"
+        f"{manifest_note}"
     )
 
 

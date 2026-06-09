@@ -47,7 +47,7 @@ def test_event_log_migration_dry_run_accepts_admin_export(tmp_path):
         dry_run=True,
     )
 
-    assert result == {"dry_run": True, "event_count": 1}
+    assert result == {"dry_run": True, "event_count": 1, "manifest_verified": False}
 
 
 def test_event_log_manifest_summarizes_validated_chain_without_payloads(tmp_path):
@@ -83,6 +83,89 @@ def test_event_log_manifest_summarizes_validated_chain_without_payloads(tmp_path
     assert "secret inspection plan" not in json.dumps(manifest)
     assert "player_ada" not in json.dumps(manifest)
     assert "submit-action-1" not in json.dumps(manifest)
+
+
+def test_event_log_migration_dry_run_verifies_matching_manifest(tmp_path):
+    module = _load_migration_module()
+    store = JsonlEventStore(tmp_path / "server-events.jsonl")
+    store.append(
+        event_type="contract.seeded",
+        actor_id="server",
+        visibility=EventVisibility.server_only(),
+        payload={"contract_id": "contract_false_finger"},
+    )
+    source = tmp_path / "export.json"
+    source.write_text(
+        json.dumps(
+            {"events": [event.model_dump(mode="json") for event in store.read()]},
+            sort_keys=True,
+        ),
+        encoding="utf-8",
+    )
+    manifest = tmp_path / "export.manifest.json"
+    manifest.write_text(
+        json.dumps(event_log_migration.create_event_log_manifest(source), sort_keys=True),
+        encoding="utf-8",
+    )
+
+    result = module.migrate_event_log(
+        source=source,
+        database_url="",
+        manifest=manifest,
+        dry_run=True,
+    )
+
+    assert result == {"dry_run": True, "event_count": 1, "manifest_verified": True}
+
+
+def test_event_log_migration_rejects_mismatched_manifest(tmp_path):
+    module = _load_migration_module()
+    first_store = JsonlEventStore(tmp_path / "first-events.jsonl")
+    first_store.append(
+        event_type="contract.seeded",
+        actor_id="server",
+        visibility=EventVisibility.server_only(),
+        payload={"contract_id": "contract_false_finger"},
+    )
+    source = tmp_path / "export.json"
+    source.write_text(
+        json.dumps(
+            {"events": [event.model_dump(mode="json") for event in first_store.read()]},
+            sort_keys=True,
+        ),
+        encoding="utf-8",
+    )
+    second_store = JsonlEventStore(tmp_path / "second-events.jsonl")
+    second_store.append(
+        event_type="contract.seeded",
+        actor_id="server",
+        visibility=EventVisibility.server_only(),
+        payload={"contract_id": "contract_ash_window"},
+    )
+    second_source = tmp_path / "other-export.json"
+    second_source.write_text(
+        json.dumps(
+            {"events": [event.model_dump(mode="json") for event in second_store.read()]},
+            sort_keys=True,
+        ),
+        encoding="utf-8",
+    )
+    manifest = tmp_path / "other-export.manifest.json"
+    manifest.write_text(
+        json.dumps(
+            event_log_migration.create_event_log_manifest(second_source),
+            sort_keys=True,
+        ),
+        encoding="utf-8",
+    )
+
+    with pytest.raises(RuntimeError, match="event manifest does not match source export"):
+        module.migrate_event_log(
+            source=source,
+            database_url="",
+            manifest=manifest,
+            dry_run=True,
+        )
 
 
 def test_event_log_migration_imports_jsonl_without_leaking_password(
@@ -123,6 +206,7 @@ def test_event_log_migration_imports_jsonl_without_leaking_password(
         "dry_run": False,
         "event_count": 1,
         "database_url": "postgresql://user:***@example.com:5432/hollow_lodge",
+        "manifest_verified": False,
     }
     assert "secret" not in str(result)
 

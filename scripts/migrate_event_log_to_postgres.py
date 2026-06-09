@@ -28,6 +28,12 @@ def main() -> None:
         help=f"Destination Postgres URL. Defaults to ${EVENT_DATABASE_URL_ENV}.",
     )
     parser.add_argument(
+        "--manifest",
+        type=Path,
+        default=None,
+        help="Optional backup manifest that must match the source before import.",
+    )
+    parser.add_argument(
         "--dry-run",
         action="store_true",
         help="Validate the source chain without writing to Postgres.",
@@ -37,14 +43,18 @@ def main() -> None:
     result = migrate_event_log(
         source=args.source,
         database_url=args.database_url,
+        manifest=args.manifest,
         dry_run=args.dry_run,
     )
     if result["dry_run"]:
-        print(f"event log import dry-run ok: {result['event_count']} events")
+        manifest_note = " manifest verified" if result.get("manifest_verified") else ""
+        print(f"event log import dry-run ok: {result['event_count']} events{manifest_note}")
     else:
+        manifest_note = " manifest verified" if result.get("manifest_verified") else ""
         print(
             "event log import ok: "
             f"{result['event_count']} events into {result['database_url']}"
+            f"{manifest_note}"
         )
 
 
@@ -52,11 +62,13 @@ def migrate_event_log(
     *,
     source: Path,
     database_url: str,
+    manifest: Path | None = None,
     dry_run: bool = False,
 ) -> dict[str, Any]:
     return migrate_event_log_to_postgres(
         source=source,
         database_url=database_url,
+        manifest=manifest,
         dry_run=dry_run,
     )
 

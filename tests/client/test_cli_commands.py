@@ -1316,15 +1316,16 @@ def test_admin_event_log_import_postgres_dry_run_uses_packaged_migration(
     source.write_text('{"events":[]}', encoding="utf-8")
     calls: list[dict] = []
 
-    def fake_migrate_event_log_to_postgres(*, source, database_url, dry_run):
+    def fake_migrate_event_log_to_postgres(*, source, database_url, manifest, dry_run):
         calls.append(
             {
                 "source": source,
                 "database_url": database_url,
+                "manifest": manifest,
                 "dry_run": dry_run,
             }
         )
-        return {"dry_run": True, "event_count": 0}
+        return {"dry_run": True, "event_count": 0, "manifest_verified": False}
 
     monkeypatch.setattr(
         cli,
@@ -1345,7 +1346,57 @@ def test_admin_event_log_import_postgres_dry_run_uses_packaged_migration(
 
     assert result.exit_code == 0
     assert "event log import dry-run ok: 0 events" in result.output
-    assert calls == [{"source": source, "database_url": "", "dry_run": True}]
+    assert calls == [
+        {"source": source, "database_url": "", "manifest": None, "dry_run": True}
+    ]
+
+
+def test_admin_event_log_import_postgres_dry_run_verifies_manifest(
+    tmp_path,
+    monkeypatch,
+):
+    runner = CliRunner()
+    source = tmp_path / "events.json"
+    source.write_text('{"events":[]}', encoding="utf-8")
+    manifest = tmp_path / "events.manifest.json"
+    manifest.write_text("{}", encoding="utf-8")
+    calls: list[dict] = []
+
+    def fake_migrate_event_log_to_postgres(*, source, database_url, manifest, dry_run):
+        calls.append(
+            {
+                "source": source,
+                "database_url": database_url,
+                "manifest": manifest,
+                "dry_run": dry_run,
+            }
+        )
+        return {"dry_run": True, "event_count": 0, "manifest_verified": True}
+
+    monkeypatch.setattr(
+        cli,
+        "migrate_event_log_to_postgres",
+        fake_migrate_event_log_to_postgres,
+    )
+
+    result = runner.invoke(
+        cli.app,
+        [
+            "admin",
+            "event-log-import-postgres",
+            "--source",
+            str(source),
+            "--manifest",
+            str(manifest),
+            "--dry-run",
+        ],
+    )
+
+    assert result.exit_code == 0
+    assert "event log import dry-run ok: 0 events manifest verified" in result.output
+    assert calls == [
+        {"source": source, "database_url": "", "manifest": manifest, "dry_run": True}
+    ]
 
 
 def test_admin_event_log_import_postgres_prints_redacted_destination(
@@ -1357,11 +1408,12 @@ def test_admin_event_log_import_postgres_prints_redacted_destination(
     source.write_text('{"events":[]}', encoding="utf-8")
     calls: list[dict] = []
 
-    def fake_migrate_event_log_to_postgres(*, source, database_url, dry_run):
+    def fake_migrate_event_log_to_postgres(*, source, database_url, manifest, dry_run):
         calls.append(
             {
                 "source": source,
                 "database_url": database_url,
+                "manifest": manifest,
                 "dry_run": dry_run,
             }
         )
@@ -1369,6 +1421,7 @@ def test_admin_event_log_import_postgres_prints_redacted_destination(
             "dry_run": False,
             "event_count": 3,
             "database_url": "postgresql://user:***@host:5432/hollow_lodge",
+            "manifest_verified": False,
         }
 
     monkeypatch.setattr(
@@ -1399,6 +1452,7 @@ def test_admin_event_log_import_postgres_prints_redacted_destination(
         {
             "source": source,
             "database_url": "postgresql://user:secret@host:5432/hollow_lodge",
+            "manifest": None,
             "dry_run": False,
         }
     ]
@@ -1412,7 +1466,7 @@ def test_admin_event_log_import_postgres_reports_safe_migration_error(
     source = tmp_path / "events.json"
     source.write_text('{"events":[]}', encoding="utf-8")
 
-    def fake_migrate_event_log_to_postgres(*, source, database_url, dry_run):
+    def fake_migrate_event_log_to_postgres(*, source, database_url, manifest, dry_run):
         raise RuntimeError("HOLLOW_LODGE_EVENT_DATABASE_URL or --database-url is required")
 
     monkeypatch.setattr(

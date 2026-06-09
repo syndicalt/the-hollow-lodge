@@ -340,6 +340,7 @@ chain without writing:
 ```sh
 python scripts/migrate_event_log_to_postgres.py \
   --source backups/hollow-lodge-events.json \
+  --manifest backups/hollow-lodge-events.manifest.json \
   --dry-run
 ```
 
@@ -348,6 +349,7 @@ Installed clients can run the same validator without a repository checkout:
 ```sh
 hollow-lodge admin event-log-import-postgres \
   --source backups/hollow-lodge-events.json \
+  --manifest backups/hollow-lodge-events.manifest.json \
   --dry-run
 ```
 
@@ -356,7 +358,8 @@ Then import into an empty Postgres event-log database:
 ```sh
 HOLLOW_LODGE_EVENT_DATABASE_URL=postgresql://user:password@host:5432/database \
 python scripts/migrate_event_log_to_postgres.py \
-  --source backups/hollow-lodge-events.json
+  --source backups/hollow-lodge-events.json \
+  --manifest backups/hollow-lodge-events.manifest.json
 ```
 
 The installed-client equivalent is:
@@ -364,13 +367,15 @@ The installed-client equivalent is:
 ```sh
 HOLLOW_LODGE_EVENT_DATABASE_URL=postgresql://user:password@host:5432/database \
 hollow-lodge admin event-log-import-postgres \
-  --source backups/hollow-lodge-events.json
+  --source backups/hollow-lodge-events.json \
+  --manifest backups/hollow-lodge-events.manifest.json
 ```
 
 The importer refuses to write to a non-empty destination. It preserves existing
 event IDs, sequence numbers, timestamps, hash-chain fields, idempotency keys,
-and command fingerprints exactly, and it prints only a redacted destination
-URL. After the import succeeds, set `HOLLOW_LODGE_EVENT_DATABASE_URL` on the
+and command fingerprints exactly, verifies the manifest before writing when
+`--manifest` is supplied, and prints only a redacted destination URL. After the
+import succeeds, set `HOLLOW_LODGE_EVENT_DATABASE_URL` on the
 server, redeploy, and verify the hosted backend:
 
 ```sh

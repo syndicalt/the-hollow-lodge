@@ -21,14 +21,18 @@ def migrate_event_log_to_postgres(
     *,
     source: Path,
     database_url: str,
+    manifest: Path | None = None,
     dry_run: bool = False,
 ) -> dict[str, Any]:
     events = load_events(source)
     validate_event_chain(events)
+    if manifest is not None:
+        verify_event_log_manifest(events, manifest)
     if dry_run:
         return {
             "dry_run": True,
             "event_count": len(events),
+            "manifest_verified": manifest is not None,
         }
     if not database_url.strip():
         raise RuntimeError(f"{EVENT_DATABASE_URL_ENV} or --database-url is required")
@@ -38,11 +42,43 @@ def migrate_event_log_to_postgres(
         "dry_run": False,
         "event_count": report.event_count,
         "database_url": store.safe_database_url,
+        "manifest_verified": manifest is not None,
     }
 
 
 def create_event_log_manifest(source: Path) -> dict[str, Any]:
     return build_event_log_manifest(load_events(source))
+
+
+def verify_event_log_manifest(events: list[GameEvent], manifest_path: Path) -> None:
+    if not manifest_path.exists():
+        raise RuntimeError(f"event manifest does not exist: {manifest_path}")
+    try:
+        raw_manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
+    except json.JSONDecodeError as exc:
+        raise RuntimeError(f"invalid event manifest JSON: {manifest_path}") from exc
+    if not isinstance(raw_manifest, dict):
+        raise RuntimeError("event manifest must be a JSON object")
+    expected = build_event_log_manifest(events)
+    mismatches = [
+        key
+        for key, expected_value in expected.items()
+        if raw_manifest.get(key) != expected_value
+    ]
+    extra_keys = sorted(set(raw_manifest) - set(expected))
+    if raw_manifest.get("manifest_type") != MANIFEST_TYPE:
+        raise RuntimeError("event manifest type does not match Hollow Lodge event logs")
+    if raw_manifest.get("manifest_version") != MANIFEST_VERSION:
+        raise RuntimeError("event manifest version is not supported")
+    if mismatches:
+        raise RuntimeError(
+            "event manifest does not match source export: "
+            + ", ".join(sorted(mismatches))
+        )
+    if extra_keys:
+        raise RuntimeError(
+            "event manifest contains unexpected fields: " + ", ".join(extra_keys)
+        )
 
 
 def build_event_log_manifest(events: list[GameEvent]) -> dict[str, Any]:
