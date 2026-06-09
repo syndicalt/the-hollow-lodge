@@ -330,6 +330,92 @@ def test_backend_smoke_accepts_event_log_manifest_chain_head(tmp_path):
     )
 
 
+def test_backend_smoke_rejects_malformed_event_log_manifest(tmp_path):
+    smoke = _load_smoke_module()
+    store = JsonlEventStore(tmp_path / "server-events.jsonl")
+    event = store.append(
+        event_type="contract.seeded",
+        actor_id="server",
+        visibility=EventVisibility.server_only(),
+        payload={"contract_id": "contract_false_finger"},
+    )
+    source = tmp_path / "export.json"
+    source.write_text(
+        json.dumps(
+            {"events": [row.model_dump(mode="json") for row in store.read()]},
+            sort_keys=True,
+        ),
+        encoding="utf-8",
+    )
+    manifest = create_event_log_manifest(source)
+    manifest["manifest_type"] = "not_hollow_lodge"
+
+    try:
+        smoke.validate_backend_diagnostics(
+            {
+                "data": {
+                    "event_log": {
+                        "backend": "postgres",
+                        "database_url": "postgresql://event:***@host:5432/db",
+                        "status": "available",
+                        "event_count": 1,
+                        "last_sequence": 1,
+                        "last_event_hash": event.event_hash,
+                        "event_hash_chain_sha256": manifest["event_hash_chain_sha256"],
+                    },
+                    "projection_db": {
+                        "backend": "postgres",
+                        "database_url": "postgresql://projection:***@host:5432/db",
+                        "status": "available",
+                        "lag": 0,
+                    },
+                },
+            },
+            expected_backend="postgres",
+            expected_event_backend="postgres",
+            event_log_manifest=manifest,
+        )
+    except RuntimeError as exc:
+        message = str(exc)
+    else:
+        raise AssertionError("malformed event-log manifest should fail")
+
+    assert "event manifest type does not match Hollow Lodge event logs" in message
+
+
+def test_backend_smoke_rejects_non_object_event_log_manifest():
+    smoke = _load_smoke_module()
+
+    try:
+        smoke.validate_backend_diagnostics(
+            {
+                "data": {
+                    "event_log": {
+                        "backend": "postgres",
+                        "database_url": "postgresql://event:***@host:5432/db",
+                        "status": "available",
+                        "event_count": 0,
+                    },
+                    "projection_db": {
+                        "backend": "postgres",
+                        "database_url": "postgresql://projection:***@host:5432/db",
+                        "status": "available",
+                        "lag": 0,
+                    },
+                },
+            },
+            expected_backend="postgres",
+            expected_event_backend="postgres",
+            event_log_manifest=[],
+        )
+    except RuntimeError as exc:
+        message = str(exc)
+    else:
+        raise AssertionError("non-object event-log manifest should fail")
+
+    assert "event manifest must be a JSON object" in message
+
+
 def test_backend_smoke_rejects_event_log_manifest_chain_digest_mismatch(tmp_path):
     smoke = _load_smoke_module()
     store = JsonlEventStore(tmp_path / "server-events.jsonl")

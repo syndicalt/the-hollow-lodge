@@ -19,6 +19,19 @@ from hollow_lodge.eventlog.postgres_store import PostgresEventStore
 EVENT_DATABASE_URL_ENV = "HOLLOW_LODGE_EVENT_DATABASE_URL"
 MANIFEST_TYPE = "hollow_lodge_event_log_backup"
 MANIFEST_VERSION = 1
+MANIFEST_FIELDS = (
+    "manifest_type",
+    "manifest_version",
+    "event_count",
+    "first_sequence",
+    "last_sequence",
+    "first_event_id",
+    "last_event_id",
+    "first_event_hash",
+    "last_event_hash",
+    "schema_versions",
+    "event_hash_chain_sha256",
+)
 
 
 def migrate_event_log_to_postgres(
@@ -84,7 +97,25 @@ def load_event_log_manifest(manifest_path: Path) -> dict[str, Any]:
         raise RuntimeError(f"invalid event manifest JSON: {manifest_path}") from exc
     if not isinstance(raw_manifest, dict):
         raise RuntimeError("event manifest must be a JSON object")
+    validate_event_log_manifest_document(raw_manifest)
     return raw_manifest
+
+
+def validate_event_log_manifest_document(raw_manifest: Any) -> None:
+    if not isinstance(raw_manifest, dict):
+        raise RuntimeError("event manifest must be a JSON object")
+    if raw_manifest.get("manifest_type") != MANIFEST_TYPE:
+        raise RuntimeError("event manifest type does not match Hollow Lodge event logs")
+    if raw_manifest.get("manifest_version") != MANIFEST_VERSION:
+        raise RuntimeError("event manifest version is not supported")
+    missing_keys = sorted(set(MANIFEST_FIELDS) - set(raw_manifest))
+    if missing_keys:
+        raise RuntimeError("event manifest is missing fields: " + ", ".join(missing_keys))
+    extra_keys = sorted(set(raw_manifest) - set(MANIFEST_FIELDS))
+    if extra_keys:
+        raise RuntimeError(
+            "event manifest contains unexpected fields: " + ", ".join(extra_keys)
+        )
 
 
 def verify_event_log_manifest(events: list[GameEvent], manifest_path: Path) -> None:
@@ -95,19 +126,10 @@ def verify_event_log_manifest(events: list[GameEvent], manifest_path: Path) -> N
         for key, expected_value in expected.items()
         if raw_manifest.get(key) != expected_value
     ]
-    extra_keys = sorted(set(raw_manifest) - set(expected))
-    if raw_manifest.get("manifest_type") != MANIFEST_TYPE:
-        raise RuntimeError("event manifest type does not match Hollow Lodge event logs")
-    if raw_manifest.get("manifest_version") != MANIFEST_VERSION:
-        raise RuntimeError("event manifest version is not supported")
     if mismatches:
         raise RuntimeError(
             "event manifest does not match source export: "
             + ", ".join(sorted(mismatches))
-        )
-    if extra_keys:
-        raise RuntimeError(
-            "event manifest contains unexpected fields: " + ", ".join(extra_keys)
         )
 
 

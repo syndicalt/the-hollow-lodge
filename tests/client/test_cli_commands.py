@@ -1765,6 +1765,45 @@ def test_admin_backend_smoke_command_verifies_event_log_manifest(
     assert "secret" not in result.output
 
 
+def test_admin_backend_smoke_command_rejects_malformed_event_log_manifest(
+    tmp_path,
+    monkeypatch,
+):
+    manifest = tmp_path / "events.manifest.json"
+    manifest.write_text(
+        json.dumps(
+            {
+                "manifest_type": "wrong",
+                "manifest_version": 1,
+                "event_count": 0,
+            },
+            sort_keys=True,
+        ),
+        encoding="utf-8",
+    )
+    monkeypatch.setattr(cli, "HollowLodgeApi", FakeApi)
+    runner = CliRunner()
+
+    result = runner.invoke(
+        cli.app,
+        [
+            "admin",
+            "backend-smoke",
+            "--server",
+            "http://testserver",
+            "--expected-backend",
+            "postgres",
+            "--event-log-manifest",
+            str(manifest),
+        ],
+    )
+
+    assert result.exit_code != 0
+    assert "event manifest type does not match Hollow Lodge event logs" in result.output
+    assert "Traceback" not in result.output
+    assert "secret" not in result.output
+
+
 def test_admin_backend_smoke_command_verifies_required_storage_guards(monkeypatch):
     class GuardedStorageApi(FakeApi):
         def diagnostics(self):

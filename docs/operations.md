@@ -265,7 +265,9 @@ python scripts/smoke_projection_backend.py \
 backup manifest's event count, last sequence, last event hash, and
 `event_hash_chain_sha256` digest. This proves the deployed authoritative
 backend is at the expected Eventloom chain head and ordered hash-chain summary
-without exposing event payloads.
+without exposing event payloads. The smoke validates the manifest document's
+type, version, required fields, and unexpected fields before treating it as
+readiness evidence.
 
 For the Postgres event-log backend, that diagnostic chain summary is derived
 from event metadata columns: sequence, event id, event hash, and previous hash.

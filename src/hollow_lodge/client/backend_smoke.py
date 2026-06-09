@@ -6,7 +6,10 @@ from typing import Any
 
 import httpx
 
-from hollow_lodge.client.event_log_migration import load_event_log_manifest
+from hollow_lodge.client.event_log_migration import (
+    load_event_log_manifest,
+    validate_event_log_manifest_document,
+)
 from hollow_lodge.server.projection_store import (
     PROJECTION_SCHEMA_MIGRATIONS,
     SCHEMA_VERSION,
@@ -143,6 +146,7 @@ def validate_backend_diagnostics(
         errors.append("event-log diagnostics expose an unredacted database URL password")
 
     if event_log_manifest is not None:
+        validate_event_log_manifest_document(event_log_manifest)
         expected_count = _optional_int(event_log_manifest.get("event_count"))
         expected_sequence = _optional_int(event_log_manifest.get("last_sequence"))
         expected_hash = _optional_str(event_log_manifest.get("last_event_hash"))

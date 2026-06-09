@@ -86,6 +86,53 @@ def test_event_log_manifest_summarizes_validated_chain_without_payloads(tmp_path
     assert "submit-action-1" not in json.dumps(manifest)
 
 
+def test_event_log_manifest_loader_rejects_manifest_with_missing_fields(tmp_path):
+    manifest = tmp_path / "events.manifest.json"
+    manifest.write_text(
+        json.dumps(
+            {
+                "manifest_type": "hollow_lodge_event_log_backup",
+                "manifest_version": 1,
+                "event_count": 1,
+            },
+            sort_keys=True,
+        ),
+        encoding="utf-8",
+    )
+
+    with pytest.raises(RuntimeError) as exc_info:
+        event_log_migration.load_event_log_manifest(manifest)
+
+    message = str(exc_info.value)
+    assert "event manifest is missing fields:" in message
+    assert "event_hash_chain_sha256" in message
+
+
+def test_event_log_manifest_loader_rejects_manifest_with_unexpected_fields(tmp_path):
+    store = JsonlEventStore(tmp_path / "server-events.jsonl")
+    store.append(
+        event_type="contract.seeded",
+        actor_id="server",
+        visibility=EventVisibility.server_only(),
+        payload={"contract_id": "contract_false_finger"},
+    )
+    source = tmp_path / "export.json"
+    source.write_text(
+        json.dumps(
+            {"events": [event.model_dump(mode="json") for event in store.read()]},
+            sort_keys=True,
+        ),
+        encoding="utf-8",
+    )
+    payload = event_log_migration.create_event_log_manifest(source)
+    payload["extra"] = "not allowed"
+    manifest = tmp_path / "events.manifest.json"
+    manifest.write_text(json.dumps(payload, sort_keys=True), encoding="utf-8")
+
+    with pytest.raises(RuntimeError, match="event manifest contains unexpected fields"):
+        event_log_migration.load_event_log_manifest(manifest)
+
+
 def test_event_log_migration_dry_run_verifies_matching_manifest(tmp_path):
     module = _load_migration_module()
     store = JsonlEventStore(tmp_path / "server-events.jsonl")

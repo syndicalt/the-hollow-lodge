@@ -2665,6 +2665,28 @@ Expected verification:
 - `pytest tests/eventlog/test_postgres_store.py tests/eventlog/test_jsonl_store.py tests/client/test_cli_commands.py tests/server/test_app_config.py tests/e2e/test_projection_backend_smoke.py -q`
 - `pytest -q`
 
+### Slice 105: Event-Log Manifest Document Validation
+
+Status: completed.
+
+Tighten production storage cutover readiness by validating backup manifest
+documents before using them as smoke-test evidence. Manifest loading now rejects
+wrong manifest types, unsupported versions, missing required fields, and
+unexpected fields. `hollow-lodge admin backend-smoke --event-log-manifest` and
+the shared backend-smoke validator apply the same manifest document validation
+before comparing hosted event-log diagnostics to the expected chain head and
+chain digest.
+
+This prevents a malformed local manifest file or in-memory manifest dict from
+being treated as proof that the hosted Eventloom backend is at the expected
+backup chain.
+
+Expected verification:
+
+- `pytest tests/e2e/test_event_log_migration.py::test_event_log_manifest_loader_rejects_manifest_with_missing_fields tests/e2e/test_event_log_migration.py::test_event_log_manifest_loader_rejects_manifest_with_unexpected_fields tests/e2e/test_projection_backend_smoke.py::test_backend_smoke_rejects_malformed_event_log_manifest tests/client/test_cli_commands.py::test_admin_backend_smoke_command_rejects_malformed_event_log_manifest -q`
+- `pytest tests/e2e/test_event_log_migration.py tests/e2e/test_projection_backend_smoke.py tests/client/test_cli_commands.py -q`
+- `pytest -q`
+
 ## Completion Standard
 
 Each slice must:
