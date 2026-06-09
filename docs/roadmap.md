@@ -3020,6 +3020,28 @@ Expected verification:
 - `pytest tests/test_mcp_server.py::test_send_message_mcp_call_passes_preview_parameters_to_session tests/test_mcp_server.py::test_public_mcp_tools_do_not_expose_local_path_overrides tests/test_mcp_server.py::test_mutating_mcp_tools_require_confirm_argument -q`
 - `pytest tests/client/test_codex_session.py tests/client/test_render_packets.py tests/test_mcp_server.py -q`
 
+### Slice 120: Codex Action Edit/Cancel Tools
+
+Status: completed.
+
+Expose the existing action revision workflow through the Codex-native MCP
+surface. The server and CLI already support editing or canceling an action
+before phase lock; this slice makes the editable/locked threshold playable from
+inside Codex without requiring shell commands.
+
+`CodexGameSession.edit_action` and `CodexGameSession.cancel_action` follow the
+preview/confirm mutation policy. With `confirm=false`, each returns a
+non-mutating preview. With `confirm=true`, each calls the existing action API,
+syncs visible events, and returns a safe shaped result containing action id,
+crew id, intent, and status only. The MCP `edit_action` and `cancel_action`
+tools expose game parameters only and require `confirm`.
+
+Expected verification:
+
+- `pytest tests/client/test_codex_session.py::test_codex_session_edit_action_preview_does_not_mutate tests/client/test_codex_session.py::test_codex_session_edit_and_cancel_action_confirm_dispatch_and_syncs tests/client/test_codex_session.py::test_codex_session_edit_action_validates_replacement_intent_before_mutation tests/client/test_render_packets.py::test_action_revision_mutation_results_shape_safe_fields_only -q`
+- `pytest tests/test_mcp_server.py::test_edit_action_mcp_call_passes_confirmation_to_session tests/test_mcp_server.py::test_cancel_action_mcp_call_passes_confirmation_to_session tests/test_mcp_server.py::test_public_mcp_tools_do_not_expose_local_path_overrides tests/test_mcp_server.py::test_mutating_mcp_tools_require_confirm_argument -q`
+- `pytest tests/client/test_codex_session.py tests/client/test_render_packets.py tests/test_mcp_server.py -q`
+
 ## Completion Standard
 
 Each slice must:

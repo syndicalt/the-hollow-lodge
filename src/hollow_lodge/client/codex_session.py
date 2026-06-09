@@ -240,6 +240,58 @@ class CodexGameSession:
             result=result,
         )
 
+    def edit_action(
+        self,
+        *,
+        action_id: str,
+        intent: str,
+        confirm: bool,
+    ) -> RenderPacket:
+        replacement_intent = intent.strip()
+        if not replacement_intent:
+            raise ValueError("replacement action intent is required")
+        preview = {"action_id": action_id, "intent": replacement_intent}
+        if not confirm:
+            return build_mutation_result_packet(
+                operation="edit_action",
+                confirmed=False,
+                preview_fields=preview,
+            )
+        result = self.api.edit_action(
+            action_id=action_id,
+            intent=replacement_intent,
+            idempotency_key=new_command_key("action-edit"),
+        )
+        self.sync()
+        return build_mutation_result_packet(
+            operation="edit_action",
+            confirmed=True,
+            result=result,
+        )
+
+    def cancel_action(
+        self,
+        *,
+        action_id: str,
+        confirm: bool,
+    ) -> RenderPacket:
+        if not confirm:
+            return build_mutation_result_packet(
+                operation="cancel_action",
+                confirmed=False,
+                preview_fields={"action_id": action_id},
+            )
+        result = self.api.cancel_action(
+            action_id=action_id,
+            idempotency_key=new_command_key("action-cancel"),
+        )
+        self.sync()
+        return build_mutation_result_packet(
+            operation="cancel_action",
+            confirmed=True,
+            result=result,
+        )
+
     def dossier_contribute(
         self,
         *,

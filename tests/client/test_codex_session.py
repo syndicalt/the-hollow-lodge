@@ -1,6 +1,8 @@
 import subprocess
 import sys
 
+import pytest
+
 from hollow_lodge.client.codex_session import CodexGameSession
 from hollow_lodge.client.config import ClientConfig, load_config, save_config
 
@@ -329,6 +331,43 @@ class FakeApi:
         if rumor_escalation_mode is not None:
             result["rumor_escalation_mode"] = rumor_escalation_mode
         return result
+
+    def edit_action(self, *, action_id: str, intent: str, idempotency_key: str):
+        self.calls.append(
+            (
+                "edit_action",
+                {
+                    "action_id": action_id,
+                    "intent": intent,
+                    "idempotency_key": idempotency_key,
+                },
+            )
+        )
+        return {
+            "action_id": action_id,
+            "crew_id": "crew_0001",
+            "intent": intent,
+            "status": "edited",
+            "server_notes": "hidden",
+        }
+
+    def cancel_action(self, *, action_id: str, idempotency_key: str):
+        self.calls.append(
+            (
+                "cancel_action",
+                {
+                    "action_id": action_id,
+                    "idempotency_key": idempotency_key,
+                },
+            )
+        )
+        return {
+            "action_id": action_id,
+            "crew_id": "crew_0001",
+            "intent": "Inspect the ledger.",
+            "status": "canceled",
+            "server_notes": "hidden",
+        }
 
     def add_dossier_evidence(
         self,
@@ -1095,6 +1134,128 @@ def test_codex_session_confirm_submit_action_calls_api_with_active_crew(tmp_path
         ),
         "visible_events",
     ]
+
+
+def test_codex_session_edit_action_preview_does_not_mutate(tmp_path):
+    config_path = tmp_path / "config.json"
+    log_path = tmp_path / "local.jsonl"
+    fake_api = FakeApi()
+    save_config(
+        config_path,
+        ClientConfig(
+            server_url="http://testserver",
+            player_id="player_0001",
+            token="token",
+            active_crew_id="crew_0001",
+        ),
+    )
+    session = CodexGameSession(config_path=config_path, local_log_path=log_path, api=fake_api)
+
+    packet = session.edit_action(
+        action_id="action_000001",
+        intent="  Inspect under candlelight.  ",
+        confirm=False,
+    )
+
+    assert packet.surface == "mutation"
+    assert "Preview: edit_action" in packet.player_markdown
+    assert packet.agent_context["mutation"] is False
+    assert packet.agent_context["preview"] == {
+        "action_id": "action_000001",
+        "intent": "Inspect under candlelight.",
+    }
+    assert fake_api.calls == []
+
+
+def test_codex_session_edit_and_cancel_action_confirm_dispatch_and_syncs(
+    tmp_path,
+    monkeypatch,
+):
+    config_path = tmp_path / "config.json"
+    log_path = tmp_path / "local.jsonl"
+    fake_api = FakeApi()
+    save_config(
+        config_path,
+        ClientConfig(
+            server_url="http://testserver",
+            player_id="player_0001",
+            token="token",
+            active_crew_id="crew_0001",
+        ),
+    )
+    monkeypatch.setattr(
+        "hollow_lodge.client.codex_session.new_command_key",
+        lambda prefix: f"{prefix}.fixed",
+    )
+    session = CodexGameSession(config_path=config_path, local_log_path=log_path, api=fake_api)
+
+    edited = session.edit_action(
+        action_id="action_000001",
+        intent=" Inspect under candlelight. ",
+        confirm=True,
+    )
+    canceled = session.cancel_action(action_id="action_000001", confirm=True)
+
+    assert edited.agent_context["result"] == {
+        "action_id": "action_000001",
+        "crew_id": "crew_0001",
+        "intent": "Inspect under candlelight.",
+        "status": "edited",
+    }
+    assert canceled.agent_context["result"] == {
+        "action_id": "action_000001",
+        "crew_id": "crew_0001",
+        "intent": "Inspect the ledger.",
+        "status": "canceled",
+    }
+    assert "server_notes" not in str(edited.agent_context)
+    assert "server_notes" not in str(canceled.agent_context)
+    assert fake_api.calls == [
+        (
+            "edit_action",
+            {
+                "action_id": "action_000001",
+                "intent": "Inspect under candlelight.",
+                "idempotency_key": "action-edit.fixed",
+            },
+        ),
+        "visible_events",
+        (
+            "cancel_action",
+            {
+                "action_id": "action_000001",
+                "idempotency_key": "action-cancel.fixed",
+            },
+        ),
+        "visible_events",
+    ]
+
+
+def test_codex_session_edit_action_validates_replacement_intent_before_mutation(
+    tmp_path,
+):
+    config_path = tmp_path / "config.json"
+    log_path = tmp_path / "local.jsonl"
+    fake_api = FakeApi()
+    save_config(
+        config_path,
+        ClientConfig(
+            server_url="http://testserver",
+            player_id="player_0001",
+            token="token",
+            active_crew_id="crew_0001",
+        ),
+    )
+    session = CodexGameSession(config_path=config_path, local_log_path=log_path, api=fake_api)
+
+    with pytest.raises(ValueError, match="replacement action intent is required"):
+        session.edit_action(
+            action_id="action_000001",
+            intent="   ",
+            confirm=True,
+        )
+
+    assert fake_api.calls == []
 
 
 def test_codex_session_accept_deal_preview_shows_consequences_without_accepting(tmp_path):

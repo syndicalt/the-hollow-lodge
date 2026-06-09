@@ -110,6 +110,17 @@ recipient scope, and attachments. After a confirmed message, render
 `render_thread` or `render_conversations` so the player and agent can see the
 visible conversation state.
 
+## Action Revisions
+
+Use `edit_action` or `cancel_action` when a player wants to revise a submitted
+crew action before the phase is locked. Start with `confirm=false`; the tool
+returns a preview packet and does not mutate the server.
+
+Only call either tool with `confirm=true` after the player approves the exact
+action id and consequence. After a confirmed edit or cancel, render
+`render_crew_board` or `render_activity_delta` so the player can see the
+current action state before resolution.
+
 ## Visibility
 
 Treat private conversations and crew boards as visibility-scoped game state.

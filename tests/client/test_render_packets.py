@@ -845,6 +845,46 @@ def test_submit_action_mutation_result_includes_safe_rumor_response_mode():
     assert "msg_private_000001" not in str(packet.agent_context)
 
 
+def test_action_revision_mutation_results_shape_safe_fields_only():
+    edit_packet = build_mutation_result_packet(
+        operation="edit_action",
+        confirmed=True,
+        result={
+            "action_id": "action_000001",
+            "crew_id": "crew_0001",
+            "intent": "Inspect under candlelight.",
+            "status": "edited",
+            "server_notes": "hidden",
+        },
+    )
+    cancel_packet = build_mutation_result_packet(
+        operation="cancel_action",
+        confirmed=True,
+        result={
+            "action_id": "action_000001",
+            "crew_id": "crew_0001",
+            "intent": "Inspect under candlelight.",
+            "status": "canceled",
+            "private_reason": "hidden",
+        },
+    )
+
+    assert edit_packet.agent_context["result"] == {
+        "action_id": "action_000001",
+        "crew_id": "crew_0001",
+        "intent": "Inspect under candlelight.",
+        "status": "edited",
+    }
+    assert cancel_packet.agent_context["result"] == {
+        "action_id": "action_000001",
+        "crew_id": "crew_0001",
+        "intent": "Inspect under candlelight.",
+        "status": "canceled",
+    }
+    assert "server_notes" not in str(edit_packet.agent_context)
+    assert "private_reason" not in str(cancel_packet.agent_context)
+
+
 def test_phase_lock_mutation_result_shapes_safe_resolution_fields_only():
     packet = build_mutation_result_packet(
         operation="phase_lock",

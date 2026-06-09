@@ -428,6 +428,77 @@ def test_submit_action_mcp_call_passes_confirmation_to_session(monkeypatch):
     assert result.structuredContent["agent_context"]["mutation"] is False
 
 
+def test_edit_action_mcp_call_passes_confirmation_to_session(monkeypatch):
+    packet = RenderPacket(
+        surface="mutation",
+        player_markdown="Preview: edit_action\nNo server mutation was submitted.",
+        agent_context={"operation": "edit_action", "mutation": False},
+    )
+
+    class StubSession:
+        def edit_action(
+            self,
+            *,
+            action_id: str,
+            intent: str,
+            confirm: bool,
+        ) -> RenderPacket:
+            assert action_id == "action_000001"
+            assert intent == "Inspect under candlelight."
+            assert confirm is False
+            return packet
+
+    monkeypatch.setattr(mcp_server, "_session", lambda: StubSession())
+
+    result = asyncio.run(
+        mcp_server.mcp.call_tool(
+            "edit_action",
+            {
+                "action_id": "action_000001",
+                "intent": "Inspect under candlelight.",
+                "confirm": False,
+            },
+        )
+    )
+
+    assert result.content[0].text == packet.player_markdown
+    assert result.structuredContent["agent_context"]["mutation"] is False
+
+
+def test_cancel_action_mcp_call_passes_confirmation_to_session(monkeypatch):
+    packet = RenderPacket(
+        surface="mutation",
+        player_markdown="Preview: cancel_action\nNo server mutation was submitted.",
+        agent_context={"operation": "cancel_action", "mutation": False},
+    )
+
+    class StubSession:
+        def cancel_action(
+            self,
+            *,
+            action_id: str,
+            confirm: bool,
+        ) -> RenderPacket:
+            assert action_id == "action_000001"
+            assert confirm is False
+            return packet
+
+    monkeypatch.setattr(mcp_server, "_session", lambda: StubSession())
+
+    result = asyncio.run(
+        mcp_server.mcp.call_tool(
+            "cancel_action",
+            {
+                "action_id": "action_000001",
+                "confirm": False,
+            },
+        )
+    )
+
+    assert result.content[0].text == packet.player_markdown
+    assert result.structuredContent["agent_context"]["mutation"] is False
+
+
 def test_dossier_contribute_mcp_call_passes_note_evidence_and_confirmation(monkeypatch):
     packet = RenderPacket(
         surface="mutation",
@@ -525,6 +596,8 @@ def test_public_mcp_tools_do_not_expose_local_path_overrides():
         "render_deals",
         "preview_deal_acceptance",
         "submit_action",
+        "edit_action",
+        "cancel_action",
         "dossier_contribute",
         "dossier_cite_artifact",
         "propose_deal",
@@ -543,6 +616,8 @@ def test_mutating_mcp_tools_require_confirm_argument():
 
     for tool_name in (
         "submit_action",
+        "edit_action",
+        "cancel_action",
         "dossier_contribute",
         "dossier_cite_artifact",
         "propose_deal",

@@ -179,6 +179,34 @@ def submit_action(
 
 
 @mcp.tool()
+def edit_action(
+    action_id: str,
+    intent: str,
+    confirm: bool,
+) -> CallToolResult:
+    return packet_response(
+        _session().edit_action(
+            action_id=action_id,
+            intent=intent,
+            confirm=confirm,
+        )
+    )
+
+
+@mcp.tool()
+def cancel_action(
+    action_id: str,
+    confirm: bool,
+) -> CallToolResult:
+    return packet_response(
+        _session().cancel_action(
+            action_id=action_id,
+            confirm=confirm,
+        )
+    )
+
+
+@mcp.tool()
 def dossier_contribute(
     note: str,
     evidence_ids: list[str],

@@ -589,13 +589,14 @@ def _shape_activity_event(event: dict[str, Any]) -> dict[str, Any]:
 
 
 def _shape_mutation_result(operation: str, result: dict[str, Any]) -> dict[str, Any]:
-    if operation == "submit_action":
+    if operation in {"submit_action", "edit_action", "cancel_action"}:
         return {
             key: result[key]
             for key in (
                 "action_id",
                 "crew_id",
                 "intent",
+                "status",
                 "responds_to_rumor_id",
                 "rumor_response_mode",
                 "responds_to_rumor_escalation",
