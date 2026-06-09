@@ -1319,6 +1319,95 @@ def test_admin_event_log_manifest_rejects_corrupted_export(tmp_path):
     assert "Traceback" not in result.output
 
 
+def test_admin_event_log_restore_jsonl_writes_empty_destination_with_manifest(tmp_path):
+    runner = CliRunner()
+    store = JsonlEventStore(tmp_path / "source-events.jsonl")
+    event = store.append(
+        event_type="contract.seeded",
+        actor_id="server",
+        visibility=EventVisibility.server_only(),
+        payload={"contract_id": "contract_false_finger"},
+    )
+    source = tmp_path / "events.json"
+    source.write_text(
+        json.dumps(
+            {"events": [row.model_dump(mode="json") for row in store.read()]},
+            sort_keys=True,
+        ),
+        encoding="utf-8",
+    )
+    manifest = tmp_path / "events.manifest.json"
+    manifest.write_text(
+        json.dumps(create_event_log_manifest(source), sort_keys=True),
+        encoding="utf-8",
+    )
+    destination = tmp_path / "restored" / "server-events.jsonl"
+
+    result = runner.invoke(
+        cli.app,
+        [
+            "admin",
+            "event-log-restore-jsonl",
+            "--source",
+            str(source),
+            "--destination",
+            str(destination),
+            "--manifest",
+            str(manifest),
+        ],
+    )
+
+    assert result.exit_code == 0
+    assert f"event log restore ok: 1 events into {destination}" in result.output
+    assert "manifest verified" in result.output
+    assert f"last_hash={event.event_hash}" in result.output
+    assert JsonlEventStore(destination).read() == [event]
+
+
+def test_admin_event_log_restore_jsonl_refuses_non_empty_destination(tmp_path):
+    runner = CliRunner()
+    source_store = JsonlEventStore(tmp_path / "source-events.jsonl")
+    source_store.append(
+        event_type="contract.seeded",
+        actor_id="server",
+        visibility=EventVisibility.server_only(),
+        payload={"contract_id": "contract_false_finger"},
+    )
+    source = tmp_path / "events.json"
+    source.write_text(
+        json.dumps(
+            {"events": [row.model_dump(mode="json") for row in source_store.read()]},
+            sort_keys=True,
+        ),
+        encoding="utf-8",
+    )
+    destination = tmp_path / "server-events.jsonl"
+    destination_store = JsonlEventStore(destination)
+    destination_store.append(
+        event_type="identity.player.registered",
+        actor_id="server",
+        visibility=EventVisibility.players(["player_0001"]),
+        payload={"player_id": "player_0001"},
+    )
+
+    result = runner.invoke(
+        cli.app,
+        [
+            "admin",
+            "event-log-restore-jsonl",
+            "--source",
+            str(source),
+            "--destination",
+            str(destination),
+        ],
+    )
+
+    assert result.exit_code != 0
+    assert "destination event log is not empty; refusing restore" in result.output
+    assert JsonlEventStore(destination).read() == destination_store.read()
+    assert "Traceback" not in result.output
+
+
 def test_admin_event_log_import_postgres_dry_run_uses_packaged_migration(
     tmp_path,
     monkeypatch,

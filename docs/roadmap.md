@@ -264,6 +264,9 @@ Status:
   production Postgres startup guards are enabled for both the authoritative
   Eventloom backend and projection backend, and repository or installed-client
   backend smokes can require those guards before accepting hosted readiness.
+- Event-log restore drill completed: installed clients can restore a validated
+  export into an empty local JSONL event log with manifest verification, and the
+  e2e drill boots a fresh server from that restored chain head.
 
 Proof gate:
 
@@ -427,6 +430,10 @@ Status:
   `HOLLOW_LODGE_REQUIRE_POSTGRES_PROJECTION=1` to be active in the deployed
   process, preventing a passing smoke when production has merely selected
   Postgres without enforcing it as a startup invariant.
+- Event-log restore drill completed: operators can validate the other side of
+  backup/export by restoring an export plus manifest into an empty local JSONL
+  log and booting a clean app at the same safe chain head before relying on the
+  backup during a production storage incident.
 - Admin oracle audit surface completed: operators can inspect redacted
   provider, validation, fallback, count, and hash evidence for server-only
   oracle audit events without exposing raw oracle inputs, hidden truth, or
@@ -2154,6 +2161,48 @@ Expected verification:
 
 - `pytest tests/e2e/test_projection_backend_smoke.py::test_backend_smoke_accepts_event_log_manifest_chain_head tests/e2e/test_projection_backend_smoke.py::test_backend_smoke_rejects_event_log_manifest_chain_head_mismatch tests/client/test_cli_commands.py::test_admin_backend_smoke_command_verifies_event_log_manifest tests/eventlog/test_jsonl_store.py::test_jsonl_event_store_diagnostics_include_event_count tests/eventlog/test_postgres_store.py::test_postgres_event_store_diagnostics_redact_database_url -q`
 - `pytest tests/e2e/test_projection_backend_smoke.py tests/client/test_cli_commands.py tests/eventlog tests/server/test_app_config.py -q`
+- `pytest -q`
+
+### Slice 86: Storage Guard Readiness Smoke
+
+Status: completed.
+
+Make production storage invariants observable from hosted diagnostics and
+enforceable from the same backend readiness smoke used for database cutovers.
+`/diagnostics.data.storage_guards` now reports whether the deployed process has
+`HOLLOW_LODGE_REQUIRE_POSTGRES_EVENT_LOG` and
+`HOLLOW_LODGE_REQUIRE_POSTGRES_PROJECTION` enabled.
+`scripts/smoke_projection_backend.py` and
+`hollow-lodge admin backend-smoke` accept
+`--require-postgres-event-log-guard` and
+`--require-postgres-projection-guard`, failing unless diagnostics prove the
+corresponding startup guard is active.
+
+Expected verification:
+
+- `pytest tests/e2e/test_projection_backend_smoke.py::test_backend_smoke_accepts_event_and_projection_backends tests/e2e/test_projection_backend_smoke.py::test_backend_smoke_rejects_missing_required_storage_guards tests/e2e/test_projection_backend_smoke.py::test_backend_smoke_rejects_disabled_required_storage_guards tests/client/test_cli_commands.py::test_admin_backend_smoke_command_verifies_required_storage_guards tests/client/test_cli_commands.py::test_admin_backend_smoke_command_rejects_disabled_event_log_guard tests/server/test_app_config.py::test_diagnostics_reports_safe_operational_status -q`
+- `pytest tests/e2e/test_projection_backend_smoke.py tests/client/test_cli_commands.py tests/server/test_app_config.py -q`
+- `pytest -q`
+
+### Slice 87: Event Log Restore Drill
+
+Status: completed.
+
+Close the production backup loop by making local JSONL restore an installed
+operator command and proving the restored chain can boot a fresh server.
+`JsonlEventStore.import_events` writes validated exported events into an empty
+destination while preserving event IDs, sequence numbers, hashes, timestamps,
+idempotency metadata, and command fingerprints exactly. The package restore
+helper and `hollow-lodge admin event-log-restore-jsonl` verify an optional
+backup manifest before writing, refuse non-empty destinations, and print only
+event count plus chain-head metadata. The e2e drill restores an export into a
+clean data directory and verifies app diagnostics report the same last
+sequence and event hash.
+
+Expected verification:
+
+- `pytest tests/e2e/test_event_log_migration.py::test_event_log_restore_jsonl_drill_boots_fresh_server_at_chain_head tests/client/test_cli_commands.py::test_admin_event_log_restore_jsonl_writes_empty_destination_with_manifest tests/client/test_cli_commands.py::test_admin_event_log_restore_jsonl_refuses_non_empty_destination tests/eventlog/test_jsonl_store.py::test_jsonl_event_store_import_preserves_exported_chain tests/eventlog/test_jsonl_store.py::test_jsonl_event_store_import_refuses_non_empty_destination -q`
+- `pytest tests/e2e/test_event_log_migration.py tests/client/test_cli_commands.py tests/eventlog/test_jsonl_store.py -q`
 - `pytest -q`
 
 ## Completion Standard

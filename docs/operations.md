@@ -373,6 +373,26 @@ hollow-lodge admin event-log-manifest \
   --output backups/hollow-lodge-events.manifest.json
 ```
 
+To drill a local restore from a backup before changing production storage,
+restore the export into an empty JSONL event log and boot a server with that
+data directory:
+
+```sh
+hollow-lodge admin event-log-restore-jsonl \
+  --source backups/hollow-lodge-events.json \
+  --manifest backups/hollow-lodge-events.manifest.json \
+  --destination /tmp/hollow-lodge-restore/server-events.jsonl
+
+HOLLOW_LODGE_DATA_DIR=/tmp/hollow-lodge-restore \
+uvicorn hollow_lodge.server.app:app
+```
+
+The restore command refuses non-empty destinations, verifies the supplied
+manifest before writing, and prints only chain-head metadata. Use
+`/diagnostics` or `hollow-lodge admin backend-smoke --event-log-manifest` to
+confirm the restored server reports the expected event count, last sequence,
+and last event hash.
+
 Before moving the authoritative event log to Postgres, validate the exported
 chain without writing:
 

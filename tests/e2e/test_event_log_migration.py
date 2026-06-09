@@ -7,6 +7,7 @@ import pytest
 import hollow_lodge.client.event_log_migration as event_log_migration
 from hollow_lodge.domain.events import EventVisibility
 from hollow_lodge.eventlog.jsonl_store import EventLogIntegrityError, JsonlEventStore
+from hollow_lodge.server.app import create_app
 
 
 def _load_migration_module():
@@ -116,6 +117,48 @@ def test_event_log_migration_dry_run_verifies_matching_manifest(tmp_path):
     )
 
     assert result == {"dry_run": True, "event_count": 1, "manifest_verified": True}
+
+
+def test_event_log_restore_jsonl_drill_boots_fresh_server_at_chain_head(tmp_path):
+    source_app = create_app(data_dir=tmp_path / "source")
+    source_events = source_app.state.event_store.read()
+    event = source_events[-1]
+    source = tmp_path / "backup" / "events.json"
+    source.parent.mkdir(parents=True)
+    source.write_text(
+        json.dumps(
+            {"events": [row.model_dump(mode="json") for row in source_events]},
+            sort_keys=True,
+        ),
+        encoding="utf-8",
+    )
+    manifest = tmp_path / "backup" / "events.manifest.json"
+    manifest.write_text(
+        json.dumps(event_log_migration.create_event_log_manifest(source), sort_keys=True),
+        encoding="utf-8",
+    )
+    restore_dir = tmp_path / "restored"
+    destination = restore_dir / "server-events.jsonl"
+
+    result = event_log_migration.restore_event_log_to_jsonl(
+        source=source,
+        destination=destination,
+        manifest=manifest,
+    )
+    app = create_app(data_dir=restore_dir)
+    diagnostics = app.state.event_store.diagnostics()
+
+    assert result == {
+        "event_count": len(source_events),
+        "destination": str(destination),
+        "last_sequence": event.sequence,
+        "last_event_hash": event.event_hash,
+        "manifest_verified": True,
+    }
+    assert diagnostics["event_count"] == len(source_events)
+    assert diagnostics["last_sequence"] == event.sequence
+    assert diagnostics["last_event_hash"] == event.event_hash
+    assert app.state.event_store.read() == source_events
 
 
 def test_event_log_migration_rejects_mismatched_manifest(tmp_path):

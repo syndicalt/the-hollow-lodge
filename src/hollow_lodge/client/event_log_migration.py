@@ -8,7 +8,11 @@ from typing import Any
 from pydantic import ValidationError
 
 from hollow_lodge.domain.events import GameEvent, canonical_json_bytes
-from hollow_lodge.eventlog.jsonl_store import EventLogIntegrityError, validate_event_chain
+from hollow_lodge.eventlog.jsonl_store import (
+    EventLogIntegrityError,
+    JsonlEventStore,
+    validate_event_chain,
+)
 from hollow_lodge.eventlog.postgres_store import PostgresEventStore
 
 
@@ -42,6 +46,27 @@ def migrate_event_log_to_postgres(
         "dry_run": False,
         "event_count": report.event_count,
         "database_url": store.safe_database_url,
+        "manifest_verified": manifest is not None,
+    }
+
+
+def restore_event_log_to_jsonl(
+    *,
+    source: Path,
+    destination: Path,
+    manifest: Path | None = None,
+) -> dict[str, Any]:
+    events = load_events(source)
+    validate_event_chain(events)
+    if manifest is not None:
+        verify_event_log_manifest(events, manifest)
+    store = JsonlEventStore(destination)
+    report = store.import_events(events)
+    return {
+        "event_count": report.event_count,
+        "destination": str(destination),
+        "last_sequence": events[-1].sequence if events else None,
+        "last_event_hash": events[-1].event_hash if events else None,
         "manifest_verified": manifest is not None,
     }
 

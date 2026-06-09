@@ -231,6 +231,26 @@ class JsonlEventStore(EventStore):
             ),
         }
 
+    def import_events(self, events: list[GameEvent]) -> IntegrityReport:
+        validate_event_chain(events)
+        with self._write_lock:
+            existing = self._read_unlocked(repair=False)
+            self._validate_chain(existing)
+            if existing:
+                raise EventLogIntegrityError(
+                    "destination event log is not empty; refusing restore"
+                )
+            self.path.parent.mkdir(parents=True, exist_ok=True)
+            with self.path.open("wb") as handle:
+                for event in events:
+                    handle.write(
+                        canonical_json_bytes(
+                            event.model_dump(mode="json", by_alias=False)
+                        )
+                    )
+                    handle.write(b"\n")
+        return IntegrityReport(ok=True, event_count=len(events))
+
     def _validate_chain(self, events: list[GameEvent]) -> None:
         validate_event_chain(events)
 

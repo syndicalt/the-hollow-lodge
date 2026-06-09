@@ -20,6 +20,7 @@ from hollow_lodge.client.event_log_migration import (
     create_event_log_manifest,
     load_event_log_manifest,
     migrate_event_log_to_postgres,
+    restore_event_log_to_jsonl,
 )
 from hollow_lodge.client.config import (
     ClientConfig,
@@ -487,6 +488,45 @@ def admin_event_log_import_postgres(
     typer.echo(
         "event log import ok: "
         f"{result['event_count']} events into {result['database_url']}"
+        f"{manifest_note}"
+    )
+
+
+@admin_app.command("event-log-restore-jsonl")
+def admin_event_log_restore_jsonl(
+    source: Path = typer.Option(
+        ...,
+        "--source",
+        help="Event export file. Accepts admin export JSON, JSON array, or JSONL rows.",
+    ),
+    destination: Path = typer.Option(
+        ...,
+        "--destination",
+        help="Destination server-events.jsonl path. Must be empty or absent.",
+    ),
+    manifest: Path | None = typer.Option(
+        None,
+        "--manifest",
+        help="Optional backup manifest that must match the source before restore.",
+    ),
+) -> None:
+    """Restore a validated event export into an empty local JSONL event log."""
+    try:
+        result = restore_event_log_to_jsonl(
+            source=source,
+            destination=destination,
+            manifest=manifest,
+        )
+    except (RuntimeError, EventLogIntegrityError) as exc:
+        typer.echo(f"Error: {exc}", err=True)
+        raise typer.Exit(1) from exc
+    manifest_note = " manifest verified" if result.get("manifest_verified") else ""
+    last_hash = result["last_event_hash"] or "-"
+    typer.echo(
+        "event log restore ok: "
+        f"{result['event_count']} events into {result['destination']} "
+        f"last_sequence={result['last_sequence'] or '-'} "
+        f"last_hash={last_hash}"
         f"{manifest_note}"
     )
 

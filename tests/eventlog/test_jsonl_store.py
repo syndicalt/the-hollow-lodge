@@ -142,6 +142,52 @@ def test_jsonl_event_store_diagnostics_include_event_count(tmp_path):
     assert diagnostics["last_event_hash"] == event.event_hash
 
 
+def test_jsonl_event_store_import_preserves_exported_chain(tmp_path):
+    source = JsonlEventStore(tmp_path / "source-events.jsonl")
+    first = source.append_command(
+        event_type="action.submitted",
+        actor_id="player_ada",
+        visibility=EventVisibility.players(["player_ada"]),
+        payload={"intent": "inspect the ledger"},
+        idempotency_key="submit-action-1",
+    )
+    second = source.append(
+        event_type="contract.rumor.responded",
+        actor_id="server",
+        visibility=EventVisibility.crews(["crew_0001"]),
+        payload={"crew_id": "crew_0001", "summary": "Response recorded."},
+    )
+
+    destination = JsonlEventStore(tmp_path / "restored" / "server-events.jsonl")
+    report = destination.import_events(source.read())
+
+    assert report.ok is True
+    assert report.event_count == 2
+    restored = destination.read()
+    assert restored == [first, second]
+    assert destination.diagnostics()["last_event_hash"] == second.event_hash
+
+
+def test_jsonl_event_store_import_refuses_non_empty_destination(tmp_path):
+    source = JsonlEventStore(tmp_path / "source-events.jsonl")
+    source.append(
+        event_type="contract.seeded",
+        actor_id="server",
+        visibility=EventVisibility.server_only(),
+        payload={"contract_id": "contract_false_finger"},
+    )
+    destination = JsonlEventStore(tmp_path / "destination-events.jsonl")
+    destination.append(
+        event_type="identity.player.registered",
+        actor_id="server",
+        visibility=EventVisibility.players(["player_0001"]),
+        payload={"player_id": "player_0001"},
+    )
+
+    with pytest.raises(EventLogIntegrityError, match="destination event log is not empty"):
+        destination.import_events(source.read())
+
+
 def test_projection_can_rebuild_current_state_from_authoritative_events(tmp_path):
     store = JsonlEventStore(tmp_path / "events.jsonl")
     store.append(
