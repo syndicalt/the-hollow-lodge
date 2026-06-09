@@ -82,6 +82,12 @@ the current head event payload against its stored hash and metadata. This
 prevents a new write from extending a chain whose latest payload has been
 tampered with, while still avoiding full-log payload replay on the write path.
 
+Bounded Postgres event reads, such as event sync requests with a starting
+sequence, validate the full structured metadata chain and then load only the
+requested event payload rows. Each returned payload is still validated against
+its hash and metadata. Unbounded reads, integrity checks, exports, and imports
+continue to validate full event payload chains.
+
 ## Projection Database
 
 The authoritative game record remains the append-only Eventloom log.

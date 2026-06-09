@@ -105,6 +105,106 @@ def test_postgres_event_store_append_uses_metadata_head_without_full_replay(monk
     )
 
 
+def test_postgres_event_store_bounded_read_uses_sql_range_without_full_payload_scan(
+    monkeypatch,
+):
+    fake = FakePostgresConnector()
+    monkeypatch.setattr(PostgresEventStore, "_connect", lambda self: fake())
+    store = PostgresEventStore("postgresql://user:secret@example.com:5432/hollow_lodge")
+    store.append(
+        event_type="contract.seeded",
+        actor_id="server",
+        visibility=EventVisibility.server_only(),
+        payload={"contract_id": "contract_false_finger"},
+    )
+    second = store.append(
+        event_type="contract.board.published",
+        actor_id="server",
+        visibility=EventVisibility.crews(["crew_ember"]),
+        payload={"contract_id": "contract_false_finger"},
+    )
+    third = store.append(
+        event_type="action.submitted",
+        actor_id="player_ada",
+        visibility=EventVisibility.players(["player_ada"]),
+        payload={"intent": "inspect the ledger"},
+    )
+
+    assert store.read(start_sequence=2, end_sequence=3) == [second, third]
+
+    read_connection = fake.connections[-1]
+    read_statements = [
+        (" ".join(sql.lower().split()), params)
+        for sql, params in read_connection.statements
+    ]
+    assert any(
+        statement.startswith("select sequence, event_id, event_hash, previous_hash")
+        for statement, _ in read_statements
+    )
+    assert (
+        "select event_json from event_log where sequence >= %s and sequence <= %s "
+        "order by sequence",
+        (2, 3),
+    ) in read_statements
+    assert not any(
+        statement == "select event_json from event_log order by sequence"
+        for statement, _ in read_statements
+    )
+
+
+def test_postgres_event_store_bounded_read_validates_full_metadata_chain(
+    monkeypatch,
+):
+    fake = FakePostgresConnector()
+    monkeypatch.setattr(PostgresEventStore, "_connect", lambda self: fake())
+    store = PostgresEventStore("postgresql://user:secret@example.com:5432/hollow_lodge")
+    first = store.append(
+        event_type="contract.seeded",
+        actor_id="server",
+        visibility=EventVisibility.server_only(),
+        payload={"contract_id": "contract_false_finger"},
+    )
+    store.append(
+        event_type="contract.board.published",
+        actor_id="server",
+        visibility=EventVisibility.crews(["crew_ember"]),
+        payload={"contract_id": "contract_false_finger"},
+    )
+    corrupted = json.loads(fake.event_rows[-1])
+    corrupted["previous_hash"] = "broken-chain"
+    fake.event_rows[-1] = json.dumps(corrupted)
+
+    assert first.event_hash != "broken-chain"
+    with pytest.raises(EventLogIntegrityError, match="hash chain break"):
+        store.read(start_sequence=2)
+
+
+def test_postgres_event_store_bounded_read_rejects_selected_payload_mismatch(
+    monkeypatch,
+):
+    fake = FakePostgresConnector()
+    monkeypatch.setattr(PostgresEventStore, "_connect", lambda self: fake())
+    store = PostgresEventStore("postgresql://user:secret@example.com:5432/hollow_lodge")
+    store.append(
+        event_type="contract.seeded",
+        actor_id="server",
+        visibility=EventVisibility.server_only(),
+        payload={"contract_id": "contract_false_finger"},
+    )
+    store.append(
+        event_type="contract.board.published",
+        actor_id="server",
+        visibility=EventVisibility.crews(["crew_ember"]),
+        payload={"contract_id": "contract_false_finger"},
+    )
+    corrupted = json.loads(fake.event_rows[-1])
+    corrupted["payload"]["contract_id"] = "tampered"
+    fake.event_rows[-1] = json.dumps(corrupted)
+
+    with pytest.raises(EventLogIntegrityError, match="invalid event hash"):
+        store.read(start_sequence=2)
+
+
 def test_postgres_event_store_idempotent_replay_validates_metadata_chain(monkeypatch):
     fake = FakePostgresConnector()
     monkeypatch.setattr(PostgresEventStore, "_connect", lambda self: fake())
@@ -548,6 +648,13 @@ class FakePostgresConnection:
             return FakePostgresCursor(row=rows[0] if rows else None)
         if normalized.startswith("select event_json from event_log"):
             if "where sequence" in normalized:
+                if "sequence >= %s" in normalized or "sequence <= %s" in normalized:
+                    rows = [
+                        (row,)
+                        for row in self.connector.event_rows
+                        if _matches_sequence_range(json.loads(row)["sequence"], normalized, params)
+                    ]
+                    return FakePostgresCursor(rows=rows)
                 sequence = params[0]
                 for row in self.connector.event_rows:
                     payload = json.loads(row)
@@ -597,3 +704,15 @@ class FakePostgresCursor:
 
     def fetchone(self) -> tuple | None:
         return self._row
+
+
+def _matches_sequence_range(sequence: int, normalized_sql: str, params: tuple) -> bool:
+    param_index = 0
+    if "sequence >= %s" in normalized_sql:
+        if sequence < params[param_index]:
+            return False
+        param_index += 1
+    if "sequence <= %s" in normalized_sql:
+        if sequence > params[param_index]:
+            return False
+    return True

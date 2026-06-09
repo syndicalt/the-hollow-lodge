@@ -2687,6 +2687,27 @@ Expected verification:
 - `pytest tests/e2e/test_event_log_migration.py tests/e2e/test_projection_backend_smoke.py tests/client/test_cli_commands.py -q`
 - `pytest -q`
 
+### Slice 106: Postgres Event-Log Bounded Payload Reads
+
+Status: completed.
+
+Reduce hosted event-sync and visibility-filter read cost before full production
+Postgres cutover. Bounded `PostgresEventStore.read(start_sequence=...,
+end_sequence=...)` now validates the full structured sequence/hash metadata
+chain, then loads only the requested `event_json` payload rows. Returned
+payloads are still hash-validated and checked against their metadata rows, so a
+range read fails closed on selected payload tampering or chain metadata breaks.
+
+Unbounded reads, integrity checks, imports, and exports keep full payload-chain
+validation. The optimization is limited to bounded reads where callers already
+ask for a sequence window.
+
+Expected verification:
+
+- `pytest tests/eventlog/test_postgres_store.py -q`
+- `pytest tests/eventlog/test_postgres_store.py tests/eventlog/test_jsonl_store.py tests/server/test_event_sync.py tests/client/test_cli_commands.py tests/e2e/test_projection_backend_smoke.py -q`
+- `pytest -q`
+
 ## Completion Standard
 
 Each slice must:

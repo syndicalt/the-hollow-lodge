@@ -143,12 +143,19 @@ class PostgresEventStore(EventStore):
     ) -> list[GameEvent]:
         with self._connect() as connection:
             self._ensure_schema(connection)
-            events = self._read_unlocked(connection)
-        validate_event_chain(events)
-        if start_sequence is not None:
-            events = [event for event in events if event.sequence >= start_sequence]
-        if end_sequence is not None:
-            events = [event for event in events if event.sequence <= end_sequence]
+            if start_sequence is None and end_sequence is None:
+                events = self._read_unlocked(connection)
+                validate_event_chain(events)
+                return events
+            chain_rows = self._read_chain_metadata(connection)
+            self._validate_chain_metadata(chain_rows)
+            metadata_by_sequence = _metadata_by_sequence(chain_rows)
+            events = self._read_unlocked(
+                connection,
+                start_sequence=start_sequence,
+                end_sequence=end_sequence,
+            )
+        _validate_events_match_metadata(events, metadata_by_sequence)
         return events
 
     def read_for_principal(
@@ -301,10 +308,23 @@ class PostgresEventStore(EventStore):
     def _read_unlocked(
         self,
         connection: Any,
+        *,
+        start_sequence: int | None = None,
+        end_sequence: int | None = None,
     ) -> list[GameEvent]:
-        rows = connection.execute(
-            "select event_json from event_log order by sequence"
-        ).fetchall()
+        clauses: list[str] = []
+        params: list[int] = []
+        if start_sequence is not None:
+            clauses.append("sequence >= %s")
+            params.append(start_sequence)
+        if end_sequence is not None:
+            clauses.append("sequence <= %s")
+            params.append(end_sequence)
+        query = "select event_json from event_log"
+        if clauses:
+            query = f"{query} where {' and '.join(clauses)}"
+        query = f"{query} order by sequence"
+        rows = connection.execute(query, tuple(params)).fetchall()
         events: list[GameEvent] = []
         for index, row in enumerate(rows):
             events.append(_event_from_row(row[0], row_number=index + 1))
@@ -409,6 +429,36 @@ def _event_hash_chain_digest_from_rows(rows: list[dict[str, Any]]) -> str:
         for row in rows
     ]
     return hashlib.sha256(canonical_json_bytes(chain_rows)).hexdigest()
+
+
+def _metadata_by_sequence(rows: list[dict[str, Any]]) -> dict[int, dict[str, Any]]:
+    return {int(row["sequence"]): row for row in rows}
+
+
+def _validate_events_match_metadata(
+    events: list[GameEvent],
+    metadata_by_sequence: dict[int, dict[str, Any]],
+) -> None:
+    for event in events:
+        metadata = metadata_by_sequence.get(event.sequence)
+        if metadata is None:
+            raise EventLogIntegrityError(
+                f"event payload sequence {event.sequence} is missing metadata"
+            )
+        if event.event_id != metadata["event_id"]:
+            raise EventLogIntegrityError(
+                f"event payload id does not match metadata at sequence {event.sequence}"
+            )
+        if event.event_hash != metadata["event_hash"]:
+            raise EventLogIntegrityError(
+                f"event payload hash does not match metadata at sequence "
+                f"{event.sequence}"
+            )
+        if event.previous_hash != metadata["previous_hash"]:
+            raise EventLogIntegrityError(
+                f"event payload previous_hash does not match metadata at "
+                f"sequence {event.sequence}"
+            )
 
 
 def _load_json(value: Any) -> Any:
