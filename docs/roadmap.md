@@ -172,7 +172,12 @@ Status:
 - Generic phase reward configuration completed: contract seeds can define
   server-only phase-resolution rewards that grant configured follow-up
   artifacts to the phase leader without hard-coding a contract-specific branch.
-- Deferred: full smoke playthroughs for every future shipped contract.
+- Shipped-contract smoke coverage completed: every currently shipped contract
+  now has a reusable smoke playthrough that activates data-defined seeds when
+  needed, submits contract-relevant actions, resolves the phase, and renders
+  Codex-safe contract/artifact packets.
+- Deferred: every future shipped contract must be added to the smoke registry
+  before release.
 
 Proof gate:
 
@@ -1358,6 +1363,30 @@ Expected verification:
 
 - `pytest tests/workflows/test_oracle_boundary.py::test_oracle_result_rejects_unbounded_score_reasoning_lines tests/workflows/test_oracle_boundary.py::test_oracle_result_rejects_unbounded_text_fields tests/workflows/test_openai_oracle.py::test_openai_oracle_rejects_unbounded_parsed_output -q`
 - `pytest tests/workflows/test_oracle_boundary.py tests/workflows/test_openai_oracle.py tests/workflows/test_deterministic_oracle.py tests/workflows/test_oracle_factory.py tests/server/test_resolution_oracle.py tests/server/test_phase_resolution.py -q`
+- `pytest -q`
+
+### Slice 52: Shipped Contract Smoke Registry
+
+Status: completed.
+
+Close the current Milestone 4 smoke gap with a reusable
+`scripts/smoke_shipped_contracts.py` runner and e2e gate. The runner exercises
+every currently shipped contract: the built-in starter contract and the
+data-defined Ash Window seed. Each smoke creates two players and crews, activates
+fixture seeds when needed, submits contract-relevant actions, cites a visible
+artifact, locks the auction-preview route, renders Codex contract/artifact
+packets, and checks that hidden truth terms do not leak into those rendered
+surfaces.
+
+The new smoke also exposed and fixed a projection-store bug: scoped artifact
+surfaces are now keyed by artifact id plus visibility scope, so granting the
+same non-public artifact to multiple crews no longer breaks SQLite projection
+rebuilds.
+
+Expected verification:
+
+- `pytest tests/server/test_projection_store.py::test_projection_store_allows_same_scoped_artifact_for_multiple_crews tests/e2e/test_shipped_contract_smokes.py::test_all_shipped_contracts_have_playthrough_smokes -q`
+- `pytest tests/server/test_projection_store.py tests/server/test_artifact_routes.py tests/server/test_contract_seed.py tests/e2e/test_contract_content_pipeline.py tests/e2e/test_codex_render_surfaces.py tests/e2e/test_shipped_contract_smokes.py -q`
 - `pytest -q`
 
 ## Completion Standard

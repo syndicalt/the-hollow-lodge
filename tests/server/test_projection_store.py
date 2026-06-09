@@ -1254,6 +1254,52 @@ def test_projection_store_materializes_visible_artifacts_without_hidden_fields(t
     assert "saint-bone forgery" not in stored_text
 
 
+def test_projection_store_allows_same_scoped_artifact_for_multiple_crews(tmp_path):
+    client = TestClient(create_app(data_dir=tmp_path, invite_codes=["a", "b"]))
+    ada = register(client, "a", "Ada")
+    bela = register(client, "b", "Bela")
+    gilt = create_crew(client, ada["token"], "crew-create-gilt", "The Gilt Knives")
+    moth = create_crew(client, bela["token"], "crew-create-moth", "The Moth Choir")
+    for crew, key in ((gilt, "grant-gilt"), (moth, "grant-moth")):
+        client.app.state.artifact_service.grant_artifact_access(
+            artifact_id="artifact_chapel_debt_mark",
+            actor_id="server",
+            player_ids=[],
+            crew_ids=[crew["crew_id"]],
+            reason="projection duplicate scope test",
+            idempotency_key=key,
+        )
+
+    client.app.state.projection_store.rebuild(client.app.state.event_store.read())
+    gilt_projected = client.app.state.projection_store.read_visible_artifacts(
+        ada["player_id"],
+        crew_ids=[gilt["crew_id"]],
+    )
+    moth_projected = client.app.state.projection_store.read_visible_artifacts(
+        bela["player_id"],
+        crew_ids=[moth["crew_id"]],
+    )
+    with sqlite3.connect(tmp_path / "server-projections.sqlite3") as connection:
+        scoped_rows = connection.execute(
+            """
+            select artifact_id, visibility_json
+            from artifact_scoped_surface
+            order by artifact_id, scope_key
+            """
+        ).fetchall()
+
+    assert [row[0] for row in scoped_rows] == [
+        "artifact_chapel_debt_mark",
+        "artifact_chapel_debt_mark",
+    ]
+    assert "artifact_chapel_debt_mark" in {
+        artifact["artifact_id"] for artifact in gilt_projected["artifacts"]
+    }
+    assert "artifact_chapel_debt_mark" in {
+        artifact["artifact_id"] for artifact in moth_projected["artifacts"]
+    }
+
+
 def test_projection_store_rebuilds_after_new_public_contract_event(tmp_path, monkeypatch):
     client = TestClient(create_app(data_dir=tmp_path, invite_codes=["a"]))
     out_of_band_contract = STARTER_CONTRACT.model_copy(

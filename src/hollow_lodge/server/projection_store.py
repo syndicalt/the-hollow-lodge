@@ -128,27 +128,34 @@ class SqliteProjectionStore:
                     ),
                 )
             for scoped in artifact_visibility["scoped_surfaces"]:
+                visibility_json = json.dumps(
+                    scoped["visibility"],
+                    sort_keys=True,
+                    separators=(",", ":"),
+                )
                 connection.execute(
                     """
                     insert into artifact_scoped_surface (
                         artifact_id,
+                        scope_key,
                         payload_json,
                         visibility_json,
                         updated_sequence
-                    ) values (?, ?, ?, ?)
+                    ) values (?, ?, ?, ?, ?)
+                    on conflict(artifact_id, scope_key) do update set
+                        payload_json = excluded.payload_json,
+                        visibility_json = excluded.visibility_json,
+                        updated_sequence = excluded.updated_sequence
                     """,
                     (
                         scoped["artifact_id"],
+                        _artifact_scope_key(scoped["visibility"]),
                         json.dumps(
                             scoped["surface"],
                             sort_keys=True,
                             separators=(",", ":"),
                         ),
-                        json.dumps(
-                            scoped["visibility"],
-                            sort_keys=True,
-                            separators=(",", ":"),
-                        ),
+                        visibility_json,
                         last_sequence,
                     ),
                 )
@@ -400,7 +407,7 @@ class SqliteProjectionStore:
                 """
                 select artifact_id, payload_json, visibility_json
                 from artifact_scoped_surface
-                order by artifact_id
+                order by artifact_id, scope_key
                 """
             ).fetchall()
         artifacts_by_id = {
@@ -547,16 +554,7 @@ class SqliteProjectionStore:
             )
             """
         )
-        connection.execute(
-            """
-            create table if not exists artifact_scoped_surface (
-                artifact_id text primary key,
-                payload_json text not null,
-                visibility_json text not null,
-                updated_sequence integer not null
-            )
-            """
-        )
+        self._ensure_artifact_scoped_surface_schema(connection)
         connection.execute(
             """
             create table if not exists deal_surface (
@@ -600,6 +598,28 @@ class SqliteProjectionStore:
             """
         )
 
+    def _ensure_artifact_scoped_surface_schema(self, connection: sqlite3.Connection) -> None:
+        existing_columns = {
+            row[1]
+            for row in connection.execute(
+                "pragma table_info(artifact_scoped_surface)"
+            ).fetchall()
+        }
+        if existing_columns and "scope_key" not in existing_columns:
+            connection.execute("drop table artifact_scoped_surface")
+        connection.execute(
+            """
+            create table if not exists artifact_scoped_surface (
+                artifact_id text not null,
+                scope_key text not null,
+                payload_json text not null,
+                visibility_json text not null,
+                updated_sequence integer not null,
+                primary key (artifact_id, scope_key)
+            )
+            """
+        )
+
     def _set_meta(self, connection: sqlite3.Connection, key: str, value: str) -> None:
         connection.execute(
             """
@@ -623,6 +643,10 @@ def _visibility_matches(
         if principal_id is not None and (kind, principal_id) in principals:
             return True
     return False
+
+
+def _artifact_scope_key(visibility: dict[str, Any]) -> str:
+    return json.dumps(visibility, sort_keys=True, separators=(",", ":"))
 
 
 def _event_is_player_projectable(event: GameEvent) -> bool:
