@@ -108,6 +108,11 @@ class FakeApi:
                     "failure_count": 0,
                     "last_failure": None,
                 },
+                "identity_replay_store": {
+                    "backend": "jsonl-sidecar",
+                    "registration_replay_path": "/data/server-events.registration-replays.json",
+                    "invite_replay_path": "/data/server-events.invite-replays.json",
+                },
             }
         }
 
@@ -1730,6 +1735,11 @@ def test_admin_backend_smoke_command_accepts_required_maintenance_read_write(
                 "read_only": False,
                 "env": "HOLLOW_LODGE_MAINTENANCE_READ_ONLY",
             }
+            payload["data"]["identity_replay_store"] = {
+                "backend": "postgres",
+                "database_url": "postgresql://operational:***@host:5432/hollow_lodge",
+                "database_url_env": "HOLLOW_LODGE_OPERATIONAL_DATABASE_URL",
+            }
             return payload
 
     monkeypatch.setattr(cli, "HollowLodgeApi", MaintenanceApi)
@@ -1827,6 +1837,11 @@ def test_admin_backend_smoke_command_accepts_production_postgres_preset(monkeypa
                 "read_only": False,
                 "env": "HOLLOW_LODGE_MAINTENANCE_READ_ONLY",
             }
+            payload["data"]["identity_replay_store"] = {
+                "backend": "postgres",
+                "database_url": "postgresql://operational:***@host:5432/hollow_lodge",
+                "database_url_env": "HOLLOW_LODGE_OPERATIONAL_DATABASE_URL",
+            }
             return payload
 
     monkeypatch.setattr(cli, "HollowLodgeApi", ProductionPostgresApi)
@@ -1846,6 +1861,7 @@ def test_admin_backend_smoke_command_accepts_production_postgres_preset(monkeypa
     assert result.exit_code == 0
     assert "backend readiness ok: event=postgres" in result.output
     assert "projection=postgres" in result.output
+    assert "operational=postgres" in result.output
     assert "secret" not in result.output
 
 
@@ -2150,6 +2166,40 @@ def test_admin_backend_smoke_command_rejects_unredacted_database_url(monkeypatch
 
     assert result.exit_code != 0
     assert "projection diagnostics expose an unredacted database URL password" in result.output
+    assert "postgresql://user:secret" not in result.output
+
+
+def test_admin_backend_smoke_command_rejects_unredacted_operational_database_url(
+    monkeypatch,
+):
+    class UnsafeOperationalDiagnosticsApi(FakeApi):
+        def diagnostics(self):
+            payload = super().diagnostics()
+            payload["data"]["identity_replay_store"] = {
+                "backend": "postgres",
+                "database_url": "postgresql://user:secret@host:5432/hollow_lodge",
+            }
+            return payload
+
+    monkeypatch.setattr(cli, "HollowLodgeApi", UnsafeOperationalDiagnosticsApi)
+    runner = CliRunner()
+
+    result = runner.invoke(
+        cli.app,
+        [
+            "admin",
+            "backend-smoke",
+            "--server",
+            "http://testserver",
+            "--expected-backend",
+            "postgres",
+            "--expected-operational-backend",
+            "postgres",
+        ],
+    )
+
+    assert result.exit_code != 0
+    assert "operational diagnostics expose an unredacted database URL password" in result.output
     assert "postgresql://user:secret" not in result.output
 
 

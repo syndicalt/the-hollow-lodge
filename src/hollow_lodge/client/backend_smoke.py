@@ -28,6 +28,7 @@ def resolve_backend_smoke_options(
     production_postgres: bool = False,
     expected_backend: str | None = None,
     expected_event_backend: str | None = None,
+    expected_operational_backend: str | None = None,
     require_projection_reads: bool = False,
     require_current_projection_read_surfaces: bool = False,
     require_current_projection_schema: bool = False,
@@ -54,9 +55,15 @@ def resolve_backend_smoke_options(
                 "--production-postgres requires --expected-event-backend postgres "
                 "when --expected-event-backend is supplied"
             )
+        if expected_operational_backend not in {None, "postgres"}:
+            raise RuntimeError(
+                "--production-postgres requires --expected-operational-backend "
+                "postgres when --expected-operational-backend is supplied"
+            )
         return {
             "expected_backend": "postgres",
             "expected_event_backend": "postgres",
+            "expected_operational_backend": "postgres",
             "require_projection_reads": True,
             "require_current_projection_read_surfaces": True,
             "require_current_projection_schema": True,
@@ -75,6 +82,7 @@ def resolve_backend_smoke_options(
     return {
         "expected_backend": expected_backend,
         "expected_event_backend": expected_event_backend,
+        "expected_operational_backend": expected_operational_backend,
         "require_projection_reads": require_projection_reads,
         "require_current_projection_read_surfaces": (
             require_current_projection_read_surfaces
@@ -94,6 +102,7 @@ def run_backend_smoke(
     server_url: str,
     expected_backend: str,
     expected_event_backend: str | None = None,
+    expected_operational_backend: str | None = None,
     require_projection_reads: bool = False,
     require_current_projection_read_surfaces: bool = False,
     require_current_projection_schema: bool = False,
@@ -123,6 +132,7 @@ def run_backend_smoke(
             diagnostics.json(),
             expected_backend=expected_backend,
             expected_event_backend=expected_event_backend,
+            expected_operational_backend=expected_operational_backend,
             require_projection_reads=require_projection_reads,
             require_current_projection_read_surfaces=(
                 require_current_projection_read_surfaces
@@ -143,6 +153,7 @@ def validate_backend_diagnostics(
     *,
     expected_backend: str,
     expected_event_backend: str | None = None,
+    expected_operational_backend: str | None = None,
     require_projection_reads: bool = False,
     require_current_projection_read_surfaces: bool = False,
     require_current_projection_schema: bool = False,
@@ -217,6 +228,26 @@ def validate_backend_diagnostics(
         and not isinstance(maintenance, dict)
     ):
         maintenance = None
+
+    identity_replay_store = data.get("identity_replay_store")
+    if expected_operational_backend is not None:
+        if not isinstance(identity_replay_store, dict):
+            errors.append("diagnostics response did not include data.identity_replay_store")
+            identity_replay_store = {}
+        operational_backend = identity_replay_store.get("backend")
+        if operational_backend != expected_operational_backend:
+            errors.append(
+                "expected operational backend "
+                f"{expected_operational_backend}, got {operational_backend}"
+            )
+    elif not isinstance(identity_replay_store, dict):
+        identity_replay_store = None
+    if isinstance(identity_replay_store, dict):
+        operational_database_url = str(identity_replay_store.get("database_url", ""))
+        if database_url_exposes_password(operational_database_url):
+            errors.append(
+                "operational diagnostics expose an unredacted database URL password"
+            )
 
     event_backend = event_log.get("backend")
     if expected_event_backend is not None and event_backend != expected_event_backend:
@@ -423,6 +454,7 @@ def validate_backend_diagnostics(
         "storage_guards": storage_guards,
         "projection_refresh": projection_refresh,
         "maintenance": maintenance,
+        "identity_replay_store": identity_replay_store,
     }
 
 
@@ -430,6 +462,7 @@ def validate_projection_diagnostics(
     diagnostics: dict[str, Any],
     *,
     expected_backend: str,
+    expected_operational_backend: str | None = None,
     require_projection_reads: bool = False,
     require_current_projection_read_surfaces: bool = False,
     require_current_projection_schema: bool = False,
@@ -454,6 +487,7 @@ def validate_projection_diagnostics(
     result = validate_backend_diagnostics(
         diagnostics,
         expected_backend=expected_backend,
+        expected_operational_backend=expected_operational_backend,
         require_projection_reads=require_projection_reads,
         require_current_projection_read_surfaces=require_current_projection_read_surfaces,
         require_current_projection_schema=require_current_projection_schema,
@@ -480,6 +514,7 @@ def validate_projection_diagnostics(
         "storage_guards": result["storage_guards"],
         "projection_refresh": result["projection_refresh"],
         "maintenance": result["maintenance"],
+        "identity_replay_store": result["identity_replay_store"],
     }
 
 

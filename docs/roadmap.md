@@ -3066,6 +3066,29 @@ Expected verification:
 - `pytest tests/server/test_identity_routes.py tests/server/test_app_config.py -q`
 - `pytest -q`
 
+### Slice 122: Production Smoke Operational Store Gate
+
+Status: completed.
+
+Extend hosted backend readiness checks to cover the operational database
+boundary introduced in Slice 121. The shared backend-smoke validator,
+`scripts/smoke_projection_backend.py`, and `hollow-lodge admin backend-smoke`
+now accept `--expected-operational-backend` and reject unredacted operational
+database URLs whenever `data.identity_replay_store.database_url` is present.
+
+The `--production-postgres` preset now requires the operational replay store to
+report `backend=postgres`, in addition to Postgres authoritative events,
+Postgres projections, storage guards, projection reads, current schema,
+sequence alignment, successful projection refresh, and normal read/write
+maintenance posture.
+
+Expected verification:
+
+- `pytest tests/e2e/test_projection_backend_smoke.py::test_run_smoke_production_postgres_preset_forwards_required_checks tests/e2e/test_projection_backend_smoke.py::test_backend_smoke_accepts_expected_operational_backend tests/e2e/test_projection_backend_smoke.py::test_backend_smoke_rejects_missing_expected_operational_backend tests/e2e/test_projection_backend_smoke.py::test_backend_smoke_rejects_operational_backend_mismatch tests/e2e/test_projection_backend_smoke.py::test_backend_smoke_rejects_unredacted_operational_database_url_password -q`
+- `pytest tests/client/test_cli_commands.py::test_admin_backend_smoke_command_accepts_production_postgres_preset tests/client/test_cli_commands.py::test_admin_backend_smoke_command_rejects_unredacted_operational_database_url -q`
+- `pytest tests/e2e/test_projection_backend_smoke.py tests/client/test_cli_commands.py -q`
+- `pytest -q`
+
 ## Completion Standard
 
 Each slice must:

@@ -33,6 +33,11 @@ def main() -> None:
         help="Authoritative event-log backend expected in /diagnostics.",
     )
     parser.add_argument(
+        "--expected-operational-backend",
+        choices=["jsonl-sidecar", "sqlite", "postgres"],
+        help="Operational replay backend expected in /diagnostics.",
+    )
+    parser.add_argument(
         "--require-projection-reads",
         action="store_true",
         help="Require all implemented projection read surfaces to be enabled.",
@@ -87,8 +92,9 @@ def main() -> None:
         action="store_true",
         help=(
             "Require production Postgres readiness: Postgres event log, Postgres "
-            "projections, storage guards, current schema, projection reads, "
-            "sequence alignment, and successful projection refresh."
+            "projections, Postgres operational store, storage guards, current "
+            "schema, projection reads, sequence alignment, and successful "
+            "projection refresh."
         ),
     )
     args = parser.parse_args()
@@ -98,6 +104,7 @@ def main() -> None:
             server_url=args.server_url,
             expected_backend=args.expected_backend,
             expected_event_backend=args.expected_event_backend,
+            expected_operational_backend=args.expected_operational_backend,
             require_projection_reads=args.require_projection_reads,
             require_current_projection_read_surfaces=(
                 args.require_current_projection_read_surfaces
@@ -125,6 +132,7 @@ def main() -> None:
         f"sequence={result['projection']['last_sequence']} "
         f"schema={result['projection']['schema_version']} "
         f"migrations={result['projection']['schema_migration_count']}"
+        f"{_operational_backend_suffix(result)}"
     )
 
 
@@ -133,6 +141,7 @@ def run_smoke(
     server_url: str,
     expected_backend: str | None = None,
     expected_event_backend: str | None = None,
+    expected_operational_backend: str | None = None,
     require_projection_reads: bool = False,
     require_current_projection_read_surfaces: bool = False,
     require_current_projection_schema: bool = False,
@@ -149,6 +158,7 @@ def run_smoke(
         production_postgres=production_postgres,
         expected_backend=expected_backend,
         expected_event_backend=expected_event_backend,
+        expected_operational_backend=expected_operational_backend,
         require_projection_reads=require_projection_reads,
         require_current_projection_read_surfaces=require_current_projection_read_surfaces,
         require_current_projection_schema=require_current_projection_schema,
@@ -168,6 +178,16 @@ def run_smoke(
 
 def _database_url_exposes_password(database_url: str) -> bool:
     return database_url_exposes_password(database_url)
+
+
+def _operational_backend_suffix(result: dict[str, Any]) -> str:
+    identity_replay_store = result.get("identity_replay_store")
+    if not isinstance(identity_replay_store, dict):
+        return ""
+    backend = identity_replay_store.get("backend")
+    if backend is None:
+        return ""
+    return f" operational={backend}"
 
 
 if __name__ == "__main__":

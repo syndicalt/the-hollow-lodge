@@ -61,6 +61,11 @@ def test_projection_backend_smoke_accepts_available_zero_lag_backend():
                     "failure_count": 0,
                     "last_failure": None,
                 },
+                "identity_replay_store": {
+                    "backend": "postgres",
+                    "database_url": "postgresql://operational:***@host:5432/db",
+                    "database_url_env": "HOLLOW_LODGE_OPERATIONAL_DATABASE_URL",
+                },
             },
         },
         expected_backend="postgres",
@@ -121,6 +126,11 @@ def test_backend_smoke_accepts_event_and_projection_backends():
                     "failure_count": 0,
                     "last_failure": None,
                 },
+                "identity_replay_store": {
+                    "backend": "postgres",
+                    "database_url": "postgresql://operational:***@host:5432/db",
+                    "database_url_env": "HOLLOW_LODGE_OPERATIONAL_DATABASE_URL",
+                },
             },
         },
         expected_backend="postgres",
@@ -132,6 +142,7 @@ def test_backend_smoke_accepts_event_and_projection_backends():
         require_postgres_event_log_guard=True,
         require_postgres_projection_guard=True,
         require_projection_refresh_ok=True,
+        expected_operational_backend="postgres",
     )
 
     assert result["event_log"] == {
@@ -150,6 +161,7 @@ def test_backend_smoke_accepts_event_and_projection_backends():
         "require_postgres_projection": True,
     }
     assert result["projection_refresh"]["status"] == "ok"
+    assert result["identity_replay_store"]["backend"] == "postgres"
 
 
 def test_run_smoke_production_postgres_preset_forwards_required_checks(monkeypatch):
@@ -192,6 +204,7 @@ def test_run_smoke_production_postgres_preset_forwards_required_checks(monkeypat
             "server_url": "https://server.thehollowlodge.com",
             "expected_backend": "postgres",
             "expected_event_backend": "postgres",
+            "expected_operational_backend": "postgres",
             "require_projection_reads": True,
             "require_current_projection_read_surfaces": True,
             "require_current_projection_schema": True,
@@ -237,6 +250,142 @@ def test_backend_smoke_accepts_required_maintenance_read_only():
         "read_only": True,
         "env": "HOLLOW_LODGE_MAINTENANCE_READ_ONLY",
     }
+
+
+def test_backend_smoke_accepts_expected_operational_backend():
+    smoke = _load_smoke_module()
+
+    result = smoke.validate_backend_diagnostics(
+        {
+            "data": {
+                "event_log": {
+                    "backend": "jsonl",
+                    "status": "available",
+                    "event_count": 23,
+                },
+                "projection_db": {
+                    "backend": "postgres",
+                    "status": "available",
+                    "lag": 0,
+                },
+                "identity_replay_store": {
+                    "backend": "postgres",
+                    "database_url": "postgresql://operational:***@host:5432/db",
+                    "database_url_env": "HOLLOW_LODGE_OPERATIONAL_DATABASE_URL",
+                },
+            }
+        },
+        expected_backend="postgres",
+        expected_event_backend="jsonl",
+        expected_operational_backend="postgres",
+    )
+
+    assert result["identity_replay_store"] == {
+        "backend": "postgres",
+        "database_url": "postgresql://operational:***@host:5432/db",
+        "database_url_env": "HOLLOW_LODGE_OPERATIONAL_DATABASE_URL",
+    }
+
+
+def test_backend_smoke_rejects_missing_expected_operational_backend():
+    smoke = _load_smoke_module()
+
+    try:
+        smoke.validate_backend_diagnostics(
+            {
+                "data": {
+                    "event_log": {
+                        "backend": "jsonl",
+                        "status": "available",
+                        "event_count": 23,
+                    },
+                    "projection_db": {
+                        "backend": "postgres",
+                        "status": "available",
+                        "lag": 0,
+                    },
+                }
+            },
+            expected_backend="postgres",
+            expected_event_backend="jsonl",
+            expected_operational_backend="postgres",
+        )
+    except RuntimeError as exc:
+        message = str(exc)
+    else:
+        raise AssertionError("missing operational backend should fail the smoke")
+
+    assert "diagnostics response did not include data.identity_replay_store" in message
+    assert "expected operational backend postgres, got None" in message
+
+
+def test_backend_smoke_rejects_operational_backend_mismatch():
+    smoke = _load_smoke_module()
+
+    try:
+        smoke.validate_backend_diagnostics(
+            {
+                "data": {
+                    "event_log": {
+                        "backend": "jsonl",
+                        "status": "available",
+                        "event_count": 23,
+                    },
+                    "projection_db": {
+                        "backend": "postgres",
+                        "status": "available",
+                        "lag": 0,
+                    },
+                    "identity_replay_store": {"backend": "jsonl-sidecar"},
+                }
+            },
+            expected_backend="postgres",
+            expected_event_backend="jsonl",
+            expected_operational_backend="postgres",
+        )
+    except RuntimeError as exc:
+        message = str(exc)
+    else:
+        raise AssertionError("operational backend mismatch should fail the smoke")
+
+    assert "expected operational backend postgres, got jsonl-sidecar" in message
+
+
+def test_backend_smoke_rejects_unredacted_operational_database_url_password():
+    smoke = _load_smoke_module()
+
+    try:
+        smoke.validate_backend_diagnostics(
+            {
+                "data": {
+                    "event_log": {
+                        "backend": "jsonl",
+                        "status": "available",
+                        "event_count": 23,
+                    },
+                    "projection_db": {
+                        "backend": "postgres",
+                        "database_url": "postgresql://projection:***@host:5432/db",
+                        "status": "available",
+                        "lag": 0,
+                    },
+                    "identity_replay_store": {
+                        "backend": "postgres",
+                        "database_url": "postgresql://operational:secret@host:5432/db",
+                    },
+                }
+            },
+            expected_backend="postgres",
+            expected_event_backend="jsonl",
+            expected_operational_backend="postgres",
+        )
+    except RuntimeError as exc:
+        message = str(exc)
+    else:
+        raise AssertionError("unredacted operational DB password should fail the smoke")
+
+    assert "operational diagnostics expose an unredacted database URL password" in message
+    assert "secret" not in message
 
 
 def test_backend_smoke_rejects_disabled_required_maintenance_read_only():

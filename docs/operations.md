@@ -404,10 +404,11 @@ hollow-lodge admin backend-smoke \
 
 `--production-postgres` is the installed-client preset for the full production
 database invariant: Postgres authoritative event log, Postgres projections,
-both Postgres startup guards, all implemented projection reads enabled, current
-projection schema, zero projection lag, aligned authoritative/projection
-sequences, a successful latest projection refresh, and maintenance read-only
-mode disabled. During an intentional freeze window, add
+Postgres operational replay storage, both Postgres startup guards, all
+implemented projection reads enabled, current projection schema, zero
+projection lag, aligned authoritative/projection sequences, a successful latest
+projection refresh, and maintenance read-only mode disabled. During an
+intentional freeze window, add
 `--require-maintenance-read-only`; this checks the frozen posture instead of
 the normal read/write posture.
 

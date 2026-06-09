@@ -564,6 +564,11 @@ def admin_backend_smoke(
         "--expected-event-backend",
         help="Expected authoritative event-log backend: jsonl or postgres.",
     ),
+    expected_operational_backend: str | None = typer.Option(
+        None,
+        "--expected-operational-backend",
+        help="Expected operational backend: jsonl-sidecar, sqlite, or postgres.",
+    ),
     require_projection_reads: bool = typer.Option(
         False,
         "--require-projection-reads",
@@ -619,8 +624,9 @@ def admin_backend_smoke(
         "--production-postgres",
         help=(
             "Require production Postgres readiness: Postgres event log, "
-            "Postgres projections, storage guards, current schema, projection "
-            "reads, sequence alignment, and successful projection refresh."
+            "Postgres projections, Postgres operational store, storage guards, "
+            "current schema, projection reads, sequence alignment, and "
+            "successful projection refresh."
         ),
     ),
 ) -> None:
@@ -629,11 +635,16 @@ def admin_backend_smoke(
         raise typer.BadParameter("expected backend must be sqlite or postgres")
     if expected_event_backend not in {None, "jsonl", "postgres"}:
         raise typer.BadParameter("expected event backend must be jsonl or postgres")
+    if expected_operational_backend not in {None, "jsonl-sidecar", "sqlite", "postgres"}:
+        raise typer.BadParameter(
+            "expected operational backend must be jsonl-sidecar, sqlite, or postgres"
+        )
     try:
         smoke_options = resolve_backend_smoke_options(
             production_postgres=production_postgres,
             expected_backend=expected_backend,
             expected_event_backend=expected_event_backend,
+            expected_operational_backend=expected_operational_backend,
             require_projection_reads=require_projection_reads,
             require_current_projection_read_surfaces=(
                 require_current_projection_read_surfaces
@@ -679,7 +690,18 @@ def admin_backend_smoke(
         f"sequence={result['projection']['last_sequence']} "
         f"schema={result['projection']['schema_version']} "
         f"migrations={result['projection']['schema_migration_count']}"
+        f"{_operational_backend_suffix(result)}"
     )
+
+
+def _operational_backend_suffix(result: dict[str, object]) -> str:
+    identity_replay_store = result.get("identity_replay_store")
+    if not isinstance(identity_replay_store, dict):
+        return ""
+    backend = identity_replay_store.get("backend")
+    if backend is None:
+        return ""
+    return f" operational={backend}"
 
 
 @admin_app.command("oracle-audits")
