@@ -16,6 +16,7 @@ from hollow_lodge.workflows.oracle_boundary import (
     AuctionPreviewOracleResult,
     OracleProviderMetadata,
 )
+from hollow_lodge.workflows.openai_oracle import OpenAIResolutionOracle
 
 
 class UnknownCrewOracle:
@@ -72,6 +73,26 @@ class ValueFailingOracle:
         _ = packet
         self.calls += 1
         raise ValueError("provider returned invalid output")
+
+
+class FakeOpenAIResponses:
+    def __init__(self, parsed_output: dict) -> None:
+        self._parsed_output = parsed_output
+        self.parse_calls: list[dict] = []
+
+    def parse(self, **kwargs):
+        self.parse_calls.append(kwargs)
+        return FakeOpenAIParsedResponse(self._parsed_output)
+
+
+class FakeOpenAIParsedResponse:
+    def __init__(self, parsed_output: dict) -> None:
+        self.output_parsed = parsed_output
+
+
+class FakeOpenAIClient:
+    def __init__(self, parsed_output: dict) -> None:
+        self.responses = FakeOpenAIResponses(parsed_output)
 
 
 def auth(token: str) -> dict[str, str]:
@@ -179,6 +200,104 @@ def test_invalid_oracle_result_falls_back_and_is_audited(tmp_path):
     assert completed[0].payload["standing_count"] == 1
     assert completed[0].payload["warning_count"] == 0
     assert completed[0].payload["accepted_output_hash"]
+
+
+def test_openai_oracle_resolves_phase_through_server_without_fallback(tmp_path):
+    client = TestClient(create_app(data_dir=tmp_path, invite_codes=["a"]))
+    ada = register(client, "a", "Ada")
+    crew = create_crew(client, ada["token"], "crew-create-ada", "The Gilt Knives")
+    submit_action(client, ada, crew)
+    parsed_output = {
+        "standings": [
+            {
+                "crew_id": crew["crew_id"],
+                "score": 88,
+                "standing": "Strong lead",
+                "strengths": ["clean provenance contradiction"],
+                "weaknesses": ["no material confirmation"],
+                "penalties": [],
+                "revealed_clues": ["Auction house provenance is now suspect."],
+            }
+        ],
+        "contract_state": ["Auction house provenance is now suspect."],
+        "narration": "The packet wins the provenance lane without exposing hidden truth.",
+        "validation_warnings": [],
+    }
+    fake_openai_client = FakeOpenAIClient(parsed_output)
+    openai_oracle = OpenAIResolutionOracle(
+        client=fake_openai_client,
+        model="gpt-test",
+        timeout_seconds=4.5,
+    )
+    client.app.state.resolution_oracle = openai_oracle
+    client.app.state.contract_service = ContractService(
+        event_store=client.app.state.event_store,
+        resolution_oracle=openai_oracle,
+    )
+
+    response = client.post(
+        "/contracts/contract_false_finger/phases/auction-preview/lock",
+        headers=command_auth(ada["token"], "phase-lock-openai"),
+        json={"hours_elapsed": 6},
+    )
+    events = client.app.state.event_store.read()
+    requested = [event for event in events if event.type == "oracle.resolution.requested"]
+    failed = [event for event in events if event.type == "oracle.resolution.failed"]
+    completed = [event for event in events if event.type == "oracle.resolution.completed"]
+    visible_events = client.get("/events", headers=auth(ada["token"])).json()["events"]
+
+    assert response.status_code == 200
+    assert response.json()["contract_id"] == "contract_false_finger"
+    assert response.json()["phase"] == "Auction Preview"
+    assert response.json()["status"] == "resolved"
+    assert response.json()["standings"] == [
+        {
+            "crew_id": crew["crew_id"],
+            "standing": "Strong lead",
+            "score": 88,
+            "strengths": ["clean provenance contradiction"],
+            "weaknesses": ["no material confirmation"],
+            "penalties": [],
+            "revealed_clues": ["Auction house provenance is now suspect."],
+        }
+    ]
+    assert response.json()["contract_state"] == [
+        "Auction house provenance is now suspect."
+    ]
+    assert len(fake_openai_client.responses.parse_calls) == 1
+    parse_call = fake_openai_client.responses.parse_calls[0]
+    assert parse_call["model"] == "gpt-test"
+    assert parse_call["timeout"] == 4.5
+    assert parse_call["store"] is False
+    assert requested
+    assert not failed
+    assert len(completed) == 1
+    assert requested[0].visibility == EventVisibility.server_only()
+    assert completed[0].visibility == EventVisibility.server_only()
+    assert requested[0].payload["audit_schema_version"] == 1
+    assert requested[0].payload["provider_attempted"] == "openai"
+    assert requested[0].payload["model"] == "gpt-test"
+    assert requested[0].payload["prompt_version"] == "auction-preview-resolution-v1"
+    assert requested[0].payload["validation_status"] == "not_started"
+    assert requested[0].payload["input_packet_hash"]
+    assert completed[0].payload["audit_schema_version"] == 1
+    assert completed[0].payload["provider"] == "openai"
+    assert completed[0].payload["model"] == "gpt-test"
+    assert completed[0].payload["prompt_version"] == "auction-preview-resolution-v1"
+    assert completed[0].payload["fallback"] is False
+    assert completed[0].payload["fallback_reason"] is None
+    assert completed[0].payload["validation_status"] == "validated"
+    assert completed[0].payload["crew_count"] == 1
+    assert completed[0].payload["standing_count"] == 1
+    assert completed[0].payload["warning_count"] == 0
+    assert completed[0].payload["accepted_output_hash"]
+    visible_text = str(visible_events)
+    assert "oracle.resolution.requested" not in visible_text
+    assert "oracle.resolution.completed" not in visible_text
+    assert "hidden_truth_summary" not in visible_text
+    assert "saint bone forgery" not in visible_text
+    assert "saint-bone forgery" not in visible_text
+    assert "truth false finger forgery" not in visible_text
 
 
 def test_admin_oracle_audits_require_admin_token_and_omit_raw_outputs(

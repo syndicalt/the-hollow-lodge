@@ -4243,6 +4243,31 @@ Expected verification:
 - `pytest tests/e2e/test_full_game_loop_with_escrow.py tests/client/test_render_packets.py tests/server/test_pending_decisions.py tests/server/test_deal_routes.py tests/server/test_crew_routes.py tests/test_mcp_server.py -q`
 - `pytest -q`
 
+### Slice 176: OpenAI Oracle Server Proof Gate
+
+Status: completed.
+
+Strengthen the Milestone 3 proof gate so the model-backed oracle provider is
+tested through the same server phase-lock endpoint as the deterministic
+provider. The server oracle suite now injects `OpenAIResolutionOracle` with a
+fake structured-output client, locks the starter Auction Preview phase through
+`/contracts/contract_false_finger/phases/auction-preview/lock`, and verifies
+the player-safe resolved standings and contract state come from the accepted
+model-shaped output.
+
+The proof verifies that OpenAI structured-output parsing is called exactly
+once with the configured model, timeout, and no storage; that requested and
+completed oracle audit events are server-only and carry provider/model/prompt,
+validation, count, hash, and fallback metadata; that no failed audit is
+written on successful OpenAI output; and that public event sync omits raw
+oracle audit events and hidden truth phrases.
+
+Expected verification:
+
+- `pytest tests/server/test_resolution_oracle.py::test_openai_oracle_resolves_phase_through_server_without_fallback -q`
+- `pytest tests/server/test_resolution_oracle.py tests/server/test_phase_resolution.py tests/workflows/test_openai_oracle.py tests/workflows/test_oracle_boundary.py tests/workflows/test_deterministic_oracle.py tests/workflows/test_oracle_factory.py -q`
+- `pytest -q`
+
 ## Completion Standard
 
 Each slice must:
