@@ -113,8 +113,14 @@ def test_player_can_progress_contract_through_actual_mcp_tools(tmp_path, monkeyp
         path = url.removeprefix("http://testserver")
         return client.post(path, headers=headers, json=json)
 
+    def fake_patch(url, headers=None, json=None, timeout=None):
+        assert url.startswith("http://testserver")
+        path = url.removeprefix("http://testserver")
+        return client.patch(path, headers=headers, json=json)
+
     monkeypatch.setattr(httpx, "get", fake_get)
     monkeypatch.setattr(httpx, "post", fake_post)
+    monkeypatch.setattr(httpx, "patch", fake_patch)
 
     landing = _assert_packet(_call_tool("render_what_now"), surface="what_now")
     assert landing["agent_context"]["mutation"] is False
@@ -349,6 +355,195 @@ def test_player_can_progress_contract_through_actual_mcp_tools(tmp_path, monkeyp
         active_crew_id=crew["crew_id"],
         display_name="Ada Corelumen",
     )
+    gilt_received_artifact_id = fulfilled_deal["proposer_received_artifact_ids"][0]
+
+    citation_preview = _assert_packet(
+        _call_tool(
+            "dossier_cite_artifact",
+            {
+                "crew_id": crew["crew_id"],
+                "artifact_id": gilt_received_artifact_id,
+                "claim": "The chapel mark dates the debt after the public lot story.",
+                "quote": "Chapel debt mark, copied through escrow.",
+                "confirm": False,
+            },
+        ),
+        surface="mutation",
+    )
+    assert citation_preview["agent_context"] == {
+        "operation": "dossier_cite_artifact",
+        "mutation": False,
+        "confirmed": False,
+        "preview": {
+            "crew_id": crew["crew_id"],
+            "artifact_id": gilt_received_artifact_id,
+            "claim": "The chapel mark dates the debt after the public lot story.",
+            "quote": "Chapel debt mark, copied through escrow.",
+        },
+    }
+    assert "No server mutation was submitted." in citation_preview["player_markdown"]
+
+    citation_confirm = _assert_packet(
+        _call_tool(
+            "dossier_cite_artifact",
+            {
+                "crew_id": crew["crew_id"],
+                "artifact_id": gilt_received_artifact_id,
+                "claim": "The chapel mark dates the debt after the public lot story.",
+                "quote": "Chapel debt mark, copied through escrow.",
+                "confirm": True,
+            },
+        ),
+        surface="mutation",
+    )
+    assert citation_confirm["agent_context"]["operation"] == "dossier_cite_artifact"
+    assert citation_confirm["agent_context"]["mutation"] is True
+    assert citation_confirm["agent_context"]["confirmed"] is True
+    cited_dossier = citation_confirm["agent_context"]["result"]
+    assert cited_dossier["dossier_id"] == f"dossier_{crew['crew_id']}"
+    assert cited_dossier["crew_id"] == crew["crew_id"]
+    assert cited_dossier["packet_lead_player_id"] == ada["player_id"]
+    assert cited_dossier["artifact_citations"] == [
+        {
+            "player_id": ada["player_id"],
+            "artifact_id": gilt_received_artifact_id,
+            "claim": "The chapel mark dates the debt after the public lot story.",
+            "quote": "Chapel debt mark, copied through escrow.",
+        }
+    ]
+
+    contribution_preview = _assert_packet(
+        _call_tool(
+            "dossier_contribute",
+            {
+                "crew_id": crew["crew_id"],
+                "note": "Escrowed chapel mark makes the ledger contradiction actionable.",
+                "evidence_ids": [gilt_received_artifact_id],
+                "confirm": False,
+            },
+        ),
+        surface="mutation",
+    )
+    assert contribution_preview["agent_context"] == {
+        "operation": "dossier_contribute",
+        "mutation": False,
+        "confirmed": False,
+        "preview": {
+            "crew_id": crew["crew_id"],
+            "note": "Escrowed chapel mark makes the ledger contradiction actionable.",
+            "evidence_ids": [gilt_received_artifact_id],
+        },
+    }
+
+    contribution_confirm = _assert_packet(
+        _call_tool(
+            "dossier_contribute",
+            {
+                "crew_id": crew["crew_id"],
+                "note": "Escrowed chapel mark makes the ledger contradiction actionable.",
+                "evidence_ids": [gilt_received_artifact_id],
+                "confirm": True,
+            },
+        ),
+        surface="mutation",
+    )
+    assert contribution_confirm["agent_context"]["operation"] == "dossier_contribute"
+    assert contribution_confirm["agent_context"]["mutation"] is True
+    assert contribution_confirm["agent_context"]["confirmed"] is True
+    contributed_dossier = contribution_confirm["agent_context"]["result"]
+    assert contributed_dossier["member_contributions"] == [
+        {
+            "player_id": ada["player_id"],
+            "note": "Escrowed chapel mark makes the ledger contradiction actionable.",
+            "evidence_ids": [gilt_received_artifact_id],
+        }
+    ]
+
+    framing_preview = _assert_packet(
+        _call_tool(
+            "dossier_update_framing",
+            {
+                "crew_id": crew["crew_id"],
+                "claim": "The finger is a staged relic backed by a corrected debt ledger.",
+                "evidence_ids": [gilt_received_artifact_id],
+                "reasoning": "The escrowed chapel mark confirms the public lot story moved after the debt was recorded.",
+                "weaknesses": "Material testing remains incomplete.",
+                "provenance_concerns": "Escrow copy needs independent handling notes.",
+                "confirm": False,
+            },
+        ),
+        surface="mutation",
+    )
+    assert framing_preview["agent_context"] == {
+        "operation": "dossier_update_framing",
+        "mutation": False,
+        "confirmed": False,
+        "preview": {
+            "crew_id": crew["crew_id"],
+            "claim": "The finger is a staged relic backed by a corrected debt ledger.",
+            "evidence_ids": [gilt_received_artifact_id],
+            "reasoning": "The escrowed chapel mark confirms the public lot story moved after the debt was recorded.",
+            "weaknesses": "Material testing remains incomplete.",
+            "provenance_concerns": "Escrow copy needs independent handling notes.",
+        },
+    }
+
+    framing_confirm = _assert_packet(
+        _call_tool(
+            "dossier_update_framing",
+            {
+                "crew_id": crew["crew_id"],
+                "claim": "The finger is a staged relic backed by a corrected debt ledger.",
+                "evidence_ids": [gilt_received_artifact_id],
+                "reasoning": "The escrowed chapel mark confirms the public lot story moved after the debt was recorded.",
+                "weaknesses": "Material testing remains incomplete.",
+                "provenance_concerns": "Escrow copy needs independent handling notes.",
+                "confirm": True,
+            },
+        ),
+        surface="mutation",
+    )
+    assert framing_confirm["agent_context"]["operation"] == "dossier_update_framing"
+    assert framing_confirm["agent_context"]["mutation"] is True
+    assert framing_confirm["agent_context"]["confirmed"] is True
+    framed_dossier = framing_confirm["agent_context"]["result"]
+    assert framed_dossier["claim"] == (
+        "The finger is a staged relic backed by a corrected debt ledger."
+    )
+    assert framed_dossier["evidence_ids"] == [gilt_received_artifact_id]
+    assert framed_dossier["reasoning"] == (
+        "The escrowed chapel mark confirms the public lot story moved after the "
+        "debt was recorded."
+    )
+    assert framed_dossier["weaknesses"] == "Material testing remains incomplete."
+    assert framed_dossier["provenance_concerns"] == (
+        "Escrow copy needs independent handling notes."
+    )
+
+    dossier = _assert_packet(
+        _call_tool("render_dossier", {"crew_id": crew["crew_id"]}),
+        surface="dossier",
+    )
+    assert dossier["agent_context"]["mutation"] is False
+    assert dossier["agent_context"]["artifact_citation_count"] == 1
+    assert dossier["agent_context"]["contribution_count"] == 1
+    assert dossier["agent_context"]["evidence_count"] == 1
+    rendered_dossier = dossier["agent_context"]["dossier"]
+    assert rendered_dossier == framed_dossier
+    assert set(rendered_dossier["artifact_citations"][0]) == {
+        "player_id",
+        "artifact_id",
+        "claim",
+        "quote",
+    }
+    assert set(rendered_dossier["member_contributions"][0]) == {
+        "player_id",
+        "note",
+        "evidence_ids",
+    }
+    assert "Proof Dossier:" in dossier["player_markdown"]
+    assert "The finger is a staged relic" in dossier["player_markdown"]
+    assert "Escrowed chapel mark makes" in dossier["player_markdown"]
 
     action_preview = _assert_packet(
         _call_tool(
@@ -464,10 +659,13 @@ def test_player_can_progress_contract_through_actual_mcp_tools(tmp_path, monkeyp
     assert contract["phase_result"]["standings"] == [
         {
             "crew_id": crew["crew_id"],
-            "standing": "Viable",
-            "score": 64,
+            "standing": "Strong lead",
+            "score": 94,
             "score_reasoning": {
-                "strengths": ["clean provenance contradiction"],
+                "strengths": [
+                    "clean provenance contradiction",
+                    "cited artifact source material",
+                ],
                 "weaknesses": ["no material confirmation"],
                 "penalties": [],
                 "revealed_clues": ["Auction house provenance is now suspect."],
@@ -486,7 +684,7 @@ def test_player_can_progress_contract_through_actual_mcp_tools(tmp_path, monkeyp
         },
     ]
     assert "Phase result:" in contract_board["player_markdown"]
-    assert f"- {crew['crew_id']}: Viable (64)" in contract_board["player_markdown"]
+    assert f"- {crew['crew_id']}: Strong lead (94)" in contract_board["player_markdown"]
 
     activity = _assert_packet(_call_tool("render_activity"), surface="activity")
     assert activity["agent_context"]["event_type_counts"]["action.submitted"] == 1
@@ -507,6 +705,13 @@ def test_player_can_progress_contract_through_actual_mcp_tools(tmp_path, monkeyp
             moth_inbox,
             deal_accept_preview,
             deal_accept_confirm,
+            citation_preview,
+            citation_confirm,
+            contribution_preview,
+            contribution_confirm,
+            framing_preview,
+            framing_confirm,
+            dossier,
             crew_board,
             contract_board,
             activity,
@@ -517,6 +722,7 @@ def test_player_can_progress_contract_through_actual_mcp_tools(tmp_path, monkeyp
         "hidden_truth_summary",
         "contract.hidden_truth.seeded",
         "server_only",
+        "server_notes",
         "visibility",
         "oracle.resolution",
         "accepted_output",

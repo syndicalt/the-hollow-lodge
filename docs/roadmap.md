@@ -4500,6 +4500,33 @@ Expected verification:
 - `pytest tests/e2e/test_mcp_codex_play_loop.py tests/test_mcp_server.py tests/client/test_codex_session.py tests/client/test_render_packets.py tests/server/test_deal_routes.py tests/e2e/test_escrowed_artifact_deals.py -q`
 - `pytest -q`
 
+### Slice 186: Actual MCP Proof Dossier Proof Gate
+
+Status: completed.
+
+Extend the real MCP-boundary play loop from escrowed deals into proof dossier
+work. After Ada receives the chapel debt mark through escrow, the e2e now uses
+actual `mcp.call_tool` calls for `dossier_cite_artifact`,
+`dossier_contribute`, `dossier_update_framing`, and `render_dossier` before
+submitting the final action and locking the phase.
+
+The proof verifies preview/confirm semantics for all dossier mutations,
+player-safe shaped dossier mutation results, rendered dossier counts,
+artifact-citation and member-contribution field boundaries, and markdown
+visibility for the packet lead's claim, citation, and contribution. The
+serialized MCP packet leakage guard now covers dossier mutation and render
+packets alongside chat, escrow deals, inbox, crew-board, contract-board, and
+activity packets. Because the resolved dossier now cites source material, the
+expected two-crew standings assert the stronger public result: Gilt resolves as
+`Strong lead (94)` with the `cited artifact source material` strength while
+Moth remains weak.
+
+Expected verification:
+
+- `pytest tests/e2e/test_mcp_codex_play_loop.py -q`
+- `pytest tests/e2e/test_mcp_codex_play_loop.py tests/test_mcp_server.py tests/client/test_codex_session.py tests/client/test_render_packets.py tests/server/test_proof_routes.py tests/server/test_packet_lead.py tests/server/test_phase_resolution.py -q`
+- `pytest -q`
+
 ## Completion Standard
 
 Each slice must:
