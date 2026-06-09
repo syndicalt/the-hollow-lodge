@@ -533,6 +533,190 @@ Do not make betrayal depend on broken trade plumbing. Mechanical artifact swaps
 should be reliable. Betrayal should live in timing, omissions, leaks, soft
 terms, and selective disclosure.
 
+## Legacy And Future Advantages
+
+Contracts can matter after they resolve, but continuity should mostly flow
+through crew legacy, not loose inventory notes.
+
+The server records bounded legacy facts such as:
+
+- `reputation`: the crew is known for reliable proofwork
+- `heat`: prior work drew attention
+- `favors`: institutions or patrons owe the crew useful access
+- `debts`: the crew owes someone, or left obligations behind
+- `scars`: named consequences from weak or costly outcomes
+- completed contracts: proof that the crew finished a specific contract phase
+- deal conduct: whether the crew uses escrowed deals reliably
+- rumor memory: bounded history from rumor containment, exploitation, or
+  integration
+
+These are crew-level facts. They are designed to be checked by future contracts
+without requiring the GM to remember private conversations, raw event payloads,
+or bespoke promises.
+
+### The Default Rule
+
+Future advantages should be checkable ledger state.
+
+Prefer:
+
+> Crew has reputation 2, so the restoration lab takes their request seriously.
+
+Avoid:
+
+> The GM remembers that the lab liked them last time.
+
+Prefer:
+
+> Crew completed `contract_false_finger`, so this follow-up contract is visible.
+
+Avoid:
+
+> The crew has "the vibe" of being trusted by auction people.
+
+This keeps continuity auditable, visible, and fair across asynchronous play.
+
+### What Rewards Can Do
+
+A future contract can use crew legacy to:
+
+- unlock the contract for qualified crews
+- reveal a better starting artifact
+- reduce ambiguity around a public clue
+- add a safe future opportunity line on the crew board
+- make an NPC or institution easier to approach
+- let a crew cite prior work as leverage
+- increase risk when heat, debts, or scars follow the crew
+- create a harder version of the contract for crews with too much attention
+
+Good future advantage:
+
+```json
+{
+  "scope": "crew",
+  "metric": "reputation",
+  "minimum": 2,
+  "label": "Known Reliable Proofwork",
+  "description": "Prior strong work gives this crew an opening."
+}
+```
+
+Good future gate:
+
+```json
+{
+  "scope": "crew",
+  "metric": "completed_contract",
+  "required_contract_id": "contract_false_finger",
+  "minimum": 1,
+  "label": "Auction Preview Veteran",
+  "description": "This work is offered to crews that resolved the prior auction proof."
+}
+```
+
+### Carried Artifacts
+
+Phase rewards can grant artifacts, and rewarded artifacts can influence later
+play. Use this sparingly.
+
+The normal pattern should not be:
+
+> A key from Contract 1 opens the only door in Contract 2.
+
+That creates brittle inventory continuity:
+
+- Who owns the key?
+- Can it be traded?
+- Can it be copied?
+- What if the key-holder stops playing?
+- Does one crew become the only viable participant?
+- Does the GM need to remember every object forever?
+
+The Hollow Lodge pattern is:
+
+> A proof win in Contract 1 gives the crew a reputation, favor, or artifact that
+> changes how Contract 2 opens.
+
+Good carried artifact:
+
+- a copy of a chapel rubbing that gives leverage with a parish clerk
+- a restoration lab note that makes a material test faster
+- a sealed invitation that reveals a private auction preview
+- a disputed ledger copy that can be cited, but carries provenance risk
+
+Bad carried artifact:
+
+- the only key to the next contract
+- a unique object that prevents other crews from meaningfully playing
+- an item whose effect is not represented in crew legacy, visibility, or a seed
+  rule
+
+If a carried artifact matters, make it:
+
+- crew-scoped
+- visible on relevant crew/player surfaces
+- non-blocking or replaceable by another harder path
+- copyable when trade is part of the intended play
+- represented by an explicit phase reward, unlock rule, or future requirement
+
+### Heat, Debts, And Scars Are Also Continuity
+
+Future advantages are not only positive.
+
+Prior heat can make a contract riskier:
+
+> Prior heat makes The Ash Window riskier for this crew.
+
+Debts can create pressure:
+
+> The collector will open the archive, but only if the crew accepts a bad soft
+> term.
+
+Scars can change approach:
+
+> The crew's prior public failure makes witness leverage harder, but it also
+> makes underworld contacts more candid.
+
+Do not use negative legacy to shut players out entirely unless there is another
+available route. Negative continuity should create texture and tradeoffs, not a
+dead end.
+
+### GM Rules For Future Advantages
+
+Use these rules when writing campaign continuity:
+
+- Encode future advantages as legacy metrics, completed-contract checks, phase
+  rewards, or explicit seed rules.
+- Do not rely on private GM notes to decide who gets access.
+- Do not make a single carried object the only way to play a future contract.
+- Keep advantages crew-level unless player-level persistence is explicitly
+  designed for that contract.
+- Render enough of the advantage that players know why their crew is being
+  treated differently.
+- Keep hidden sources hidden; render safe summaries, not private event details.
+- Let strong outcomes create opportunity, but let weak outcomes create
+  interesting pressure rather than permanent exclusion.
+
+### Authoring Prompt For Continuity
+
+When drafting a follow-up contract, answer:
+
+- Which prior contract can matter?
+- Which crew legacy metric does it check?
+- What advantage or complication appears?
+- Is there a non-legacy fallback path?
+- Is the effect visible enough for players to understand?
+- Does this advantage reveal hidden truth from the prior contract?
+
+Example:
+
+> Crews with reputation 2 or higher begin with the private restoration ledger.
+> Other crews can still find it by pressuring the clerk, but that action raises
+> heat.
+
+That is a good Hollow Lodge advantage: prior success matters, but the future
+contract remains playable.
+
 ## Difficulty
 
 Use this rough scale for alpha contracts.
