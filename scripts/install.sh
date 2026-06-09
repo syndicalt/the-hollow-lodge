@@ -13,11 +13,19 @@ uv tool install "$PACKAGE" --force
 
 hollow-lodge codex install-mcp
 
+run_doctor() {
+  if [ "${HOLLOW_LODGE_SKIP_DOCTOR:-0}" = "1" ]; then
+    printf '%s\n' "Skipping hollow-lodge doctor. Run it later to verify server, auth, MCP, and Codex render readiness."
+    return
+  fi
+  hollow-lodge doctor
+}
+
 if [ "${HOLLOW_LODGE_SKIP_ONBOARD:-0}" = "1" ]; then
   printf '%s\n' "Installed hollow-lodge. Run 'hollow-lodge onboard' when ready."
-  printf '%s\n' "Run 'hollow-lodge doctor' to verify server, auth, MCP, and Codex render readiness."
+  run_doctor
   exit 0
 fi
 
 hollow-lodge onboard "$@"
-printf '%s\n' "Run 'hollow-lodge doctor' to verify server, auth, MCP, and Codex render readiness."
+run_doctor

@@ -6,7 +6,8 @@ the player to manage raw shell commands.
 ## Install And Onboard
 
 The installer bootstraps the CLI with `uv tool install` and then launches the
-first-run onboarding flow:
+first-run onboarding flow, registers the Codex MCP server, and runs a redacted
+`hollow-lodge doctor` readiness report:
 
 ```sh
 curl -fsSL https://www.thehollowlodge.com/install.sh | sh
@@ -37,6 +38,10 @@ After onboarding, run the local readiness check:
 ```sh
 hollow-lodge doctor
 ```
+
+The installer already runs the non-strict form once. Use
+`HOLLOW_LODGE_SKIP_DOCTOR=1` only when a scripted install needs to defer that
+readiness report.
 
 Use `hollow-lodge doctor --strict` for scripted clean-install checks after a
 player has registered. Strict mode prints the same redacted report and exits

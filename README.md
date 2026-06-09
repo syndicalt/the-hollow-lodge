@@ -21,13 +21,16 @@ against the server-owned graph.
 curl -fsSL https://www.thehollowlodge.com/install.sh | sh
 ```
 
-The installer uses `uv tool install` and then launches first-run onboarding.
-Players with an invite can register immediately; players without an invite can
-request an access key.
+The installer uses `uv tool install`, registers the Codex MCP server, launches
+first-run onboarding, and runs a redacted `hollow-lodge doctor` readiness
+report. Players with an invite can register immediately; players without an
+invite can request an access key.
 
-After onboarding, run `hollow-lodge doctor` to verify server reachability,
-saved auth, inbox readiness, Codex MCP registration, and Codex inbox render
-readiness without printing token or gameplay payload details.
+Use `HOLLOW_LODGE_SKIP_DOCTOR=1` if you need to suppress the automatic doctor
+report during scripted installation. You can run `hollow-lodge doctor` later to
+verify server reachability, saved auth, inbox readiness, Codex MCP
+registration, and Codex inbox render readiness without printing token or
+gameplay payload details.
 Use `hollow-lodge doctor --strict` in automation when a registered player must
 be fully ready to play; pending or incomplete installs exit non-zero.
 

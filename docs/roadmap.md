@@ -3594,6 +3594,29 @@ Expected verification:
 - `pytest tests/client/test_cli_commands.py tests/client/test_installer_script.py tests/client/test_codex_mcp_config.py tests/client/test_local_log.py tests/client/test_codex_session.py -q`
 - `pytest -q`
 
+### Slice 146: Installer Automatic Doctor Readiness Report
+
+Status: completed.
+
+Close the loop on the clean-machine install proof gate by having the installer
+run a non-strict `hollow-lodge doctor` readiness report automatically after MCP
+registration and onboarding. This gives players immediate redacted feedback on
+server reachability, pending or registered player state, saved auth, inbox
+readiness, local event-sync cache writes, Codex inbox render packet
+construction, MCP config, and command availability without requiring them to
+remember a follow-up command.
+
+The automatic doctor run remains non-strict so pending access-key requests can
+complete successfully. Scripted installs can set `HOLLOW_LODGE_SKIP_DOCTOR=1`
+to defer the report; `hollow-lodge doctor --strict` remains the opt-in
+non-zero clean-install gate for registered players.
+
+Expected verification:
+
+- `pytest tests/client/test_installer_script.py -q`
+- `pytest tests/client/test_cli_commands.py tests/client/test_installer_script.py tests/client/test_codex_mcp_config.py tests/client/test_local_log.py tests/client/test_codex_session.py -q`
+- `pytest -q`
+
 ## Completion Standard
 
 Each slice must:

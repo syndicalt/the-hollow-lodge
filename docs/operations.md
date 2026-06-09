@@ -717,10 +717,13 @@ On a clean machine with `uv` installed:
 curl -fsSL https://www.thehollowlodge.com/install.sh | sh
 ```
 
-The installer installs the CLI, registers the Codex MCP server, and launches
-`hollow-lodge onboard`. Players with an invite can register immediately.
-Players without an invite remain in pending onboarding state until an admin
-approves their access request and sends them the generated invite code.
+The installer installs the CLI, registers the Codex MCP server, launches
+`hollow-lodge onboard`, and runs a non-strict `hollow-lodge doctor` readiness report. Players with an invite can register immediately. Players without an
+invite remain in pending onboarding state until an admin approves their access
+request and sends them the generated invite code.
+
+Set `HOLLOW_LODGE_SKIP_DOCTOR=1` to suppress the automatic readiness report in
+scripts; run `hollow-lodge doctor` manually afterward.
 
 Verify the local install without exposing token or invite material:
 

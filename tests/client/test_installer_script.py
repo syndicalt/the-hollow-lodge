@@ -13,6 +13,7 @@ def test_install_script_bootstraps_cli_and_runs_onboarding():
     assert "hollow-lodge doctor" in script
     assert "server, auth, MCP, and Codex render readiness" in script
     assert "HOLLOW_LODGE_SKIP_ONBOARD" in script
+    assert "HOLLOW_LODGE_SKIP_DOCTOR" in script
 
 
 def test_site_serves_install_script_from_public_root():
@@ -47,7 +48,11 @@ def test_operations_docs_describe_current_doctor_readiness_checks():
     assert "Codex inbox render readiness" in operations
     assert "hollow-lodge doctor --strict" in operations
     assert "exits non-zero unless a registered player is fully ready" in operations
-    assert "saved auth, inbox readiness, Codex MCP registration" in readme
+    assert "runs a non-strict `hollow-lodge doctor` readiness report" in operations
+    assert "HOLLOW_LODGE_SKIP_DOCTOR=1" in operations
+    assert "runs a redacted `hollow-lodge doctor` readiness" in readme
+    assert "saved auth, inbox readiness" in readme
+    assert "Codex MCP" in readme
     assert "doctor --strict" in readme
 
 
@@ -56,6 +61,8 @@ def test_codex_play_guide_describes_doctor_and_mcp_render_readiness():
 
     assert "hollow-lodge doctor" in guide
     assert "hollow-lodge doctor --strict" in guide
+    assert "installer already runs the non-strict form" in guide
+    assert "HOLLOW_LODGE_SKIP_DOCTOR=1" in guide
     assert "saved auth" in guide
     assert "local event-sync cache" in guide
     assert "codex inbox render: ok surface=inbox" in guide
