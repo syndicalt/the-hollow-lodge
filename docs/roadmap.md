@@ -294,6 +294,10 @@ Status:
   read-model store rebuilt from the authoritative event log, materializing the
   public contract board without moving live gameplay reads yet. Diagnostics
   report projection health and lag without mutating state.
+- Feature-flagged contract-board projection reads completed: `/contracts` can
+  read the public contract board from SQLite when the projection is fresh, and
+  contract activation, archival, and phase resolution refresh that read model
+  after successful authoritative mutations.
 - Deferred: deeper death/legacy inheritance, additional long-term unlock paths,
   and migrating heavier campaign reads onto the projection database.
 
@@ -1115,6 +1119,26 @@ Expected verification:
 
 - `pytest tests/server/test_projection_store.py -q`
 - `pytest tests/server/test_projection_store.py tests/server/test_app_config.py tests/server/test_contract_seed.py tests/server/test_crew_routes.py tests/server/test_phase_resolution.py tests/client/test_contract_board.py tests/client/test_render_packets.py -q`
+- `pytest -q`
+
+### Slice 42: Contract Board Projection Refresh
+
+Status: completed.
+
+Keep the feature-flagged SQLite contract-board read path fresh after normal
+server-side contract mutations. Admin contract activation, admin archival, and
+auction-preview phase resolution now rebuild the contract-board projection
+after the authoritative event-log write succeeds, so `/contracts` can continue
+using SQLite with zero lag. Projection rebuild remains best-effort: if SQLite
+is unavailable after a valid mutation, the mutation still succeeds and the
+existing stale-projection fallback keeps reads on the authoritative JSONL path.
+Out-of-band event-log changes still show as stale in diagnostics without
+diagnostics mutating projection state.
+
+Expected verification:
+
+- `pytest tests/server/test_projection_store.py::test_contract_activation_refreshes_projection_for_flagged_reads tests/server/test_projection_store.py::test_contract_archive_refreshes_projection_for_flagged_reads tests/server/test_projection_store.py::test_phase_resolution_refreshes_projection_for_flagged_reads tests/server/test_projection_store.py::test_contract_mutation_still_succeeds_when_projection_refresh_fails -q`
+- `pytest tests/server/test_projection_store.py tests/server/test_contract_seed.py tests/server/test_phase_resolution.py tests/server/test_crew_routes.py tests/client/test_contract_board.py tests/client/test_render_packets.py -q`
 - `pytest -q`
 
 ## Completion Standard

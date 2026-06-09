@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import logging
 import os
 import secrets
 from typing import Any
@@ -24,6 +25,7 @@ from hollow_lodge.server.services import ActionService, ContractService, ProofSe
 
 
 router = APIRouter(tags=["contracts"])
+logger = logging.getLogger(__name__)
 
 
 class LockAuctionPreviewRequest(BaseModel):
@@ -68,6 +70,7 @@ def activate_contract_seed(
             actor_id="admin",
             idempotency_key=idempotency_key,
         )
+        _refresh_projection_store(request)
     except ValidationError as exc:
         raise HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_ENTITY, detail=str(exc)) from exc
     except (OSError, ValueError) as exc:
@@ -95,6 +98,7 @@ def archive_contract(
             actor_id="admin",
             idempotency_key=idempotency_key,
         )
+        _refresh_projection_store(request)
     except KeyError as exc:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="contract not found") from exc
     except ValueError as exc:
@@ -195,6 +199,16 @@ def _projection_contract_board(request: Request) -> dict | None:
         return None
 
 
+def _refresh_projection_store(request: Request) -> None:
+    if hasattr(request.app.state, "projection_store"):
+        try:
+            request.app.state.projection_store.rebuild(
+                request.app.state.event_store.read()
+            )
+        except Exception:
+            logger.exception("failed to refresh contract board projection")
+
+
 @router.post("/contracts/{contract_id}/phases/auction-preview/lock")
 def lock_auction_preview(
     contract_id: str,
@@ -204,12 +218,14 @@ def lock_auction_preview(
     player: Player = Depends(current_player),
 ):
     try:
-        return _contract_service(request).lock_auction_preview(
+        result = _contract_service(request).lock_auction_preview(
             contract_id=contract_id,
             actor_id=player.player_id,
             hours_elapsed=payload.hours_elapsed,
             idempotency_key=idempotency_key,
         )
+        _refresh_projection_store(request)
+        return result
     except KeyError as exc:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="contract not found") from exc
     except ValueError as exc:
