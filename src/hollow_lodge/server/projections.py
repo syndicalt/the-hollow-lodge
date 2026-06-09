@@ -589,6 +589,19 @@ def _future_modifiers(
             }
         )
     escalation = rumor_escalation or {}
+    contain_count = min(3, int(escalation.get("contain_count", 0)))
+    if contain_count > 0:
+        modifiers.append(
+            {
+                "kind": "rumor_containment",
+                "label": "Rumor containment",
+                "description": (
+                    "Recent containment work gives this crew a quieter "
+                    f"approach to {title}."
+                ),
+                "value": contain_count,
+            }
+        )
     exploit_count = min(3, int(escalation.get("exploit_count", 0)))
     if exploit_count > 0:
         modifiers.append(
@@ -600,6 +613,19 @@ def _future_modifiers(
                     f"{title}."
                 ),
                 "value": exploit_count,
+            }
+        )
+    integrate_count = min(3, int(escalation.get("integrate_count", 0)))
+    if integrate_count > 0:
+        modifiers.append(
+            {
+                "kind": "rumor_integration",
+                "label": "Rumor integration",
+                "description": (
+                    "Integrated rumor signals improve this crew's dossier "
+                    f"framing for {title}."
+                ),
+                "value": integrate_count,
             }
         )
     return modifiers

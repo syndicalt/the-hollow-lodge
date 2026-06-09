@@ -901,10 +901,10 @@ def test_crew_board_packet_renders_legacy_and_future_modifiers_without_hidden_fi
                     ],
                 },
                 "rumor_escalation": {
-                    "contain_count": 0,
+                    "contain_count": 2,
                     "exploit_count": 1,
-                    "integrate_count": 0,
-                    "credible_count_total": 2,
+                    "integrate_count": 1,
+                    "credible_count_total": 8,
                     "source_id": "message_private_000001",
                     "artifact_ids": ["artifact_private_ledger"],
                     "private_body": "The ledger proves the forgery.",
@@ -959,11 +959,31 @@ def test_crew_board_packet_renders_legacy_and_future_modifiers_without_hidden_fi
                                 "server_notes": "hidden",
                             },
                             {
+                                "kind": "rumor_containment",
+                                "label": "Rumor containment",
+                                "description": (
+                                    "Recent containment work gives this crew a quieter "
+                                    "approach to The Ash Window."
+                                ),
+                                "value": 2,
+                                "source_id": "message_private_000001",
+                            },
+                            {
                                 "kind": "rumor_exploitation",
                                 "label": "Rumor exploitation",
                                 "description": (
                                     "Recent rumor exploitation gives this crew leverage "
                                     "on The Ash Window."
+                                ),
+                                "value": 1,
+                                "source_id": "message_private_000001",
+                            },
+                            {
+                                "kind": "rumor_integration",
+                                "label": "Rumor integration",
+                                "description": (
+                                    "Integrated rumor signals improve this crew's dossier "
+                                    "framing for The Ash Window."
                                 ),
                                 "value": 1,
                                 "source_id": "message_private_000001",
@@ -1006,11 +1026,29 @@ def test_crew_board_packet_renders_legacy_and_future_modifiers_without_hidden_fi
                             "value": 1,
                         },
                         {
+                            "kind": "rumor_containment",
+                            "label": "Rumor containment",
+                            "description": (
+                                "Recent containment work gives this crew a quieter "
+                                "approach to The Ash Window."
+                            ),
+                            "value": 2,
+                        },
+                        {
                             "kind": "rumor_exploitation",
                             "label": "Rumor exploitation",
                             "description": (
                                 "Recent rumor exploitation gives this crew leverage "
                                 "on The Ash Window."
+                            ),
+                            "value": 1,
+                        },
+                        {
+                            "kind": "rumor_integration",
+                            "label": "Rumor integration",
+                            "description": (
+                                "Integrated rumor signals improve this crew's dossier "
+                                "framing for The Ash Window."
                             ),
                             "value": 1,
                         },
@@ -1047,7 +1085,7 @@ def test_crew_board_packet_renders_legacy_and_future_modifiers_without_hidden_fi
     assert "Verified rumors: 1" in packet.player_markdown
     assert "Assessments: credible_artifact_signal 1" in packet.player_markdown
     assert "Rumor escalation:" in packet.player_markdown
-    assert "Contain: 0; Exploit: 1; Integrate: 0; Credible signal weight: 2" in packet.player_markdown
+    assert "Contain: 2; Exploit: 1; Integrate: 1; Credible signal weight: 8" in packet.player_markdown
     assert (
         "- rumor_msg_000001: credible_artifact_signal (medium) - The investigation found a credible artifact signal, but not enough to expose the private source."
         in packet.player_markdown
@@ -1055,7 +1093,7 @@ def test_crew_board_packet_renders_legacy_and_future_modifiers_without_hidden_fi
     assert "- The Saint's False Finger: Strong lead (82)" in packet.player_markdown
     assert "Future modifiers:" in packet.player_markdown
     assert (
-        "- The Ash Window: Reputation leverage +2; Heat attention +1; Deal reliability +2; Scar burden +1; Rumor exploitation +1"
+        "- The Ash Window: Reputation leverage +2; Heat attention +1; Deal reliability +2; Scar burden +1; Rumor containment +2; Rumor exploitation +1; Rumor integration +1"
         in packet.player_markdown
     )
     assert "hidden" not in packet.player_markdown
@@ -1100,10 +1138,10 @@ def test_crew_board_packet_renders_legacy_and_future_modifiers_without_hidden_fi
             ],
         },
         "rumor_escalation": {
-            "contain_count": 0,
+            "contain_count": 2,
             "exploit_count": 1,
-            "integrate_count": 0,
-            "credible_count_total": 2,
+            "integrate_count": 1,
+            "credible_count_total": 8,
         },
         "completed_contracts": [
             {
@@ -1151,11 +1189,29 @@ def test_crew_board_packet_renders_legacy_and_future_modifiers_without_hidden_fi
                         "value": 1,
                     },
                     {
+                        "kind": "rumor_containment",
+                        "label": "Rumor containment",
+                        "description": (
+                            "Recent containment work gives this crew a quieter "
+                            "approach to The Ash Window."
+                        ),
+                        "value": 2,
+                    },
+                    {
                         "kind": "rumor_exploitation",
                         "label": "Rumor exploitation",
                         "description": (
                             "Recent rumor exploitation gives this crew leverage "
                             "on The Ash Window."
+                        ),
+                        "value": 1,
+                    },
+                    {
+                        "kind": "rumor_integration",
+                        "label": "Rumor integration",
+                        "description": (
+                            "Integrated rumor signals improve this crew's dossier "
+                            "framing for The Ash Window."
                         ),
                         "value": 1,
                     },

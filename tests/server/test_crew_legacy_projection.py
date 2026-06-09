@@ -488,3 +488,84 @@ def test_rumor_escalations_create_safe_future_modifiers_without_raw_sources():
     assert "artifact_secret_ledger" not in str(legacy)
     assert "The ledger proves the forgery." not in str(legacy)
     assert "crew_0002" not in str(legacy["rumor_escalation"])
+
+
+def test_contain_and_integrate_rumor_escalations_create_capped_future_modifiers():
+    contracts = [
+        {
+            "contract_id": "contract_ash_window",
+            "title": "The Ash Window",
+            "phase": {"name": "Cinder Preview", "remaining_hours": 4},
+        }
+    ]
+    events = []
+    for sequence, mode in enumerate(
+        ("contain", "contain", "contain", "contain", "integrate", "integrate"),
+        start=20,
+    ):
+        events.append(
+            GameEvent.new(
+                sequence=sequence,
+                event_type="contract.rumor.escalated",
+                actor_id="player_0001",
+                visibility=EventVisibility.crews(["crew_0001"]),
+                payload={
+                    "schema_version": 1,
+                    "action_id": f"action_{sequence}",
+                    "crew_id": "crew_0001",
+                    "mode": mode,
+                    "credible_count": 2,
+                    "assessment_counts": {"credible_artifact_signal": 2},
+                    "summary": "The crew handled a repeated credible rumor pattern.",
+                    "source_id": "message_private_000001",
+                    "artifact_ids": ["artifact_secret_ledger"],
+                    "private_body": "The ledger proves the forgery.",
+                    "suspected_crew_ids": ["crew_0002"],
+                },
+                previous_hash=None,
+                idempotency_key=f"rumor-escalated-{sequence}",
+            )
+        )
+
+    legacy = crew_legacy_from_contracts(
+        crew_id="crew_0001",
+        contracts=contracts,
+        events=events,
+    )
+
+    assert legacy["rumor_escalation"] == {
+        "contain_count": 4,
+        "exploit_count": 0,
+        "integrate_count": 2,
+        "credible_count_total": 12,
+    }
+    assert legacy["future_opportunities"] == [
+        {
+            "contract_id": "contract_ash_window",
+            "title": "The Ash Window",
+            "modifiers": [
+                {
+                    "kind": "rumor_containment",
+                    "label": "Rumor containment",
+                    "description": (
+                        "Recent containment work gives this crew a quieter "
+                        "approach to The Ash Window."
+                    ),
+                    "value": 3,
+                },
+                {
+                    "kind": "rumor_integration",
+                    "label": "Rumor integration",
+                    "description": (
+                        "Integrated rumor signals improve this crew's dossier "
+                        "framing for The Ash Window."
+                    ),
+                    "value": 2,
+                },
+            ],
+        }
+    ]
+    assert "message_private_000001" not in str(legacy)
+    assert "artifact_secret_ledger" not in str(legacy)
+    assert "The ledger proves the forgery." not in str(legacy)
+    assert "crew_0002" not in str(legacy["rumor_escalation"])

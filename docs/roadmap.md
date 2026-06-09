@@ -363,6 +363,11 @@ Status:
   exploit follow-through creates a capped `rumor_exploitation` modifier for
   active unresolved contracts without exposing source IDs, private message
   bodies, artifact IDs, deal terms, or suspected crews.
+- Twelfth social-pressure slice completed: all three rumor escalation modes
+  now project bounded future consequences. Containment creates a capped
+  quieter-approach modifier, exploitation keeps its leverage modifier, and
+  integration creates a capped dossier-framing modifier, all from aggregate
+  crew legacy counts rather than raw rumor sources.
 - Escrowed deal acceptance remains participant-scoped and server-enforced.
 - Deferred: richer rumor verification sources and deeper long-term
   consequences from repeated credible signal follow-through.
@@ -943,6 +948,26 @@ message bodies, artifact IDs, deal terms, source IDs, or suspected crew IDs.
 Expected verification:
 
 - `pytest tests/server/test_crew_legacy_projection.py tests/client/test_render_packets.py::test_crew_board_packet_renders_legacy_and_future_modifiers_without_hidden_fields tests/server/test_crew_routes.py::test_crew_board_projects_rumor_escalation_legacy_and_future_modifier -q`
+- `pytest tests/server/test_crew_legacy_projection.py tests/server/test_crew_routes.py tests/server/test_action_routes.py tests/client/test_render_packets.py -q`
+- `pytest -q`
+
+### Slice 35: Full Escalation Mode Future Modifiers
+
+Status: completed.
+
+Finish the first pass of mode-specific escalation consequences. The crew
+legacy projection already counts contain, exploit, and integrate
+`contract.rumor.escalated` events; future modifiers now use all three counts.
+Containment adds a capped `rumor_containment` quieter-approach modifier,
+exploitation keeps the capped `rumor_exploitation` leverage modifier, and
+integration adds a capped `rumor_integration` dossier-framing modifier. Codex
+crew-board rendering keeps using generic safe modifier shaping, so source IDs,
+private message bodies, artifact IDs, deal terms, suspected crews, and raw
+rumor summaries stay out of player markdown and agent context.
+
+Expected verification:
+
+- `pytest tests/server/test_crew_legacy_projection.py::test_contain_and_integrate_rumor_escalations_create_capped_future_modifiers tests/server/test_crew_legacy_projection.py::test_rumor_escalations_create_safe_future_modifiers_without_raw_sources tests/client/test_render_packets.py::test_crew_board_packet_renders_legacy_and_future_modifiers_without_hidden_fields tests/server/test_crew_routes.py::test_crew_board_projects_rumor_escalation_legacy_and_future_modifier tests/server/test_crew_routes.py::test_crew_board_projects_integrated_rumor_escalation_modifier -q`
 - `pytest tests/server/test_crew_legacy_projection.py tests/server/test_crew_routes.py tests/server/test_action_routes.py tests/client/test_render_packets.py -q`
 - `pytest -q`
 

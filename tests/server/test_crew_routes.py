@@ -429,6 +429,93 @@ def test_crew_board_projects_rumor_escalation_legacy_and_future_modifier(tmp_pat
     assert moth["crew_id"] not in legacy_text
 
 
+def test_crew_board_projects_integrated_rumor_escalation_modifier(tmp_path):
+    client = TestClient(create_app(data_dir=tmp_path, invite_codes=["a", "b", "c"]))
+    ada = register(client, "a", "Ada")
+    grace = register(client, "b", "Grace")
+    linus = register(client, "c", "Linus")
+    gilt = client.post(
+        "/crews",
+        headers=command_auth(ada["token"], "crew-create-gilt"),
+        json={"name": "The Gilt Knives"},
+    ).json()
+    moth = client.post(
+        "/crews",
+        headers=command_auth(grace["token"], "crew-create-moth"),
+        json={"name": "The Moth Choir"},
+    ).json()
+    ash = client.post(
+        "/crews",
+        headers=command_auth(linus["token"], "crew-create-ash"),
+        json={"name": "The Ash Keys"},
+    ).json()
+    for index in range(2):
+        leaked = client.post(
+            "/chat/crew-to-crew",
+            headers=command_auth(ada["token"], f"chat-integration-source-{index}"),
+            json={
+                "sender_crew_id": gilt["crew_id"],
+                "recipient_crew_id": moth["crew_id"],
+                "body": f"The ledger proves our leverage. Keep quiet. {index}",
+                "artifact_ids": ["artifact_ledger_rubric"],
+            },
+        )
+        verified = client.post(
+            "/actions",
+            headers=command_auth(linus["token"], f"action-verify-integration-{index}"),
+            json={
+                "crew_id": ash["crew_id"],
+                "intent": "Quietly verify the artifact rumor through the auction clerk.",
+                "confirmed": True,
+                "rumor_id": f"rumor_msg_00000{index + 1}",
+            },
+        )
+        assert leaked.status_code == 201
+        assert verified.status_code == 201
+    escalated = client.post(
+        "/actions",
+        headers=command_auth(linus["token"], "action-integrate-escalation"),
+        json={
+            "crew_id": ash["crew_id"],
+            "intent": "Fold the repeated rumor pattern into the proof strategy.",
+            "confirmed": True,
+            "responds_to_rumor_escalation": True,
+            "rumor_escalation_mode": "integrate",
+        },
+    )
+
+    response = client.get(f"/crews/{ash['crew_id']}/board", headers=auth(linus["token"]))
+
+    assert escalated.status_code == 201
+    assert response.status_code == 200
+    body = response.json()
+    assert body["legacy"]["rumor_escalation"] == {
+        "contain_count": 0,
+        "exploit_count": 0,
+        "integrate_count": 1,
+        "credible_count_total": 2,
+    }
+    assert any(
+        modifier == {
+            "kind": "rumor_integration",
+            "label": "Rumor integration",
+            "description": (
+                "Integrated rumor signals improve this crew's dossier "
+                f"framing for {contract['title']}."
+            ),
+            "value": 1,
+        }
+        for contract in body["active_contracts"]
+        for modifier in contract.get("crew_modifiers", [])
+    )
+    legacy_text = str(body["legacy"])
+    assert "source_id" not in legacy_text
+    assert "The ledger proves our leverage" not in legacy_text
+    assert "artifact_ledger_rubric" not in legacy_text
+    assert gilt["crew_id"] not in legacy_text
+    assert moth["crew_id"] not in legacy_text
+
+
 def test_crew_board_pending_decisions_include_dossier_needs_and_action(tmp_path):
     client = TestClient(create_app(data_dir=tmp_path, invite_codes=["a"]))
     ada = register(client, "a", "Ada")
