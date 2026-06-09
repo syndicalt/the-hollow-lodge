@@ -3768,6 +3768,28 @@ Expected verification:
 - `pytest tests/client/test_cli_commands.py tests/client/test_installer_script.py tests/client/test_codex_mcp_config.py tests/client/test_local_log.py tests/client/test_codex_session.py tests/test_mcp_server.py -q`
 - `pytest -q`
 
+### Slice 154: CLI Deal Confirmation Guard
+
+Status: completed.
+
+Bring shell deal operations in line with the Codex confirmation model.
+`hollow-lodge deal accept` now renders the existing acceptance consequence
+preview by default and performs no mutation until rerun with `--confirm`.
+`deal decline` and `deal cancel` likewise stop with a bounded no-mutation
+message unless confirmed.
+
+This keeps escrowed artifact swaps usable from a terminal while preserving the
+roadmap rule that irreversible operations should be explicit and
+confirmation-oriented. The accept preview reuses the same render packet path as
+the existing preview command, so the CLI does not grow a second description of
+deal consequences.
+
+Expected verification:
+
+- `pytest tests/client/test_cli_commands.py::test_deal_accept_previews_until_confirmed tests/client/test_cli_commands.py::test_deal_decline_and_cancel_require_confirm_before_mutation -q`
+- `pytest tests/client/test_cli_commands.py tests/client/test_codex_session.py tests/client/test_render_packets.py tests/test_mcp_server.py -q`
+- `pytest -q`
+
 ## Completion Standard
 
 Each slice must:

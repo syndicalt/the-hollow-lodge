@@ -381,7 +381,43 @@ class FakeApi:
 
     def deals(self):
         self.calls.append(("deals", {}))
-        return {"deals": []}
+        return {"deals": getattr(self, "deals_payload", [])}
+
+    def accept_deal(self, *, deal_id: str, idempotency_key: str):
+        self.calls.append(
+            (
+                "accept_deal",
+                {
+                    "deal_id": deal_id,
+                    "idempotency_key": idempotency_key,
+                },
+            )
+        )
+        return {"deal_id": deal_id, "status": "fulfilled"}
+
+    def decline_deal(self, *, deal_id: str, idempotency_key: str):
+        self.calls.append(
+            (
+                "decline_deal",
+                {
+                    "deal_id": deal_id,
+                    "idempotency_key": idempotency_key,
+                },
+            )
+        )
+        return {"deal_id": deal_id, "status": "declined"}
+
+    def cancel_deal(self, *, deal_id: str, idempotency_key: str):
+        self.calls.append(
+            (
+                "cancel_deal",
+                {
+                    "deal_id": deal_id,
+                    "idempotency_key": idempotency_key,
+                },
+            )
+        )
+        return {"deal_id": deal_id, "status": "canceled"}
 
     def crew_board(self, *, crew_id: str):
         self.calls.append(("crew_board", {"crew_id": crew_id}))
@@ -3941,6 +3977,138 @@ def test_phase_lock_requires_confirm_before_mutation(tmp_path, monkeypatch):
                 "contract_id": "contract_false_finger",
                 "hours_elapsed": 6,
                 "idempotency_key": "phase-lock-key",
+            },
+        )
+    ]
+
+
+def test_deal_accept_previews_until_confirmed(tmp_path, monkeypatch):
+    runner = CliRunner()
+    created_clients: list[FakeApi] = []
+    visible_deals = [
+        {
+            "deal_id": "deal_000001",
+            "contract_id": "contract_false_finger",
+            "status": "proposed",
+            "proposer_crew_id": "crew_0002",
+            "recipient_crew_id": "crew_0001",
+            "offered_artifact_ids": ["artifact_chapel_debt_mark"],
+            "requested_artifact_ids": ["artifact_ledger_rubric"],
+            "soft_terms": ["Do not cite our crew as source."],
+        }
+    ]
+
+    def fake_client(**kwargs):
+        client = FakeApi(**kwargs)
+        client.deals_payload = visible_deals
+        created_clients.append(client)
+        return client
+
+    monkeypatch.setattr(cli, "HollowLodgeApi", fake_client)
+    monkeypatch.setattr(cli, "new_command_key", lambda prefix: f"{prefix}-key")
+    config_path = tmp_path / "config.json"
+    save_config(
+        config_path,
+        ClientConfig(
+            server_url="http://testserver",
+            player_id="player_0001",
+            token="token",
+            active_crew_id="crew_0001",
+        ),
+    )
+
+    preview = runner.invoke(
+        cli.app,
+        ["deal", "accept", "deal_000001", "--config", str(config_path)],
+    )
+
+    assert preview.exit_code == 0
+    assert "preview only" in preview.output
+    assert "no server mutation occurred" in preview.output
+    assert "--confirm" in preview.output
+    assert "artifact_chapel_debt_mark" in preview.output
+    assert created_clients[0].calls == [("deals", {})]
+
+    confirmed = runner.invoke(
+        cli.app,
+        ["deal", "accept", "deal_000001", "--confirm", "--config", str(config_path)],
+    )
+
+    assert confirmed.exit_code == 0
+    assert "deal_000001 fulfilled" in confirmed.output
+    assert created_clients[1].calls == [
+        (
+            "accept_deal",
+            {
+                "deal_id": "deal_000001",
+                "idempotency_key": "deal-accept-key",
+            },
+        )
+    ]
+
+
+def test_deal_decline_and_cancel_require_confirm_before_mutation(tmp_path, monkeypatch):
+    runner = CliRunner()
+    created_clients: list[FakeApi] = []
+
+    def fake_client(**kwargs):
+        client = FakeApi(**kwargs)
+        created_clients.append(client)
+        return client
+
+    monkeypatch.setattr(cli, "HollowLodgeApi", fake_client)
+    monkeypatch.setattr(cli, "new_command_key", lambda prefix: f"{prefix}-key")
+    config_path = tmp_path / "config.json"
+    save_config(
+        config_path,
+        ClientConfig(server_url="http://testserver", player_id="player_0001", token="token"),
+    )
+
+    decline_preview = runner.invoke(
+        cli.app,
+        ["deal", "decline", "deal_000001", "--config", str(config_path)],
+    )
+    cancel_preview = runner.invoke(
+        cli.app,
+        ["deal", "cancel", "deal_000001", "--config", str(config_path)],
+    )
+
+    assert decline_preview.exit_code == 0
+    assert "no server mutation occurred" in decline_preview.output
+    assert "--confirm" in decline_preview.output
+    assert cancel_preview.exit_code == 0
+    assert "no server mutation occurred" in cancel_preview.output
+    assert "--confirm" in cancel_preview.output
+    assert created_clients == []
+
+    decline_confirmed = runner.invoke(
+        cli.app,
+        ["deal", "decline", "deal_000001", "--confirm", "--config", str(config_path)],
+    )
+    cancel_confirmed = runner.invoke(
+        cli.app,
+        ["deal", "cancel", "deal_000001", "--confirm", "--config", str(config_path)],
+    )
+
+    assert decline_confirmed.exit_code == 0
+    assert "deal_000001 declined" in decline_confirmed.output
+    assert cancel_confirmed.exit_code == 0
+    assert "deal_000001 canceled" in cancel_confirmed.output
+    assert created_clients[0].calls == [
+        (
+            "decline_deal",
+            {
+                "deal_id": "deal_000001",
+                "idempotency_key": "deal-decline-key",
+            },
+        )
+    ]
+    assert created_clients[1].calls == [
+        (
+            "cancel_deal",
+            {
+                "deal_id": "deal_000001",
+                "idempotency_key": "deal-cancel-key",
             },
         )
     ]

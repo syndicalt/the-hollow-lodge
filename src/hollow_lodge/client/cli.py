@@ -1387,9 +1387,23 @@ def deal_propose(
 @deal_app.command("accept")
 def deal_accept(
     deal_id: str = typer.Argument(..., help="Deal id."),
+    confirm: bool = typer.Option(False, "--confirm", help="Accept the deal on the server."),
     config: Path = typer.Option(DEFAULT_CONFIG_PATH, "--config", help="Local config path."),
 ) -> None:
     """Accept an escrowed artifact deal."""
+    if not confirm:
+        current = load_config(config)
+        deal = _deal_by_id(_api_from_config(current).deals(), deal_id)
+        viewer_crew_ids = [current.active_crew_id] if current.active_crew_id else []
+        packet = build_deal_acceptance_preview_packet(
+            {
+                "deal": deal,
+                "viewer_crew_ids": viewer_crew_ids,
+            }
+        )
+        typer.echo(packet.player_markdown)
+        typer.echo(f"preview only; no server mutation occurred; rerun with --confirm to accept {deal_id}")
+        return
     response = _api_from_config(load_config(config)).accept_deal(
         deal_id=deal_id,
         idempotency_key=new_command_key("deal-accept"),
@@ -1400,9 +1414,13 @@ def deal_accept(
 @deal_app.command("decline")
 def deal_decline(
     deal_id: str = typer.Argument(..., help="Deal id."),
+    confirm: bool = typer.Option(False, "--confirm", help="Decline the deal on the server."),
     config: Path = typer.Option(DEFAULT_CONFIG_PATH, "--config", help="Local config path."),
 ) -> None:
     """Decline an escrowed artifact deal."""
+    if not confirm:
+        typer.echo(f"no server mutation occurred; rerun with --confirm to decline {deal_id}")
+        return
     response = _api_from_config(load_config(config)).decline_deal(
         deal_id=deal_id,
         idempotency_key=new_command_key("deal-decline"),
@@ -1413,9 +1431,13 @@ def deal_decline(
 @deal_app.command("cancel")
 def deal_cancel(
     deal_id: str = typer.Argument(..., help="Deal id."),
+    confirm: bool = typer.Option(False, "--confirm", help="Cancel the deal on the server."),
     config: Path = typer.Option(DEFAULT_CONFIG_PATH, "--config", help="Local config path."),
 ) -> None:
     """Cancel an escrowed artifact deal."""
+    if not confirm:
+        typer.echo(f"no server mutation occurred; rerun with --confirm to cancel {deal_id}")
+        return
     response = _api_from_config(load_config(config)).cancel_deal(
         deal_id=deal_id,
         idempotency_key=new_command_key("deal-cancel"),

@@ -226,7 +226,7 @@ def test_deal_propose_uses_active_crew_and_passes_payload(tmp_path, monkeypatch)
 
 
 def test_deal_accept_prints_fulfilled(tmp_path, monkeypatch):
-    result, created_clients = _invoke_deal_action(tmp_path, monkeypatch, "accept")
+    result, created_clients = _invoke_deal_action(tmp_path, monkeypatch, "accept", confirm=True)
 
     assert result.exit_code == 0
     assert result.output == "deal_000001 fulfilled\n"
@@ -236,7 +236,7 @@ def test_deal_accept_prints_fulfilled(tmp_path, monkeypatch):
 
 
 def test_deal_decline_prints_declined(tmp_path, monkeypatch):
-    result, created_clients = _invoke_deal_action(tmp_path, monkeypatch, "decline")
+    result, created_clients = _invoke_deal_action(tmp_path, monkeypatch, "decline", confirm=True)
 
     assert result.exit_code == 0
     assert result.output == "deal_000001 declined\n"
@@ -246,7 +246,7 @@ def test_deal_decline_prints_declined(tmp_path, monkeypatch):
 
 
 def test_deal_cancel_prints_canceled(tmp_path, monkeypatch):
-    result, created_clients = _invoke_deal_action(tmp_path, monkeypatch, "cancel")
+    result, created_clients = _invoke_deal_action(tmp_path, monkeypatch, "cancel", confirm=True)
 
     assert result.exit_code == 0
     assert result.output == "deal_000001 canceled\n"
@@ -255,14 +255,18 @@ def test_deal_cancel_prints_canceled(tmp_path, monkeypatch):
     ]
 
 
-def _invoke_deal_action(tmp_path, monkeypatch, action: str):
+def _invoke_deal_action(tmp_path, monkeypatch, action: str, *, confirm: bool = False):
     created_clients: list[FakeApi] = []
     config = _write_config(tmp_path)
 
     monkeypatch.setattr(cli, "HollowLodgeApi", _fake_client_factory(created_clients))
     monkeypatch.setattr(cli, "new_command_key", lambda prefix: f"{prefix}-key")
 
-    result = runner.invoke(app, ["deal", action, "deal_000001", "--config", str(config)])
+    command = ["deal", action, "deal_000001"]
+    if confirm:
+        command.append("--confirm")
+    command.extend(["--config", str(config)])
+    result = runner.invoke(app, command)
     return result, created_clients
 
 
