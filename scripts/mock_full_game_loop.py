@@ -95,6 +95,10 @@ def run_mock(data_dir: str) -> dict[str, Any]:
         confirm=True,
     )
     conversations_packet = ada_session.render_conversations()
+    conversation_id = conversations_packet.agent_context["conversations"][0][
+        "conversation_id"
+    ]
+    thread_packet = ada_session.render_thread(conversation_id)
 
     deal_preview = ada_session.propose_deal(
         recipient_crew_id=moth["crew_id"],
@@ -273,6 +277,7 @@ def run_mock(data_dir: str) -> dict[str, Any]:
         reply_message_preview,
         reply_message,
         conversations_packet,
+        thread_packet,
         chapel_unlock_preview,
         chapel_unlock_packet,
         deal_preview,
@@ -359,6 +364,8 @@ def run_mock(data_dir: str) -> dict[str, Any]:
         f"chapel unlock action: {chapel_unlock_action['action_id']}",
         "visible conversations:",
         conversations_packet.player_markdown,
+        "Conversation thread:",
+        thread_packet.player_markdown,
         f"deal proposed: {proposed['deal_id']} {proposed['status']}",
         "visible deals:",
         deals_packet.player_markdown,
@@ -405,6 +412,7 @@ def run_mock(data_dir: str) -> dict[str, Any]:
         "codex_packets": [packet.surface for packet in codex_packets],
         "codex_mutations": codex_mutations,
         "final_dossier": final_dossier_packet.model_dump(mode="json"),
+        "thread": thread_packet.model_dump(mode="json"),
         "final_activity_delta": final_activity_delta_packet.model_dump(mode="json"),
         "final_what_now": final_what_now_packet.model_dump(mode="json"),
         "final_crew_activity": final_crew_activity_packet.model_dump(mode="json"),

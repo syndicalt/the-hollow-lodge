@@ -4110,6 +4110,28 @@ Expected verification:
 - `pytest tests/client/test_cli_commands.py tests/client/test_installer_script.py tests/client/test_codex_mcp_config.py tests/client/test_codex_session.py tests/test_mcp_server.py -q`
 - `pytest -q`
 
+### Slice 170: Full Loop Brokered Thread Proof Gate
+
+Status: completed.
+
+Strengthen the playable-loop smoke so brokered conversation discovery proves
+that a player can open the actual thread from Codex-visible state. The
+two-crew full-loop mock now renders `render_conversations`, selects the visible
+brokered crew-to-crew conversation, renders `render_thread`, prints the thread
+transcript, and returns the structured thread packet for e2e assertions.
+
+The e2e proof now verifies that the thread packet has the same conversation id
+as the conversation index, contains the two expected brokered messages in
+sequence, and does not expose raw visibility, server-only, or hidden event
+fields. This closes the gap between "conversation index exists" and "players
+can inspect the actual brokered exchange inside Codex."
+
+Expected verification:
+
+- `pytest tests/e2e/test_full_game_loop_with_escrow.py::test_full_game_loop_with_escrow_trade -q`
+- `pytest tests/e2e/test_full_game_loop_with_escrow.py tests/client/test_render_packets.py tests/client/test_codex_session.py tests/test_mcp_server.py tests/server/test_chat_routes.py -q`
+- `pytest -q`
+
 ## Completion Standard
 
 Each slice must:

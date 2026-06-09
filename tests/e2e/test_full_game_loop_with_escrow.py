@@ -34,6 +34,7 @@ def test_full_game_loop_with_escrow_trade(tmp_path):
         "mutation",
         "mutation",
         "conversations",
+        "thread",
         "mutation",
         "mutation",
         "mutation",
@@ -105,6 +106,7 @@ def test_full_game_loop_with_escrow_trade(tmp_path):
     assert "The Saint's False Finger" in "\n".join(result["lines"])
     assert "Visible artifacts:" in "\n".join(result["lines"])
     assert "Visible conversations:" in "\n".join(result["lines"])
+    assert "Conversation thread:" in "\n".join(result["lines"])
     assert "chapel unlock action: action_" in "\n".join(result["lines"])
     assert "Phase result:" in "\n".join(result["lines"])
     assert "What changed since sequence" in "\n".join(result["lines"])
@@ -113,7 +115,26 @@ def test_full_game_loop_with_escrow_trade(tmp_path):
     assert result["final_dossier"]["agent_context"]["dossier"]["packet_lead_replacements"]
     assert result["conversations"]["surface"] == "conversations"
     assert result["conversations"]["agent_context"]["conversation_count"] == 1
-    assert result["conversations"]["agent_context"]["conversations"][0]["message_count"] == 2
+    conversation = result["conversations"]["agent_context"]["conversations"][0]
+    assert conversation["message_count"] == 2
+    thread = result["thread"]
+    assert thread["surface"] == "thread"
+    assert thread["agent_context"]["message_count"] == 2
+    assert thread["agent_context"]["conversation_id"] == conversation["conversation_id"]
+    assert len(thread["agent_context"]["messages"]) == 2
+    assert [
+        message["sequence"] for message in thread["agent_context"]["messages"]
+    ] == sorted(message["sequence"] for message in thread["agent_context"]["messages"])
+    assert {
+        message["body"] for message in thread["agent_context"]["messages"]
+    } == {
+        "We can trade ledger leverage for chapel access before lock.",
+        "Send the ledger copy first; no public source claims until lock.",
+    }
+    assert f"Conversation: {thread['agent_context']['conversation_id']}" in thread["player_markdown"]
+    assert "visibility" not in str(thread)
+    assert "server_only" not in str(thread)
+    assert "hidden" not in str(thread)
     assert result["final_what_now"]["surface"] == "what_now"
     assert result["final_activity_delta"]["surface"] == "activity_delta"
     assert result["final_activity_delta"]["agent_context"]["checkpoint_sequence"] > 0
