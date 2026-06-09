@@ -201,6 +201,11 @@ def doctor(
         "--codex-config",
         help="Codex config.toml path.",
     ),
+    local_log: Path = typer.Option(
+        DEFAULT_LOCAL_LOG_PATH,
+        "--local-log",
+        help="Local perspective event log path used by Codex render surfaces.",
+    ),
 ) -> None:
     """Check local install, onboarding, MCP, and server reachability."""
     registered_config: ClientConfig | None = None
@@ -229,6 +234,7 @@ def doctor(
         )
         typer.echo(f"auth: {_player_auth_status(registered_config)}")
         typer.echo(f"inbox: {_player_inbox_status(registered_config)}")
+        typer.echo(f"event sync: {_player_event_sync_status(registered_config, local_log)}")
     elif pending_config is not None:
         typer.echo(
             f"player: pending {pending_config.request_id} "
@@ -1509,6 +1515,17 @@ def _player_inbox_status(config: ClientConfig) -> str:
     if isinstance(active_contracts, list):
         return f"ok active_contracts={len(active_contracts)}"
     return "ok"
+
+
+def _player_event_sync_status(config: ClientConfig, local_log_path: Path) -> str:
+    try:
+        events = _api_from_config(config).visible_events()
+        local_log = LocalEventLog(local_log_path)
+        synced = local_log.sync_visible_server_events(events)
+        max_sequence = local_log.max_server_sequence()
+    except Exception:
+        return "failed"
+    return f"ok synced={synced} max_sequence={max_sequence}"
 
 
 def _command_status(command: str) -> str:

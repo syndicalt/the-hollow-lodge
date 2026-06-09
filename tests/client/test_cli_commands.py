@@ -841,6 +841,7 @@ def test_doctor_reports_registered_player_and_mcp_without_secret_material(
     config_path = tmp_path / "config.json"
     onboarding_path = tmp_path / "onboarding.json"
     codex_config = tmp_path / "codex.toml"
+    local_log_path = tmp_path / "local.jsonl"
     codex_config.write_text(
         '[mcp_servers."the-hollow-lodge"]\ncommand = "hollow-lodge-mcp"\n',
         encoding="utf-8",
@@ -866,6 +867,8 @@ def test_doctor_reports_registered_player_and_mcp_without_secret_material(
             str(onboarding_path),
             "--codex-config",
             str(codex_config),
+            "--local-log",
+            str(local_log_path),
         ],
     )
 
@@ -875,15 +878,20 @@ def test_doctor_reports_registered_player_and_mcp_without_secret_material(
     assert "player: registered player_0001 display=Ada active_crew=crew_0001" in result.output
     assert "auth: ok player_0001" in result.output
     assert "inbox: ok active_contracts=1" in result.output
+    assert "event sync: ok synced=1 max_sequence=7" in result.output
     assert f"mcp: registered {codex_config}" in result.output
     assert "mcp config command: ok hollow-lodge-mcp" in result.output
     assert "mcp command: available hollow-lodge-mcp" in result.output
     assert "secret-token" not in result.output
+    assert "No public claims until lock." not in result.output
     assert created_clients[0].calls == [("health", {})]
     assert created_clients[1].token == "secret-token"
     assert created_clients[1].calls == [("me", {})]
     assert created_clients[2].token == "secret-token"
     assert created_clients[2].calls == [("inbox", {})]
+    assert created_clients[3].token == "secret-token"
+    assert created_clients[3].calls == [("visible_events", {})]
+    assert "No public claims until lock." in local_log_path.read_text(encoding="utf-8")
 
 
 def test_doctor_reports_pending_onboarding_without_contact(tmp_path, monkeypatch):
@@ -927,6 +935,7 @@ def test_doctor_reports_pending_onboarding_without_contact(tmp_path, monkeypatch
     assert "player: pending key_request_0001 status=pending display=Ada" in result.output
     assert "auth:" not in result.output
     assert "inbox:" not in result.output
+    assert "event sync:" not in result.output
     assert f"mcp: missing {codex_config}" in result.output
     assert "mcp config command: missing" in result.output
     assert "mcp command: missing hollow-lodge-mcp" in result.output
@@ -957,6 +966,8 @@ def test_doctor_reports_unconfigured_install_and_unreachable_server(tmp_path, mo
             str(tmp_path / "missing-onboarding.json"),
             "--codex-config",
             str(tmp_path / "missing-codex.toml"),
+            "--local-log",
+            str(tmp_path / "local.jsonl"),
         ],
     )
 
@@ -965,6 +976,7 @@ def test_doctor_reports_unconfigured_install_and_unreachable_server(tmp_path, mo
     assert "player: not configured" in result.output
     assert "auth:" not in result.output
     assert "inbox:" not in result.output
+    assert "event sync:" not in result.output
     assert "mcp: missing" in result.output
     assert "mcp config command: missing" in result.output
     assert "mcp command: missing hollow-lodge-mcp" in result.output
@@ -1041,6 +1053,8 @@ def test_doctor_reports_failed_saved_auth_without_leaking_error(tmp_path, monkey
             str(tmp_path / "missing-onboarding.json"),
             "--codex-config",
             str(tmp_path / "missing-codex.toml"),
+            "--local-log",
+            str(tmp_path / "local.jsonl"),
         ],
     )
 
@@ -1049,6 +1063,7 @@ def test_doctor_reports_failed_saved_auth_without_leaking_error(tmp_path, monkey
     assert "player: registered player_0001 display=Ada active_crew=-" in result.output
     assert "auth: failed" in result.output
     assert "inbox: ok active_contracts=1" in result.output
+    assert "event sync: ok synced=1 max_sequence=7" in result.output
     assert "secret-token" not in result.output
 
 
@@ -1084,6 +1099,8 @@ def test_doctor_reports_saved_auth_player_mismatch_without_leaking_token(tmp_pat
             str(tmp_path / "missing-onboarding.json"),
             "--codex-config",
             str(tmp_path / "missing-codex.toml"),
+            "--local-log",
+            str(tmp_path / "local.jsonl"),
         ],
     )
 
@@ -1091,6 +1108,7 @@ def test_doctor_reports_saved_auth_player_mismatch_without_leaking_token(tmp_pat
     assert "server: ok http://testserver" in result.output
     assert "auth: mismatch" in result.output
     assert "inbox: ok active_contracts=1" in result.output
+    assert "event sync: ok synced=1 max_sequence=7" in result.output
     assert "player_9999" not in result.output
     assert "secret-token" not in result.output
 
@@ -1127,12 +1145,15 @@ def test_doctor_reports_failed_inbox_without_leaking_error_or_payload(tmp_path, 
             str(tmp_path / "missing-onboarding.json"),
             "--codex-config",
             str(tmp_path / "missing-codex.toml"),
+            "--local-log",
+            str(tmp_path / "local.jsonl"),
         ],
     )
 
     assert result.exit_code == 0
     assert "auth: ok player_0001" in result.output
     assert "inbox: failed" in result.output
+    assert "event sync: ok synced=1 max_sequence=7" in result.output
     assert "secret-token" not in result.output
     assert "The Saint's False Finger" not in result.output
 
@@ -1172,14 +1193,62 @@ def test_doctor_reports_inbox_player_mismatch_without_leaking_returned_player(tm
             str(tmp_path / "missing-onboarding.json"),
             "--codex-config",
             str(tmp_path / "missing-codex.toml"),
+            "--local-log",
+            str(tmp_path / "local.jsonl"),
         ],
     )
 
     assert result.exit_code == 0
     assert "auth: ok player_0001" in result.output
     assert "inbox: mismatch" in result.output
+    assert "event sync: ok synced=1 max_sequence=7" in result.output
     assert "player_9999" not in result.output
     assert "The Saint's False Finger" not in result.output
+
+
+def test_doctor_reports_failed_event_sync_without_leaking_event_payload(tmp_path, monkeypatch):
+    runner = CliRunner()
+
+    class FailingEventsApi(FakeApi):
+        def visible_events(self):
+            self.calls.append(("visible_events", {}))
+            raise RuntimeError("event sync failed for secret-token and No public claims until lock.")
+
+    monkeypatch.setattr(cli, "HollowLodgeApi", FailingEventsApi)
+    monkeypatch.setattr(cli.shutil, "which", lambda command: f"/bin/{command}")
+    config_path = tmp_path / "config.json"
+    save_config(
+        config_path,
+        ClientConfig(
+            server_url="http://testserver",
+            player_id="player_0001",
+            token="secret-token",
+            display_name="Ada",
+            active_crew_id=None,
+        ),
+    )
+
+    result = runner.invoke(
+        cli.app,
+        [
+            "doctor",
+            "--config",
+            str(config_path),
+            "--onboarding-state",
+            str(tmp_path / "missing-onboarding.json"),
+            "--codex-config",
+            str(tmp_path / "missing-codex.toml"),
+            "--local-log",
+            str(tmp_path / "local.jsonl"),
+        ],
+    )
+
+    assert result.exit_code == 0
+    assert "auth: ok player_0001" in result.output
+    assert "inbox: ok active_contracts=1" in result.output
+    assert "event sync: failed" in result.output
+    assert "secret-token" not in result.output
+    assert "No public claims until lock." not in result.output
 
 
 def test_admin_invite_create_command_uses_admin_token_without_player_auth(tmp_path, monkeypatch):

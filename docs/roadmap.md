@@ -3481,6 +3481,29 @@ Expected verification:
 - `pytest tests/client/test_cli_commands.py tests/client/test_installer_script.py tests/client/test_codex_mcp_config.py -q`
 - `pytest -q`
 
+### Slice 141: Doctor Event Sync Cache Validation
+
+Status: completed.
+
+Harden the Codex render proof gate by making `hollow-lodge doctor` verify the
+authenticated visible-event feed and local perspective Eventloom cache path
+used by MCP render sessions. Registered configs now run a read-only server
+event fetch and sync visible events into the configured local JSONL cache,
+reporting only bounded counts and max sequence.
+
+The check is skipped for pending onboarding and unconfigured installs. Failure
+output remains redacted: bearer tokens, server error text, event bodies,
+contract titles, and other gameplay payload details are not printed. Operators
+can use `--local-log` to point the diagnostic at the exact cache path they want
+Codex render surfaces to use; the default remains the normal installed-client
+path.
+
+Expected verification:
+
+- `pytest tests/client/test_cli_commands.py::test_doctor_reports_registered_player_and_mcp_without_secret_material tests/client/test_cli_commands.py::test_doctor_reports_pending_onboarding_without_contact tests/client/test_cli_commands.py::test_doctor_reports_unconfigured_install_and_unreachable_server tests/client/test_cli_commands.py::test_doctor_reports_failed_saved_auth_without_leaking_error tests/client/test_cli_commands.py::test_doctor_reports_saved_auth_player_mismatch_without_leaking_token tests/client/test_cli_commands.py::test_doctor_reports_failed_inbox_without_leaking_error_or_payload tests/client/test_cli_commands.py::test_doctor_reports_inbox_player_mismatch_without_leaking_returned_player tests/client/test_cli_commands.py::test_doctor_reports_failed_event_sync_without_leaking_event_payload -q`
+- `pytest tests/client/test_cli_commands.py tests/client/test_installer_script.py tests/client/test_codex_mcp_config.py tests/client/test_local_log.py -q`
+- `pytest -q`
+
 ## Completion Standard
 
 Each slice must:
