@@ -1165,6 +1165,155 @@ def test_admin_event_log_commands_verify_and_export(tmp_path, monkeypatch):
     assert created_clients[1].calls == [("export_event_log", {"admin_token": "admin-secret"})]
 
 
+def test_admin_event_log_import_postgres_dry_run_uses_packaged_migration(
+    tmp_path,
+    monkeypatch,
+):
+    runner = CliRunner()
+    source = tmp_path / "events.json"
+    source.write_text('{"events":[]}', encoding="utf-8")
+    calls: list[dict] = []
+
+    def fake_migrate_event_log_to_postgres(*, source, database_url, dry_run):
+        calls.append(
+            {
+                "source": source,
+                "database_url": database_url,
+                "dry_run": dry_run,
+            }
+        )
+        return {"dry_run": True, "event_count": 0}
+
+    monkeypatch.setattr(
+        cli,
+        "migrate_event_log_to_postgres",
+        fake_migrate_event_log_to_postgres,
+    )
+
+    result = runner.invoke(
+        cli.app,
+        [
+            "admin",
+            "event-log-import-postgres",
+            "--source",
+            str(source),
+            "--dry-run",
+        ],
+    )
+
+    assert result.exit_code == 0
+    assert "event log import dry-run ok: 0 events" in result.output
+    assert calls == [{"source": source, "database_url": "", "dry_run": True}]
+
+
+def test_admin_event_log_import_postgres_prints_redacted_destination(
+    tmp_path,
+    monkeypatch,
+):
+    runner = CliRunner()
+    source = tmp_path / "events.json"
+    source.write_text('{"events":[]}', encoding="utf-8")
+    calls: list[dict] = []
+
+    def fake_migrate_event_log_to_postgres(*, source, database_url, dry_run):
+        calls.append(
+            {
+                "source": source,
+                "database_url": database_url,
+                "dry_run": dry_run,
+            }
+        )
+        return {
+            "dry_run": False,
+            "event_count": 3,
+            "database_url": "postgresql://user:***@host:5432/hollow_lodge",
+        }
+
+    monkeypatch.setattr(
+        cli,
+        "migrate_event_log_to_postgres",
+        fake_migrate_event_log_to_postgres,
+    )
+
+    result = runner.invoke(
+        cli.app,
+        [
+            "admin",
+            "event-log-import-postgres",
+            "--source",
+            str(source),
+            "--database-url",
+            "postgresql://user:secret@host:5432/hollow_lodge",
+        ],
+    )
+
+    assert result.exit_code == 0
+    assert (
+        "event log import ok: 3 events into "
+        "postgresql://user:***@host:5432/hollow_lodge"
+    ) in result.output
+    assert "postgresql://user:secret" not in result.output
+    assert calls == [
+        {
+            "source": source,
+            "database_url": "postgresql://user:secret@host:5432/hollow_lodge",
+            "dry_run": False,
+        }
+    ]
+
+
+def test_admin_event_log_import_postgres_reports_safe_migration_error(
+    tmp_path,
+    monkeypatch,
+):
+    runner = CliRunner()
+    source = tmp_path / "events.json"
+    source.write_text('{"events":[]}', encoding="utf-8")
+
+    def fake_migrate_event_log_to_postgres(*, source, database_url, dry_run):
+        raise RuntimeError("HOLLOW_LODGE_EVENT_DATABASE_URL or --database-url is required")
+
+    monkeypatch.setattr(
+        cli,
+        "migrate_event_log_to_postgres",
+        fake_migrate_event_log_to_postgres,
+    )
+
+    result = runner.invoke(
+        cli.app,
+        [
+            "admin",
+            "event-log-import-postgres",
+            "--source",
+            str(source),
+        ],
+    )
+
+    assert result.exit_code != 0
+    assert "HOLLOW_LODGE_EVENT_DATABASE_URL or --database-url is required" in result.output
+
+
+def test_admin_event_log_import_postgres_reports_invalid_jsonl_row(tmp_path):
+    runner = CliRunner()
+    source = tmp_path / "events.jsonl"
+    source.write_text('{"events":[]}\nnot-json\n', encoding="utf-8")
+
+    result = runner.invoke(
+        cli.app,
+        [
+            "admin",
+            "event-log-import-postgres",
+            "--source",
+            str(source),
+            "--dry-run",
+        ],
+    )
+
+    assert result.exit_code != 0
+    assert "invalid JSONL row 2" in result.output
+    assert "Traceback" not in result.output
+
+
 def test_admin_backend_smoke_command_reports_safe_backend_status(monkeypatch):
     runner = CliRunner()
     created_clients: list[FakeApi] = []

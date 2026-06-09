@@ -1954,6 +1954,25 @@ Expected verification:
 - `pytest tests/client/test_api.py tests/client/test_cli_commands.py tests/e2e/test_projection_backend_smoke.py -q`
 - `pytest -q`
 
+### Slice 78: Installed Event Log Migration Command
+
+Status: completed.
+
+Move the event-log Postgres migration implementation into installed package
+code and expose it through `hollow-lodge admin event-log-import-postgres`.
+Operators can now validate an admin export with `--dry-run` or import into an
+empty `HOLLOW_LODGE_EVENT_DATABASE_URL` destination without checking out the
+repository. The existing `scripts/migrate_event_log_to_postgres.py` remains as
+a thin wrapper over the package implementation, so script and installed-client
+migration behavior share source parsing, hash-chain validation, empty
+destination refusal, exact event preservation, and redacted destination output.
+
+Expected verification:
+
+- `pytest tests/client/test_cli_commands.py::test_admin_event_log_import_postgres_dry_run_uses_packaged_migration tests/client/test_cli_commands.py::test_admin_event_log_import_postgres_prints_redacted_destination tests/client/test_cli_commands.py::test_admin_event_log_import_postgres_reports_safe_migration_error tests/e2e/test_event_log_migration.py -q`
+- `pytest tests/client/test_cli_commands.py tests/e2e/test_event_log_migration.py tests/eventlog/test_postgres_store.py -q`
+- `pytest -q`
+
 ## Completion Standard
 
 Each slice must:

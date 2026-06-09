@@ -4,6 +4,7 @@ from pathlib import Path
 
 import pytest
 
+import hollow_lodge.client.event_log_migration as event_log_migration
 from hollow_lodge.domain.events import EventVisibility
 from hollow_lodge.eventlog.jsonl_store import EventLogIntegrityError, JsonlEventStore
 
@@ -72,7 +73,11 @@ def test_event_log_migration_imports_jsonl_without_leaking_password(
         encoding="utf-8",
     )
     fake = FakePostgresConnector()
-    monkeypatch.setattr(module.PostgresEventStore, "_connect", lambda self: fake())
+    monkeypatch.setattr(
+        event_log_migration.PostgresEventStore,
+        "_connect",
+        lambda self: fake(),
+    )
 
     result = module.migrate_event_log(
         source=source,

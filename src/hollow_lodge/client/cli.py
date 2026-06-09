@@ -14,6 +14,10 @@ from hollow_lodge.client.codex_mcp_config import (
     codex_mcp_server_registered,
     install_codex_mcp_server,
 )
+from hollow_lodge.client.event_log_migration import (
+    EVENT_DATABASE_URL_ENV,
+    migrate_event_log_to_postgres,
+)
 from hollow_lodge.client.config import (
     ClientConfig,
     OnboardingConfig,
@@ -388,6 +392,44 @@ def admin_event_log_export(
     output.parent.mkdir(parents=True, exist_ok=True)
     output.write_text(json.dumps(response, indent=2, sort_keys=True) + "\n", encoding="utf-8")
     typer.echo(f"wrote {output}")
+
+
+@admin_app.command("event-log-import-postgres")
+def admin_event_log_import_postgres(
+    source: Path = typer.Option(
+        ...,
+        "--source",
+        help="Event export file. Accepts admin export JSON, JSON array, or JSONL rows.",
+    ),
+    database_url: str = typer.Option(
+        "",
+        "--database-url",
+        envvar=EVENT_DATABASE_URL_ENV,
+        help=f"Destination Postgres URL. Defaults to ${EVENT_DATABASE_URL_ENV}.",
+    ),
+    dry_run: bool = typer.Option(
+        False,
+        "--dry-run",
+        help="Validate the source chain without writing to Postgres.",
+    ),
+) -> None:
+    """Import an exported authoritative event log into empty Postgres storage."""
+    try:
+        result = migrate_event_log_to_postgres(
+            source=source,
+            database_url=database_url,
+            dry_run=dry_run,
+        )
+    except RuntimeError as exc:
+        typer.echo(f"Error: {exc}", err=True)
+        raise typer.Exit(1) from exc
+    if result["dry_run"]:
+        typer.echo(f"event log import dry-run ok: {result['event_count']} events")
+        return
+    typer.echo(
+        "event log import ok: "
+        f"{result['event_count']} events into {result['database_url']}"
+    )
 
 
 @admin_app.command("backend-smoke")

@@ -259,11 +259,27 @@ python scripts/migrate_event_log_to_postgres.py \
   --dry-run
 ```
 
+Installed clients can run the same validator without a repository checkout:
+
+```sh
+hollow-lodge admin event-log-import-postgres \
+  --source backups/hollow-lodge-events.json \
+  --dry-run
+```
+
 Then import into an empty Postgres event-log database:
 
 ```sh
 HOLLOW_LODGE_EVENT_DATABASE_URL=postgresql://user:password@host:5432/database \
 python scripts/migrate_event_log_to_postgres.py \
+  --source backups/hollow-lodge-events.json
+```
+
+The installed-client equivalent is:
+
+```sh
+HOLLOW_LODGE_EVENT_DATABASE_URL=postgresql://user:password@host:5432/database \
+hollow-lodge admin event-log-import-postgres \
   --source backups/hollow-lodge-events.json
 ```
 
