@@ -3680,6 +3680,28 @@ Expected verification:
 - `pytest tests/client/test_cli_commands.py tests/client/test_installer_script.py tests/client/test_codex_mcp_config.py tests/client/test_local_log.py tests/client/test_codex_session.py -q`
 - `pytest -q`
 
+### Slice 150: Installer Custom Server Targeting
+
+Status: completed.
+
+Make the public installer usable for staging and self-hosted servers without
+changing the official-server default. `HOLLOW_LODGE_SERVER_URL=<url>` now
+causes `scripts/install.sh` and the hosted `site/install.sh` copy to pass the
+same server URL to both `hollow-lodge onboard` and the automatic
+`hollow-lodge doctor` readiness report.
+
+This keeps `curl | sh` installs compatible with the custom-server direction
+approved earlier in the architecture discussion. The script uses quoted
+arguments and does not eval the URL, preserving the existing installer safety
+boundary while letting operators verify the same target server through
+onboarding and doctor.
+
+Expected verification:
+
+- `pytest tests/client/test_installer_script.py -q`
+- `pytest tests/client/test_cli_commands.py tests/client/test_installer_script.py tests/client/test_codex_mcp_config.py tests/client/test_local_log.py tests/client/test_codex_session.py -q`
+- `pytest -q`
+
 ## Completion Standard
 
 Each slice must:

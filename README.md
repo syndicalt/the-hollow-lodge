@@ -31,6 +31,14 @@ report during scripted installation. You can run `hollow-lodge doctor` later to
 verify server reachability, saved auth, inbox readiness, Codex MCP
 registration, and Codex inbox render readiness without printing token or
 gameplay payload details.
+
+For staging or self-hosted servers, set the server before installing:
+
+```sh
+curl -fsSL https://www.thehollowlodge.com/install.sh \
+  | HOLLOW_LODGE_SERVER_URL=https://staging.example.invalid sh
+```
+
 Use `hollow-lodge doctor --strict` in automation when a registered player must
 be fully ready to play; pending or incomplete installs exit non-zero.
 

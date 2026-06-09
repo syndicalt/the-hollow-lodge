@@ -16,6 +16,7 @@ def test_install_script_bootstraps_cli_and_runs_onboarding():
     assert "server, auth, MCP, and Codex render readiness" in script
     assert "HOLLOW_LODGE_SKIP_ONBOARD" in script
     assert "HOLLOW_LODGE_SKIP_DOCTOR" in script
+    assert "HOLLOW_LODGE_SERVER_URL" in script
 
 
 def test_install_script_runs_onboarding_then_doctor_with_fake_commands(tmp_path):
@@ -138,6 +139,31 @@ def test_install_script_skip_doctor_keeps_onboarding_with_fake_commands(tmp_path
     ]
 
 
+def test_install_script_server_url_overrides_onboarding_and_doctor(tmp_path):
+    log_path = tmp_path / "commands.log"
+    bin_dir = _fake_installer_bin(tmp_path, log_path)
+
+    result = subprocess.run(
+        ["sh", str(Path("scripts/install.sh").resolve()), "--name", "Ada"],
+        check=False,
+        env={
+            **os.environ,
+            "PATH": f"{bin_dir}{os.pathsep}{os.environ['PATH']}",
+            "HOLLOW_LODGE_SERVER_URL": "https://staging.example.invalid",
+        },
+        text=True,
+        capture_output=True,
+    )
+
+    assert result.returncode == 0
+    assert log_path.read_text(encoding="utf-8").splitlines() == [
+        "uv tool install git+https://github.com/syndicalt/the-hollow-lodge.git --force",
+        "hollow-lodge codex install-mcp",
+        "hollow-lodge onboard --server https://staging.example.invalid --name Ada",
+        "hollow-lodge doctor --server https://staging.example.invalid",
+    ]
+
+
 def test_install_script_skip_onboard_still_runs_doctor_with_fake_commands(tmp_path):
     log_path = tmp_path / "commands.log"
     bin_dir = _fake_installer_bin(tmp_path, log_path)
@@ -160,6 +186,32 @@ def test_install_script_skip_onboard_still_runs_doctor_with_fake_commands(tmp_pa
         "uv tool install git+https://github.com/syndicalt/the-hollow-lodge.git --force",
         "hollow-lodge codex install-mcp",
         "hollow-lodge doctor",
+    ]
+
+
+def test_install_script_skip_onboard_keeps_server_url_for_doctor(tmp_path):
+    log_path = tmp_path / "commands.log"
+    bin_dir = _fake_installer_bin(tmp_path, log_path)
+
+    result = subprocess.run(
+        ["sh", str(Path("scripts/install.sh").resolve())],
+        check=False,
+        env={
+            **os.environ,
+            "PATH": f"{bin_dir}{os.pathsep}{os.environ['PATH']}",
+            "HOLLOW_LODGE_SKIP_ONBOARD": "1",
+            "HOLLOW_LODGE_SERVER_URL": "https://staging.example.invalid",
+        },
+        text=True,
+        capture_output=True,
+    )
+
+    assert result.returncode == 0
+    assert "Run 'hollow-lodge onboard' when ready." in result.stdout
+    assert log_path.read_text(encoding="utf-8").splitlines() == [
+        "uv tool install git+https://github.com/syndicalt/the-hollow-lodge.git --force",
+        "hollow-lodge codex install-mcp",
+        "hollow-lodge doctor --server https://staging.example.invalid",
     ]
 
 
@@ -225,10 +277,12 @@ def test_operations_docs_describe_current_doctor_readiness_checks():
     assert "exits non-zero unless a registered player is fully ready" in operations
     assert "runs a non-strict `hollow-lodge doctor` readiness report" in operations
     assert "HOLLOW_LODGE_SKIP_DOCTOR=1" in operations
+    assert "HOLLOW_LODGE_SERVER_URL=https://staging.example.invalid sh" in operations
     assert "runs a redacted `hollow-lodge doctor` readiness" in readme
     assert "saved auth, inbox readiness" in readme
     assert "Codex MCP" in readme
     assert "doctor --strict" in readme
+    assert "HOLLOW_LODGE_SERVER_URL=https://staging.example.invalid sh" in readme
 
 
 def test_codex_play_guide_describes_doctor_and_mcp_render_readiness():
@@ -238,6 +292,7 @@ def test_codex_play_guide_describes_doctor_and_mcp_render_readiness():
     assert "hollow-lodge doctor --strict" in guide
     assert "installer already runs the non-strict form" in guide
     assert "HOLLOW_LODGE_SKIP_DOCTOR=1" in guide
+    assert "HOLLOW_LODGE_SERVER_URL=https://staging.example.invalid sh" in guide
     assert "saved auth" in guide
     assert "local event-sync cache" in guide
     assert "codex inbox render: ok surface=inbox" in guide

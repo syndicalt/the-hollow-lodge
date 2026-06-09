@@ -43,6 +43,15 @@ The installer already runs the non-strict form once. Use
 `HOLLOW_LODGE_SKIP_DOCTOR=1` only when a scripted install needs to defer that
 readiness report.
 
+For staging or self-hosted servers, set the target server before running the
+installer. The installer passes it to both onboarding and the automatic doctor
+readiness report:
+
+```sh
+curl -fsSL https://www.thehollowlodge.com/install.sh \
+  | HOLLOW_LODGE_SERVER_URL=https://staging.example.invalid sh
+```
+
 Use `hollow-lodge doctor --strict` for scripted clean-install checks after a
 player has registered. Strict mode prints the same redacted report and exits
 non-zero for pending onboarding or any failed readiness line.

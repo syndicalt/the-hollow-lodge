@@ -725,6 +725,15 @@ request and sends them the generated invite code.
 Set `HOLLOW_LODGE_SKIP_DOCTOR=1` to suppress the automatic readiness report in
 scripts; run `hollow-lodge doctor` manually afterward.
 
+For staging or self-hosted servers, set the server URL before running the
+installer. The installer passes it to both onboarding and the automatic doctor
+readiness report:
+
+```sh
+curl -fsSL https://www.thehollowlodge.com/install.sh \
+  | HOLLOW_LODGE_SERVER_URL=https://staging.example.invalid sh
+```
+
 Verify the local install without exposing token or invite material:
 
 ```sh
