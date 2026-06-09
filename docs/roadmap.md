@@ -3638,6 +3638,27 @@ Expected verification:
 - `pytest tests/client/test_cli_commands.py tests/client/test_installer_script.py tests/client/test_codex_mcp_config.py tests/client/test_local_log.py tests/client/test_codex_session.py -q`
 - `pytest -q`
 
+### Slice 148: Installer Failure Mode Smoke Coverage
+
+Status: completed.
+
+Harden the executable installer proof gate for negative paths. The installer
+tests now run `scripts/install.sh` in hermetic failure scenarios, proving that
+a clean machine without `uv` receives the intended bounded prerequisite message
+and exits before install, and that failed MCP registration or onboarding stops
+the flow before later steps such as onboarding or the doctor readiness report
+can produce misleading partial-success output.
+
+The tests preserve the production shell behavior instead of mocking the script
+internals: `set -e` remains responsible for stopping on command failure, while
+fake `uv` and `hollow-lodge` commands record the exact command order.
+
+Expected verification:
+
+- `pytest tests/client/test_installer_script.py -q`
+- `pytest tests/client/test_cli_commands.py tests/client/test_installer_script.py tests/client/test_codex_mcp_config.py tests/client/test_local_log.py tests/client/test_codex_session.py -q`
+- `pytest -q`
+
 ## Completion Standard
 
 Each slice must:

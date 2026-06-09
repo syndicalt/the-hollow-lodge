@@ -43,6 +43,76 @@ def test_install_script_runs_onboarding_then_doctor_with_fake_commands(tmp_path)
     ]
 
 
+def test_install_script_fails_before_install_when_uv_is_missing(tmp_path):
+    bin_dir = tmp_path / "bin"
+    bin_dir.mkdir()
+
+    result = subprocess.run(
+        ["/bin/sh", str(Path("scripts/install.sh").resolve())],
+        check=False,
+        env={
+            **os.environ,
+            "PATH": str(bin_dir),
+        },
+        text=True,
+        capture_output=True,
+    )
+
+    assert result.returncode == 1
+    assert "uv is required to install The Hollow Lodge CLI." in result.stdout
+    assert "Install uv first:" in result.stdout
+    assert result.stderr == ""
+
+
+def test_install_script_stops_when_mcp_install_fails(tmp_path):
+    log_path = tmp_path / "commands.log"
+    bin_dir = _fake_installer_bin(tmp_path, log_path)
+
+    result = subprocess.run(
+        ["sh", str(Path("scripts/install.sh").resolve()), "--name", "Ada"],
+        check=False,
+        env={
+            **os.environ,
+            "PATH": f"{bin_dir}{os.pathsep}{os.environ['PATH']}",
+            "HOLLOW_LODGE_FAIL_ARGS": "codex install-mcp",
+            "HOLLOW_LODGE_FAIL_CODE": "42",
+        },
+        text=True,
+        capture_output=True,
+    )
+
+    assert result.returncode == 42
+    assert log_path.read_text(encoding="utf-8").splitlines() == [
+        "uv tool install git+https://github.com/syndicalt/the-hollow-lodge.git --force",
+        "hollow-lodge codex install-mcp",
+    ]
+
+
+def test_install_script_stops_when_onboarding_fails(tmp_path):
+    log_path = tmp_path / "commands.log"
+    bin_dir = _fake_installer_bin(tmp_path, log_path)
+
+    result = subprocess.run(
+        ["sh", str(Path("scripts/install.sh").resolve()), "--name", "Ada"],
+        check=False,
+        env={
+            **os.environ,
+            "PATH": f"{bin_dir}{os.pathsep}{os.environ['PATH']}",
+            "HOLLOW_LODGE_FAIL_ARGS": "onboard --name Ada",
+            "HOLLOW_LODGE_FAIL_CODE": "43",
+        },
+        text=True,
+        capture_output=True,
+    )
+
+    assert result.returncode == 43
+    assert log_path.read_text(encoding="utf-8").splitlines() == [
+        "uv tool install git+https://github.com/syndicalt/the-hollow-lodge.git --force",
+        "hollow-lodge codex install-mcp",
+        "hollow-lodge onboard --name Ada",
+    ]
+
+
 def test_install_script_skip_doctor_keeps_onboarding_with_fake_commands(tmp_path):
     log_path = tmp_path / "commands.log"
     bin_dir = _fake_installer_bin(tmp_path, log_path)
@@ -96,17 +166,28 @@ def test_install_script_skip_onboard_still_runs_doctor_with_fake_commands(tmp_pa
 def _fake_installer_bin(tmp_path: Path, log_path: Path) -> Path:
     bin_dir = tmp_path / "bin"
     bin_dir.mkdir()
-    for command in ("uv", "hollow-lodge"):
-        executable = bin_dir / command
-        executable.write_text(
-            "#!/usr/bin/env sh\n"
-            f"printf '%s' '{command}' >> {log_path}\n"
-            "for arg in \"$@\"; do printf ' %s' \"$arg\" >> "
-            f"{log_path}; done\n"
-            f"printf '\\n' >> {log_path}\n",
-            encoding="utf-8",
-        )
-        executable.chmod(0o755)
+    uv = bin_dir / "uv"
+    uv.write_text(
+        "#!/usr/bin/env sh\n"
+        f"printf '%s' 'uv' >> {log_path}\n"
+        f"for arg in \"$@\"; do printf ' %s' \"$arg\" >> {log_path}; done\n"
+        f"printf '\\n' >> {log_path}\n",
+        encoding="utf-8",
+    )
+    uv.chmod(0o755)
+
+    hollow_lodge = bin_dir / "hollow-lodge"
+    hollow_lodge.write_text(
+        "#!/usr/bin/env sh\n"
+        f"printf '%s' 'hollow-lodge' >> {log_path}\n"
+        f"for arg in \"$@\"; do printf ' %s' \"$arg\" >> {log_path}; done\n"
+        f"printf '\\n' >> {log_path}\n"
+        "if [ \"$*\" = \"${HOLLOW_LODGE_FAIL_ARGS:-__none__}\" ]; then\n"
+        "  exit \"${HOLLOW_LODGE_FAIL_CODE:-1}\"\n"
+        "fi\n",
+        encoding="utf-8",
+    )
+    hollow_lodge.chmod(0o755)
     return bin_dir
 
 
