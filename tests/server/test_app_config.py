@@ -6,6 +6,7 @@ import pytest
 from fastapi.testclient import TestClient
 
 from hollow_lodge.server.app import create_app
+from hollow_lodge.server.projection_store import SCHEMA_VERSION
 
 
 def test_default_data_dir_can_be_set_from_environment(tmp_path, monkeypatch):
@@ -114,7 +115,7 @@ def test_postgres_projection_database_url_selects_postgres_backend(
     )
     fake = FakePostgresConnector(
         meta_rows=[
-            ("schema_version", "1"),
+            ("schema_version", SCHEMA_VERSION),
             ("last_sequence", "100"),
             ("contract_count", "1"),
             ("crew_count", "0"),
@@ -141,6 +142,8 @@ def test_postgres_projection_database_url_selects_postgres_backend(
     assert projection["lag"] == 0
     assert "secret" not in str(projection)
     assert "create table if not exists projection_meta" in all_sql
+    assert "create table if not exists projection_schema_migrations" in all_sql
+    assert "insert into projection_schema_migrations" in all_sql
     assert "insert into contract_board" in all_sql
     assert any(connection.committed for connection in fake.connections)
 
@@ -193,7 +196,7 @@ def test_require_postgres_projection_allows_postgres_backend(
     )
     fake = FakePostgresConnector(
         meta_rows=[
-            ("schema_version", "1"),
+            ("schema_version", SCHEMA_VERSION),
             ("last_sequence", "100"),
             ("contract_count", "1"),
             ("crew_count", "0"),

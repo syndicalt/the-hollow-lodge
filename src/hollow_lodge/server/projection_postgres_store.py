@@ -6,6 +6,7 @@ from urllib.parse import urlparse, urlunparse
 
 from hollow_lodge.domain.events import GameEvent
 from hollow_lodge.server.projection_store import (
+    PROJECTION_SCHEMA_MIGRATIONS,
     SCHEMA_VERSION,
     _artifact_scope_key,
     _visibility_matches,
@@ -275,6 +276,17 @@ class PostgresProjectionStore:
                 scoped_artifact_count = connection.execute(
                     "select count(*) from artifact_scoped_surface"
                 ).fetchone()[0]
+                schema_migration_count = connection.execute(
+                    "select count(*) from projection_schema_migrations"
+                ).fetchone()[0]
+                latest_schema_migration_row = connection.execute(
+                    """
+                    select applied_version
+                    from projection_schema_migrations
+                    order by applied_version::integer desc
+                    limit 1
+                    """
+                ).fetchone()
         except Exception:
             authoritative = authoritative_last_sequence or 0
             return {
@@ -291,6 +303,8 @@ class PostgresProjectionStore:
                 "deal_count": 0,
                 "crew_legacy_count": 0,
                 "proof_dossier_count": 0,
+                "schema_migration_count": 0,
+                "latest_schema_migration": None,
                 "visible_event_count": 0,
                 "public_artifact_count": 0,
                 "scoped_artifact_count": 0,
@@ -319,6 +333,12 @@ class PostgresProjectionStore:
             ),
             "proof_dossier_count": int(
                 meta.get("proof_dossier_count", str(proof_dossier_count))
+            ),
+            "schema_migration_count": int(schema_migration_count),
+            "latest_schema_migration": (
+                latest_schema_migration_row[0]
+                if latest_schema_migration_row is not None
+                else None
             ),
             "visible_event_count": int(
                 meta.get("visible_event_count", str(visible_event_count))
@@ -492,6 +512,24 @@ class PostgresProjectionStore:
             )
             """
         )
+        connection.execute(
+            """
+            create table if not exists projection_schema_migrations (
+                applied_version text primary key,
+                description text not null
+            )
+            """
+        )
+        for version, description in PROJECTION_SCHEMA_MIGRATIONS:
+            connection.execute(
+                """
+                insert into projection_schema_migrations (applied_version, description)
+                values (%s, %s)
+                on conflict (applied_version) do update set
+                    description = excluded.description
+                """,
+                (version, description),
+            )
         connection.execute(
             """
             create table if not exists contract_board (

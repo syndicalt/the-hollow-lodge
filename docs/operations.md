@@ -35,7 +35,8 @@ tokens.
 
 The authoritative game record is still the append-only Eventloom JSONL file.
 The projection database is a read-side cache for contract boards, crew
-summaries, artifacts, deals, visible events, and legacy blocks.
+summaries, artifacts, deals, visible events, legacy blocks, and current proof
+dossiers.
 
 By default, the server stores projections at:
 
@@ -69,7 +70,10 @@ path.
 
 Only the projection database moves to Postgres. The Eventloom JSONL log remains
 authoritative. `/diagnostics` reports the active projection backend and redacts
-the configured Postgres password before returning operational status.
+the configured Postgres password before returning operational status. Projection
+diagnostics also include the current projection schema version, migration count,
+and latest applied migration so operators can verify schema drift before
+enabling projection reads.
 
 Before any projection backend cutover, verify the current backend:
 

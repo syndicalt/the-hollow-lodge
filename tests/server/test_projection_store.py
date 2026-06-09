@@ -11,6 +11,10 @@ from hollow_lodge.server.projections import (
     contract_board_from_events,
     crew_summaries_from_events,
 )
+from hollow_lodge.server.projection_store import (
+    PROJECTION_SCHEMA_MIGRATIONS,
+    SCHEMA_VERSION,
+)
 from hollow_lodge.server.seed_data import STARTER_CONTRACT
 
 
@@ -235,6 +239,29 @@ def test_dossier_route_falls_back_when_projected_dossier_is_stale(
 
     assert response.status_code == 200
     assert response.json()["dossier_id"] == f"dossier_{crew['crew_id']}"
+
+
+def test_projection_store_records_schema_migration_ledger(tmp_path):
+    client = TestClient(create_app(data_dir=tmp_path, invite_codes=["a"]))
+    projection = client.get("/diagnostics").json()["data"]["projection_db"]
+
+    with sqlite3.connect(tmp_path / "server-projections.sqlite3") as connection:
+        migrations = connection.execute(
+            """
+            select applied_version, description
+            from projection_schema_migrations
+            order by cast(applied_version as integer)
+            """
+        ).fetchall()
+        meta_rows = dict(
+            connection.execute("select key, value from projection_meta").fetchall()
+        )
+
+    assert migrations == list(PROJECTION_SCHEMA_MIGRATIONS)
+    assert meta_rows["schema_version"] == SCHEMA_VERSION
+    assert projection["schema_version"] == int(SCHEMA_VERSION)
+    assert projection["schema_migration_count"] == len(PROJECTION_SCHEMA_MIGRATIONS)
+    assert projection["latest_schema_migration"] == SCHEMA_VERSION
 
 
 def test_contract_board_route_reads_fresh_projection_when_enabled(tmp_path, monkeypatch):

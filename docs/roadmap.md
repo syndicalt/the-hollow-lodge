@@ -1631,6 +1631,25 @@ Expected verification:
 - `pytest tests/server/test_projection_store.py tests/server/test_proof_routes.py tests/server/test_packet_lead.py tests/server/test_crew_routes.py tests/server/test_contract_seed.py tests/client/test_render_packets.py tests/client/test_codex_session.py tests/test_mcp_server.py -q`
 - `pytest -q`
 
+### Slice 65: Projection Schema Migration Ledger
+
+Status: completed.
+
+Add production database discipline to the projection read side without moving
+authority out of the Eventloom JSONL log. SQLite and Postgres projection stores
+now maintain a `projection_schema_migrations` ledger with the applied
+projection schema versions and descriptions, and projection diagnostics expose
+`schema_version`, `schema_migration_count`, and `latest_schema_migration`.
+The current projection schema version is `2`, covering the initial read models
+and the proof dossier read model. The operations guide now documents using
+diagnostics to verify projection schema drift before hosted cutovers.
+
+Expected verification:
+
+- `pytest tests/server/test_projection_store.py::test_projection_store_records_schema_migration_ledger tests/server/test_app_config.py::test_postgres_projection_database_url_selects_postgres_backend tests/server/test_app_config.py::test_require_postgres_projection_allows_postgres_backend -q`
+- `pytest tests/server/test_projection_store.py tests/server/test_app_config.py tests/e2e/test_projection_backend_smoke.py -q`
+- `pytest -q`
+
 ## Completion Standard
 
 Each slice must:
