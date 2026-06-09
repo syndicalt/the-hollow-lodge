@@ -60,6 +60,8 @@ def test_full_game_loop_with_escrow_trade(tmp_path):
         "mutation",
         "mutation",
         "mutation",
+        "mutation",
+        "mutation",
         "crew_board",
         "dossier",
         "mutation",
@@ -86,6 +88,8 @@ def test_full_game_loop_with_escrow_trade(tmp_path):
         {"operation": "dossier_cite_artifact", "confirmed": True},
         {"operation": "dossier_cite_artifact", "confirmed": False},
         {"operation": "dossier_cite_artifact", "confirmed": True},
+        {"operation": "dossier_contribute", "confirmed": False},
+        {"operation": "dossier_contribute", "confirmed": True},
         {"operation": "dossier_update_framing", "confirmed": False},
         {"operation": "dossier_update_framing", "confirmed": True},
         {"operation": "dossier_update_framing", "confirmed": False},
@@ -113,6 +117,27 @@ def test_full_game_loop_with_escrow_trade(tmp_path):
     assert "What Now: Ada Corelumen" in "\n".join(result["lines"])
     assert result["final_dossier"]["agent_context"]["dossier"]["packet_lead_votes"]
     assert result["final_dossier"]["agent_context"]["dossier"]["packet_lead_replacements"]
+    contributions = result["final_dossier"]["agent_context"]["dossier"]["member_contributions"]
+    assert contributions == [
+        {
+            "player_id": result["grace_player_id"],
+            "note": "Chapel debt mark matches the auction clerk's corrected lot note.",
+            "evidence_ids": [result["gilt_received_artifact_id"]],
+        }
+    ]
+    assert result["final_dossier"]["agent_context"]["contribution_count"] == 1
+    assert (
+        f"- {result['grace_player_id']}: Chapel debt mark matches"
+        in result["final_dossier"]["player_markdown"]
+    )
+    assert all(
+        set(contribution) == {"player_id", "note", "evidence_ids"}
+        for contribution in contributions
+    )
+    assert "visibility" not in str(result["final_dossier"])
+    assert "server_only" not in str(result["final_dossier"])
+    assert "hidden_truth" not in str(result["final_dossier"])
+    assert "accepted_output" not in str(result["final_dossier"])
     assert result["conversations"]["surface"] == "conversations"
     assert result["conversations"]["agent_context"]["conversation_count"] == 1
     conversation = result["conversations"]["agent_context"]["conversations"][0]

@@ -4132,6 +4132,28 @@ Expected verification:
 - `pytest tests/e2e/test_full_game_loop_with_escrow.py tests/client/test_render_packets.py tests/client/test_codex_session.py tests/test_mcp_server.py tests/server/test_chat_routes.py -q`
 - `pytest -q`
 
+### Slice 171: Full Loop Dossier Contribution Proof Gate
+
+Status: completed.
+
+Strengthen the playable-loop smoke so the Milestone 1 "contribute to a
+dossier" requirement is exercised through the Codex session path, not only by
+artifact citations and framing edits. The two-crew full-loop mock now has a
+Gilt crew member preview and confirm `dossier_contribute` before phase lock,
+using the traded artifact copy as evidence.
+
+The e2e proof verifies both preview and confirmed contribution mutation packets,
+then asserts the final dossier render includes exactly the shaped contribution
+fields: player id, note, and evidence ids. The test also checks contribution
+counts, player markdown, and common raw-event leak markers so the proof packet
+remains Codex-visible without exposing server-only state.
+
+Expected verification:
+
+- `pytest tests/e2e/test_full_game_loop_with_escrow.py::test_full_game_loop_with_escrow_trade -q`
+- `pytest tests/e2e/test_full_game_loop_with_escrow.py tests/client/test_render_packets.py tests/client/test_codex_session.py tests/client/test_api.py tests/test_mcp_server.py tests/server/test_proof_routes.py tests/server/test_packet_lead.py -q`
+- `pytest -q`
+
 ## Completion Standard
 
 Each slice must:

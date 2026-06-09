@@ -166,6 +166,24 @@ def run_mock(data_dir: str) -> dict[str, Any]:
         confirm=True,
         crew_id=moth["crew_id"],
     )
+    grace_session = _codex_session(
+        client,
+        data_dir=Path(data_dir),
+        player=grace,
+        active_crew_id=gilt["crew_id"],
+    )
+    grace_contribution_preview = grace_session.dossier_contribute(
+        note="Chapel debt mark matches the auction clerk's corrected lot note.",
+        evidence_ids=[gilt_received],
+        confirm=False,
+        crew_id=gilt["crew_id"],
+    )
+    grace_contribution_packet = grace_session.dossier_contribute(
+        note="Chapel debt mark matches the auction clerk's corrected lot note.",
+        evidence_ids=[gilt_received],
+        confirm=True,
+        crew_id=gilt["crew_id"],
+    )
     gilt_framing_preview = ada_session.dossier_update_framing(
         claim="The finger is a false relic backed by a compromised chain.",
         reasoning="The chapel debt mark gives motive; the ledger undermines clean provenance.",
@@ -197,12 +215,6 @@ def run_mock(data_dir: str) -> dict[str, Any]:
         provenance_concerns="Received copy requires independent verification.",
         confirm=True,
         crew_id=moth["crew_id"],
-    )
-    grace_session = _codex_session(
-        client,
-        data_dir=Path(data_dir),
-        player=grace,
-        active_crew_id=gilt["crew_id"],
     )
     grace_vote_preview = grace_session.vote_packet_lead(
         player_id=grace["player_id"],
@@ -291,6 +303,8 @@ def run_mock(data_dir: str) -> dict[str, Any]:
         gilt_citation_packet,
         moth_citation_preview,
         moth_citation_packet,
+        grace_contribution_preview,
+        grace_contribution_packet,
         gilt_framing_preview,
         gilt_framing_packet,
         moth_framing_preview,
@@ -376,6 +390,8 @@ def run_mock(data_dir: str) -> dict[str, Any]:
         f"deal accepted: {fulfilled['deal_id']} {fulfilled['status']}",
         f"gilt received: {gilt_received}",
         f"moth received: {moth_received}",
+        "grace dossier contribution:",
+        grace_contribution_packet.player_markdown,
         f"actions submitted: {gilt_action['action_id']} {moth_action['action_id']}",
         f"gilt board deals: {', '.join(deal['status'] for deal in gilt_board['deals'])}",
         f"moth board deals: {', '.join(deal['status'] for deal in moth_board['deals'])}",
@@ -403,6 +419,8 @@ def run_mock(data_dir: str) -> dict[str, Any]:
     return {
         "deal": fulfilled,
         "moth_crew_id": moth["crew_id"],
+        "grace_player_id": grace["player_id"],
+        "gilt_received_artifact_id": gilt_received,
         "gilt_board": gilt_board,
         "moth_board": moth_board,
         "reveal": reveal,
@@ -610,6 +628,23 @@ class _TestClientCodexApi:
                 "artifact_id": artifact_id,
                 "claim": claim,
                 "quote": quote,
+            },
+            idempotency_key=idempotency_key,
+        )
+
+    def add_dossier_contribution(
+        self,
+        *,
+        crew_id: str,
+        note: str,
+        evidence_ids: list[str] | tuple[str, ...],
+        idempotency_key: str,
+    ) -> dict[str, Any]:
+        return self._post(
+            f"/proofs/dossiers/{crew_id}/contributions",
+            json={
+                "note": note,
+                "evidence_ids": list(evidence_ids),
             },
             idempotency_key=idempotency_key,
         )
