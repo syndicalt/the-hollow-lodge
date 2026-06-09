@@ -7,7 +7,12 @@ from urllib.parse import urlparse, urlunparse
 
 from pydantic import ValidationError
 
-from hollow_lodge.domain.events import EventVisibility, GameEvent, canonical_json_bytes
+from hollow_lodge.domain.events import (
+    EventVisibility,
+    GameEvent,
+    canonical_json_bytes,
+    compute_event_hash,
+)
 from hollow_lodge.eventlog.jsonl_store import (
     EventLogIntegrityError,
     EventStore,
@@ -61,6 +66,8 @@ class PostgresEventStore(EventStore):
             else:
                 fingerprint = None
             latest = chain_rows[-1] if chain_rows else None
+            if latest is not None:
+                self._validate_head_event(connection, latest)
             previous_hash = latest["event_hash"] if latest is not None else None
             event = GameEvent.new(
                 sequence=(latest["sequence"] + 1 if latest is not None else 1),
@@ -338,6 +345,40 @@ class PostgresEventStore(EventStore):
             return None
         return _event_from_row(row[0], row_number="idempotency lookup")
 
+    def _validate_head_event(
+        self,
+        connection: Any,
+        latest: dict[str, Any],
+    ) -> None:
+        row = connection.execute(
+            """
+            select event_json
+            from event_log
+            where sequence = %s
+            """,
+            (latest["sequence"],),
+        ).fetchone()
+        if row is None:
+            raise EventLogIntegrityError(
+                f"missing event payload at sequence {latest['sequence']}"
+            )
+        event = _event_from_row(row[0], row_number=latest["sequence"])
+        if event.sequence != latest["sequence"]:
+            raise EventLogIntegrityError(
+                f"event payload sequence {event.sequence} does not match "
+                f"metadata sequence {latest['sequence']}"
+            )
+        if event.event_hash != latest["event_hash"]:
+            raise EventLogIntegrityError(
+                f"event payload hash does not match metadata at sequence "
+                f"{latest['sequence']}"
+            )
+        if event.previous_hash != latest["previous_hash"]:
+            raise EventLogIntegrityError(
+                f"event payload previous_hash does not match metadata at "
+                f"sequence {latest['sequence']}"
+            )
+
     def _validate_chain_metadata(self, rows: list[dict[str, Any]]) -> None:
         previous_hash: str | None = None
         expected_sequence = 1
@@ -378,9 +419,15 @@ def _load_json(value: Any) -> Any:
 
 def _event_from_row(value: Any, *, row_number: int | str) -> GameEvent:
     try:
-        return GameEvent.model_validate(_load_json(value))
+        event = GameEvent.model_validate(_load_json(value))
     except ValidationError as exc:
         raise EventLogIntegrityError(f"invalid event row {row_number}") from exc
+    expected_hash = compute_event_hash(
+        event.model_dump(mode="json", exclude={"event_hash"})
+    )
+    if event.event_hash != expected_hash:
+        raise EventLogIntegrityError(f"invalid event hash at sequence {event.sequence}")
+    return event
 
 
 def _redact_database_url(database_url: str) -> str:

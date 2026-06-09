@@ -2644,6 +2644,27 @@ Expected verification:
 - `pytest tests/eventlog/test_postgres_store.py tests/eventlog/test_jsonl_store.py tests/client/test_cli_commands.py tests/server/test_app_config.py tests/e2e/test_projection_backend_smoke.py -q`
 - `pytest -q`
 
+### Slice 104: Postgres Event-Log Head Payload Guard
+
+Status: completed.
+
+Strengthen the hosted authoritative Eventloom append path after the metadata
+fast path. Postgres appends now validate the current head event payload against
+its stored event hash and metadata before extending a non-empty chain. Targeted
+idempotent command replays also validate the returned event payload hash before
+returning the existing event.
+
+This keeps Slice 103's no-full-replay write path intact while preventing a new
+write from extending a chain whose latest payload row has been tampered with.
+Full-log payload/hash validation remains on read, verify, export, import, and
+manifest workflows.
+
+Expected verification:
+
+- `pytest tests/eventlog/test_postgres_store.py -q`
+- `pytest tests/eventlog/test_postgres_store.py tests/eventlog/test_jsonl_store.py tests/client/test_cli_commands.py tests/server/test_app_config.py tests/e2e/test_projection_backend_smoke.py -q`
+- `pytest -q`
+
 ## Completion Standard
 
 Each slice must:

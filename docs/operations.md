@@ -77,6 +77,11 @@ and append from the current chain head without replaying full event payloads on
 every write. Full payload/hash validation remains available through read,
 verify, export, and import paths.
 
+Before appending to a non-empty Postgres event log, the server also validates
+the current head event payload against its stored hash and metadata. This
+prevents a new write from extending a chain whose latest payload has been
+tampered with, while still avoiding full-log payload replay on the write path.
+
 ## Projection Database
 
 The authoritative game record remains the append-only Eventloom log.
