@@ -4579,6 +4579,32 @@ Expected verification:
 - `pytest tests/e2e/test_mcp_codex_play_loop.py tests/e2e/test_action_revision_loop.py tests/test_mcp_server.py tests/client/test_codex_session.py tests/client/test_render_packets.py tests/server/test_action_routes.py tests/server/test_phase_resolution.py -q`
 - `pytest -q`
 
+### Slice 189: Actual MCP Packet Lead Vote Proof Gate
+
+Status: completed.
+
+Extend the real MCP-boundary play loop so Packet Lead governance is exercised
+inside Codex rather than only through session-level mocks. The actual MCP e2e
+now registers Grace as a second Gilt crew member, renders her crew board to
+surface the `packet_lead_vote` pending decision, previews and confirms
+`vote_packet_lead` as Grace, previews and confirms the majority vote as Ada,
+and renders the dossier after replacement.
+
+The proof verifies the non-lead pending-decision shape, vote preview/confirm
+semantics, no-replacement behavior after a single vote, majority replacement
+after the second vote, and the rendered dossier's safe vote and replacement
+history. The final loop continues through action revision and phase resolution,
+proving Packet Lead replacement does not disturb the established `Strong lead
+(94)` outcome or leak join codes, hidden truth, server-only fields, oracle
+audit metadata, auth material, hashes, idempotency keys, or raw event
+envelopes.
+
+Expected verification:
+
+- `pytest tests/e2e/test_mcp_codex_play_loop.py -q`
+- `pytest tests/e2e/test_mcp_codex_play_loop.py tests/e2e/test_full_game_loop_with_escrow.py tests/server/test_packet_lead.py tests/server/test_crew_routes.py tests/test_mcp_server.py tests/client/test_codex_session.py tests/client/test_render_packets.py -q`
+- `pytest -q`
+
 ## Completion Standard
 
 Each slice must:

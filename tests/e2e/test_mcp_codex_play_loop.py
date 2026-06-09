@@ -43,6 +43,21 @@ def _create_crew(
     return response.json()
 
 
+def _join_crew(
+    client: TestClient,
+    *,
+    player: dict[str, str],
+    crew: dict[str, Any],
+    key: str,
+) -> None:
+    response = client.post(
+        f"/crews/{crew['crew_id']}/join",
+        json={"join_code": crew["join_code"]},
+        headers=_command_auth(player["token"], key),
+    )
+    assert response.status_code == 200
+
+
 def _write_config(
     config_path,
     *,
@@ -75,10 +90,11 @@ def _assert_packet(result, *, surface: str) -> dict[str, Any]:
 
 
 def test_player_can_progress_contract_through_actual_mcp_tools(tmp_path, monkeypatch):
-    app = create_app(data_dir=tmp_path / "server", invite_codes=["ada", "bela"])
+    app = create_app(data_dir=tmp_path / "server", invite_codes=["ada", "bela", "grace"])
     client = TestClient(app)
     ada = _register(client, "ada", "Ada Corelumen")
     bela = _register(client, "bela", "Bela Moth")
+    grace = _register(client, "grace", "Grace Ledger")
     crew = _create_crew(
         client,
         token=ada["token"],
@@ -91,6 +107,7 @@ def test_player_can_progress_contract_through_actual_mcp_tools(tmp_path, monkeyp
         name="The Moth Lanterns",
         key="crew-create-moth",
     )
+    _join_crew(client, player=grace, crew=crew, key="crew-join-grace-gilt")
 
     config_path = tmp_path / "config.json"
     local_log_path = tmp_path / "local.jsonl"
@@ -294,8 +311,8 @@ def test_player_can_progress_contract_through_actual_mcp_tools(tmp_path, monkeyp
     assert conversation == {
         "conversation_id": f"{crew['crew_id']}:{moth['crew_id']}",
         "message_count": 1,
-        "first_sequence": 11,
-        "last_sequence": 11,
+        "first_sequence": 13,
+        "last_sequence": 13,
         "last_sender_player_id": ada["player_id"],
         "last_body": "We can trade ledger leverage before the auction closes.",
         "participant_ids": [crew["crew_id"], moth["crew_id"], ada["player_id"]],
@@ -318,7 +335,7 @@ def test_player_can_progress_contract_through_actual_mcp_tools(tmp_path, monkeyp
         "message_count": 1,
         "messages": [
             {
-                "sequence": 11,
+                "sequence": 13,
                 "message_id": "msg_000001",
                 "sender_player_id": ada["player_id"],
                 "sender_crew_id": crew["crew_id"],
@@ -329,7 +346,7 @@ def test_player_can_progress_contract_through_actual_mcp_tools(tmp_path, monkeyp
         ],
     }
     assert f"Conversation: {conversation['conversation_id']}" in thread["player_markdown"]
-    assert "- 11 player_0001: We can trade ledger leverage" in (
+    assert "- 13 player_0001: We can trade ledger leverage" in (
         thread["player_markdown"]
     )
 
@@ -650,6 +667,150 @@ def test_player_can_progress_contract_through_actual_mcp_tools(tmp_path, monkeyp
     assert "Proof Dossier:" in dossier["player_markdown"]
     assert "The finger is a staged relic" in dossier["player_markdown"]
     assert "Escrowed chapel mark makes" in dossier["player_markdown"]
+
+    _write_config(
+        config_path,
+        player=grace,
+        active_crew_id=crew["crew_id"],
+        display_name="Grace Ledger",
+    )
+    grace_board = _assert_packet(
+        _call_tool("render_crew_board", {"crew_id": crew["crew_id"]}),
+        surface="crew_board",
+    )
+    packet_lead_decisions = [
+        decision
+        for decision in grace_board["agent_context"]["pending_decisions"]
+        if decision["kind"] == "packet_lead_vote"
+    ]
+    assert packet_lead_decisions == [
+        {
+            "kind": "packet_lead_vote",
+            "label": "Packet Lead vote available",
+            "description": (
+                "The crew has multiple members and player_0003 is not Packet Lead."
+            ),
+            "crew_id": crew["crew_id"],
+            "candidate_player_id": grace["player_id"],
+        }
+    ]
+    assert "Packet Lead vote available" in grace_board["player_markdown"]
+
+    grace_vote_preview = _assert_packet(
+        _call_tool(
+            "vote_packet_lead",
+            {
+                "crew_id": crew["crew_id"],
+                "player_id": grace["player_id"],
+                "confirm": False,
+            },
+        ),
+        surface="mutation",
+    )
+    assert grace_vote_preview["agent_context"] == {
+        "operation": "vote_packet_lead",
+        "mutation": False,
+        "confirmed": False,
+        "preview": {
+            "crew_id": crew["crew_id"],
+            "player_id": grace["player_id"],
+        },
+    }
+
+    grace_vote_confirm = _assert_packet(
+        _call_tool(
+            "vote_packet_lead",
+            {
+                "crew_id": crew["crew_id"],
+                "player_id": grace["player_id"],
+                "confirm": True,
+            },
+        ),
+        surface="mutation",
+    )
+    assert grace_vote_confirm["agent_context"]["operation"] == "vote_packet_lead"
+    assert grace_vote_confirm["agent_context"]["mutation"] is True
+    assert grace_vote_confirm["agent_context"]["confirmed"] is True
+    assert grace_vote_confirm["agent_context"]["result"]["packet_lead_player_id"] == (
+        ada["player_id"]
+    )
+    assert "packet_lead_replacements" not in grace_vote_confirm["agent_context"]["result"]
+
+    _write_config(
+        config_path,
+        player=ada,
+        active_crew_id=crew["crew_id"],
+        display_name="Ada Corelumen",
+    )
+    ada_vote_preview = _assert_packet(
+        _call_tool(
+            "vote_packet_lead",
+            {
+                "crew_id": crew["crew_id"],
+                "player_id": grace["player_id"],
+                "confirm": False,
+            },
+        ),
+        surface="mutation",
+    )
+    assert ada_vote_preview["agent_context"] == {
+        "operation": "vote_packet_lead",
+        "mutation": False,
+        "confirmed": False,
+        "preview": {
+            "crew_id": crew["crew_id"],
+            "player_id": grace["player_id"],
+        },
+    }
+
+    ada_vote_confirm = _assert_packet(
+        _call_tool(
+            "vote_packet_lead",
+            {
+                "crew_id": crew["crew_id"],
+                "player_id": grace["player_id"],
+                "confirm": True,
+            },
+        ),
+        surface="mutation",
+    )
+    assert ada_vote_confirm["agent_context"]["operation"] == "vote_packet_lead"
+    assert ada_vote_confirm["agent_context"]["mutation"] is True
+    assert ada_vote_confirm["agent_context"]["confirmed"] is True
+    voted_dossier = ada_vote_confirm["agent_context"]["result"]
+    assert voted_dossier["packet_lead_player_id"] == grace["player_id"]
+    assert "packet_lead_votes" not in voted_dossier
+    assert "packet_lead_replacements" not in voted_dossier
+
+    post_vote_dossier = _assert_packet(
+        _call_tool("render_dossier", {"crew_id": crew["crew_id"]}),
+        surface="dossier",
+    )
+    assert post_vote_dossier["agent_context"]["dossier"] == {
+        **voted_dossier,
+        "packet_lead_votes": [
+            {
+                "sequence": 25,
+                "voter_player_id": grace["player_id"],
+                "candidate_player_id": grace["player_id"],
+            },
+            {
+                "sequence": 26,
+                "voter_player_id": ada["player_id"],
+                "candidate_player_id": grace["player_id"],
+            },
+        ],
+        "packet_lead_replacements": [
+            {
+                "sequence": 27,
+                "previous_packet_lead_player_id": ada["player_id"],
+                "packet_lead_player_id": grace["player_id"],
+            }
+        ],
+    }
+    assert "Packet Lead: player_0003" in post_vote_dossier["player_markdown"]
+    assert "Packet Lead votes:" in post_vote_dossier["player_markdown"]
+    assert "- 27 player_0001 -> player_0003" in post_vote_dossier["player_markdown"]
 
     action_preview = _assert_packet(
         _call_tool(
@@ -977,6 +1138,12 @@ def test_player_can_progress_contract_through_actual_mcp_tools(tmp_path, monkeyp
             framing_preview,
             framing_confirm,
             dossier,
+            grace_board,
+            grace_vote_preview,
+            grace_vote_confirm,
+            ada_vote_preview,
+            ada_vote_confirm,
+            post_vote_dossier,
             second_action_preview,
             second_action_confirm,
             pre_revision_board,
