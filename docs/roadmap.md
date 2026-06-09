@@ -3878,6 +3878,27 @@ Expected verification:
 - `pytest tests/client/test_cli_commands.py tests/client/test_action_cli.py tests/client/test_deal_cli.py tests/client/test_codex_session.py tests/test_mcp_server.py -q`
 - `pytest -q`
 
+### Slice 159: CLI Brokered Chat Confirmation Guard
+
+Status: completed.
+
+Bring shell brokered chat in line with the Codex `send_message` mutation
+contract. `hollow-lodge msg`, `hollow-lodge crew`, and `hollow-lodge crew-msg`
+now render no-mutation `send_message` previews by default and only send the
+message when rerun with `--confirm`.
+
+This matters for multiplayer play because private and crew-to-crew messages are
+visibility-scoped game state that can leak or broker deals. The preview shows
+the intended scope, target ids, and body without creating an API client or
+contacting the server. Confirmed sends preserve the existing API calls,
+idempotency keys, and message-id output.
+
+Expected verification:
+
+- `pytest tests/client/test_cli_commands.py::test_direct_message_command_previews_until_confirmed tests/client/test_cli_commands.py::test_crew_chat_commands_preview_until_confirmed -q`
+- `pytest tests/client/test_cli_commands.py tests/client/test_action_cli.py tests/client/test_deal_cli.py tests/client/test_codex_session.py tests/test_mcp_server.py tests/server/test_chat_routes.py -q`
+- `pytest -q`
+
 ## Completion Standard
 
 Each slice must:

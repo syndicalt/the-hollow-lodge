@@ -3203,7 +3203,7 @@ def test_crew_commands_use_saved_config(tmp_path, monkeypatch):
     ]
 
 
-def test_direct_message_command_uses_saved_config(tmp_path, monkeypatch):
+def test_direct_message_command_previews_until_confirmed(tmp_path, monkeypatch):
     runner = CliRunner()
     created_clients: list[FakeApi] = []
 
@@ -3220,12 +3220,25 @@ def test_direct_message_command_uses_saved_config(tmp_path, monkeypatch):
         ClientConfig(server_url="http://testserver", player_id="player_0001", token="token"),
     )
 
-    result = runner.invoke(
+    preview = runner.invoke(
         cli.app,
         ["msg", "player_0002", "Trade the ledger?", "--config", str(config_path)],
     )
 
-    assert result.exit_code == 0
+    assert preview.exit_code == 0
+    assert "Preview: send_message" in preview.output
+    assert "No server mutation was submitted." in preview.output
+    assert "- scope: direct" in preview.output
+    assert "- recipient_player_id: player_0002" in preview.output
+    assert "- body: Trade the ledger?" in preview.output
+    assert created_clients == []
+
+    confirmed = runner.invoke(
+        cli.app,
+        ["msg", "player_0002", "Trade the ledger?", "--confirm", "--config", str(config_path)],
+    )
+
+    assert confirmed.exit_code == 0
     assert created_clients[0].calls == [
         (
             "send_direct_message",
@@ -3469,7 +3482,7 @@ def test_what_now_command_can_emit_render_packet_json(tmp_path, monkeypatch):
     assert '"mutation":false' in result.output
 
 
-def test_crew_chat_commands_use_active_crew(tmp_path, monkeypatch):
+def test_crew_chat_commands_preview_until_confirmed(tmp_path, monkeypatch):
     runner = CliRunner()
     created_clients: list[FakeApi] = []
 
@@ -3491,17 +3504,46 @@ def test_crew_chat_commands_use_active_crew(tmp_path, monkeypatch):
         ),
     )
 
-    crew_result = runner.invoke(
+    crew_preview = runner.invoke(
         cli.app,
         ["crew", "Meet by the archive.", "--config", str(config_path)],
     )
-    crew_msg_result = runner.invoke(
+    crew_msg_preview = runner.invoke(
         cli.app,
         ["crew-msg", "crew_0002", "Trade the ledger?", "--config", str(config_path)],
     )
 
-    assert crew_result.exit_code == 0
-    assert crew_msg_result.exit_code == 0
+    assert crew_preview.exit_code == 0
+    assert "Preview: send_message" in crew_preview.output
+    assert "- scope: crew" in crew_preview.output
+    assert "- crew_id: crew_0001" in crew_preview.output
+    assert "- body: Meet by the archive." in crew_preview.output
+    assert crew_msg_preview.exit_code == 0
+    assert "Preview: send_message" in crew_msg_preview.output
+    assert "- scope: crew_to_crew" in crew_msg_preview.output
+    assert "- sender_crew_id: crew_0001" in crew_msg_preview.output
+    assert "- recipient_crew_id: crew_0002" in crew_msg_preview.output
+    assert "- body: Trade the ledger?" in crew_msg_preview.output
+    assert created_clients == []
+
+    crew_confirmed = runner.invoke(
+        cli.app,
+        ["crew", "Meet by the archive.", "--confirm", "--config", str(config_path)],
+    )
+    crew_msg_confirmed = runner.invoke(
+        cli.app,
+        [
+            "crew-msg",
+            "crew_0002",
+            "Trade the ledger?",
+            "--confirm",
+            "--config",
+            str(config_path),
+        ],
+    )
+
+    assert crew_confirmed.exit_code == 0
+    assert crew_msg_confirmed.exit_code == 0
     assert created_clients[0].calls == [
         (
             "send_crew_message",

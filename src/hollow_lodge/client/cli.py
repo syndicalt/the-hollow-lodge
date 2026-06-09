@@ -953,9 +953,22 @@ def crew_join(
 def msg(
     recipient: str = typer.Argument(..., help="Recipient player handle or id."),
     body: str = typer.Argument(..., help="Message body."),
+    confirm: bool = typer.Option(False, "--confirm", help="Send the direct message on the server."),
     config: Path = typer.Option(DEFAULT_CONFIG_PATH, "--config", help="Local config path."),
 ) -> None:
     """Send a direct brokered message."""
+    if not confirm:
+        packet = build_mutation_result_packet(
+            operation="send_message",
+            confirmed=False,
+            preview_fields={
+                "scope": "direct",
+                "recipient_player_id": recipient,
+                "body": body,
+            },
+        )
+        typer.echo(packet.player_markdown)
+        return
     response = _api_from_config(load_config(config)).send_direct_message(
         recipient_player_id=recipient,
         body=body,
@@ -968,6 +981,7 @@ def msg(
 def crew(
     body: str = typer.Argument(..., help="Crew message body."),
     crew_id: str | None = typer.Option(None, "--crew-id", help="Crew id; defaults to active crew."),
+    confirm: bool = typer.Option(False, "--confirm", help="Send the crew message on the server."),
     config: Path = typer.Option(DEFAULT_CONFIG_PATH, "--config", help="Local config path."),
 ) -> None:
     """Send a brokered message to your crew."""
@@ -975,6 +989,18 @@ def crew(
     target_crew_id = crew_id or current.active_crew_id
     if target_crew_id is None:
         raise typer.BadParameter("crew id required when no active crew is configured")
+    if not confirm:
+        packet = build_mutation_result_packet(
+            operation="send_message",
+            confirmed=False,
+            preview_fields={
+                "scope": "crew",
+                "crew_id": target_crew_id,
+                "body": body,
+            },
+        )
+        typer.echo(packet.player_markdown)
+        return
     response = _api_from_config(current).send_crew_message(
         crew_id=target_crew_id,
         body=body,
@@ -992,6 +1018,7 @@ def crew_msg(
         "--sender-crew-id",
         help="Sending crew id; defaults to active crew.",
     ),
+    confirm: bool = typer.Option(False, "--confirm", help="Send the crew-to-crew message on the server."),
     config: Path = typer.Option(DEFAULT_CONFIG_PATH, "--config", help="Local config path."),
 ) -> None:
     """Send a targeted brokered crew-to-crew message."""
@@ -999,6 +1026,19 @@ def crew_msg(
     from_crew_id = sender_crew_id or current.active_crew_id
     if from_crew_id is None:
         raise typer.BadParameter("sender crew id required when no active crew is configured")
+    if not confirm:
+        packet = build_mutation_result_packet(
+            operation="send_message",
+            confirmed=False,
+            preview_fields={
+                "scope": "crew_to_crew",
+                "sender_crew_id": from_crew_id,
+                "recipient_crew_id": crew_id,
+                "body": body,
+            },
+        )
+        typer.echo(packet.player_markdown)
+        return
     response = _api_from_config(current).send_crew_to_crew_message(
         sender_crew_id=from_crew_id,
         recipient_crew_id=crew_id,
