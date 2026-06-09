@@ -317,6 +317,13 @@ def test_backend_status_packet_renders_safe_database_and_oracle_posture():
                     "last_success_sequence": 42,
                     "last_failure": {"message": "password=secret"},
                 },
+                "projection_reads": {
+                    "surfaces": {
+                        "contract_board": True,
+                        "identity_admin": True,
+                        "chat": True,
+                    }
+                },
                 "storage_guards": {
                     "production_postgres": True,
                     "production_postgres_env": "HOLLOW_LODGE_PRODUCTION_POSTGRES",
@@ -345,6 +352,7 @@ def test_backend_status_packet_renders_safe_database_and_oracle_posture():
     assert "- operational replay: postgres" in packet.player_markdown
     assert "event on; projection on; operational on" in packet.player_markdown
     assert "- production postgres preset: on" in packet.player_markdown
+    assert "- projection reads: 3 enabled; all on" in packet.player_markdown
     assert "openai" in packet.player_markdown
     assert "secret" not in packet.player_markdown
     assert "postgresql://" not in packet.player_markdown
@@ -362,6 +370,13 @@ def test_backend_status_packet_renders_safe_database_and_oracle_posture():
     assert packet.agent_context["backend_status"]["identity_replay_store"] == {
         "backend": "postgres",
         "database_url_env": "HOLLOW_LODGE_OPERATIONAL_DATABASE_URL",
+    }
+    assert packet.agent_context["backend_status"]["projection_reads"] == {
+        "surfaces": {
+            "contract_board": True,
+            "identity_admin": True,
+            "chat": True,
+        }
     }
 
 

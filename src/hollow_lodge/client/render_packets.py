@@ -286,6 +286,10 @@ def _shape_backend_status(diagnostics: dict[str, Any]) -> dict[str, Any]:
             data.get("projection_refresh"),
             ("status", "last_context", "last_success_sequence", "failure_count"),
         ),
+        "projection_reads": _shape_backend_section(
+            data.get("projection_reads"),
+            ("surfaces",),
+        ),
         "storage_guards": _shape_backend_section(
             data.get("storage_guards"),
             (
@@ -1371,6 +1375,7 @@ def build_thread_packet(
 def build_backend_status_packet(diagnostics: dict[str, Any]) -> RenderPacket:
     status = _shape_backend_status(diagnostics)
     storage_guards = status["storage_guards"]
+    projection_read_summary = _projection_read_summary(status.get("projection_reads"))
     event_guard = _render_guard_value(
         storage_guards.get("require_postgres_event_log")
     )
@@ -1413,6 +1418,7 @@ def build_backend_status_packet(diagnostics: dict[str, Any]) -> RenderPacket:
             "- projection refresh: "
             f"{_backend_value(status, 'projection_refresh', 'status')}"
         ),
+        f"- projection reads: {projection_read_summary}",
         (
             "- maintenance read-only: "
             f"{_backend_value(status, 'maintenance', 'read_only')}"
@@ -1430,6 +1436,22 @@ def build_backend_status_packet(diagnostics: dict[str, Any]) -> RenderPacket:
             "Review operational docs",
             "Open activity delta",
         ],
+    )
+
+
+def _projection_read_summary(projection_reads: Any) -> str:
+    if not isinstance(projection_reads, dict):
+        return "unknown"
+    surfaces = projection_reads.get("surfaces")
+    if not isinstance(surfaces, dict) or not surfaces:
+        return "unknown"
+    enabled = sorted(surface for surface, value in surfaces.items() if value is True)
+    disabled = sorted(surface for surface, value in surfaces.items() if value is not True)
+    if not disabled:
+        return f"{len(enabled)} enabled; all on"
+    return (
+        f"{len(enabled)} enabled; {len(disabled)} disabled "
+        f"({', '.join(disabled[:4])}{'...' if len(disabled) > 4 else ''})"
     )
 
 

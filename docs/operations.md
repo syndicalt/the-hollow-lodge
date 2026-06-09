@@ -168,7 +168,8 @@ the effective projection read configuration in `data.projection_reads`.
 Implemented surfaces include contract board, crew-scoped contract unlock
 status, crew summary, visible artifacts, visible deals, proof dossiers, chat,
 visible events, pending decisions, current actions, crew-board visible rumors,
-artifact inspections, proof fragments, and redacted oracle audit records.
+artifact inspections, proof fragments, identity admin lists, and redacted
+oracle audit records.
 
 Projection storage and authoritative event storage are separate cutovers.
 Projection storage can use `DATABASE_URL` for Railway convenience; the

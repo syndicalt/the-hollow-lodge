@@ -3366,6 +3366,26 @@ Expected verification:
 - `pytest tests/server/test_projection_store.py tests/server/test_identity_routes.py tests/server/test_app_config.py tests/e2e/test_projection_backend_smoke.py -q`
 - `pytest -q`
 
+### Slice 135: Projection Read Surface Operator Visibility
+
+Status: completed.
+
+Surface projection-read coverage directly in Codex backend status. The backend
+status packet now includes safe `projection_reads.surfaces` agent context and
+renders a concise enabled/disabled summary for the player, so operators can
+confirm whether the newly added `identity_admin` projection surface is enabled
+without leaving the Codex session.
+
+Operations documentation now lists identity admin lists among the implemented
+projection-backed read surfaces, keeping the production Postgres smoke/readiness
+contract, docs, and Codex status packet aligned.
+
+Expected verification:
+
+- `pytest tests/client/test_render_packets.py::test_backend_status_packet_renders_safe_database_and_oracle_posture -q`
+- `pytest tests/client/test_render_packets.py tests/client/test_codex_session.py tests/e2e/test_projection_backend_smoke.py -q`
+- `pytest -q`
+
 ## Completion Standard
 
 Each slice must:
