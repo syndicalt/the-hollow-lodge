@@ -4067,6 +4067,28 @@ Expected verification:
 - `pytest tests/client/test_cli_commands.py tests/client/test_api.py tests/server/test_contract_seed.py tests/server/test_contract_seed_pipeline.py tests/server/test_app_config.py -q`
 - `pytest -q`
 
+### Slice 168: CLI Admin Access Mutation Confirmation Guard
+
+Status: completed.
+
+Protect invite issuance and key-request approval from accidental operator
+submission. `hollow-lodge admin invite-create` now renders a no-mutation
+`admin_invite_create` preview by default, showing the target server without
+contacting it. `hollow-lodge admin key-request-approve` now renders a
+no-mutation `admin_key_request_approve` preview by default, showing the
+request id without approving it. Both commands mutate the authoritative server
+only when rerun with `--confirm`.
+
+This closes the immediate admin access-control gap in the shell command
+surface while preserving existing confirmed admin token handling, idempotency
+keys, and invite-code output.
+
+Expected verification:
+
+- `pytest tests/client/test_cli_commands.py::test_admin_invite_create_command_uses_admin_token_without_player_auth tests/client/test_cli_commands.py::test_admin_key_request_approve_command_prints_invite -q`
+- `pytest tests/client/test_cli_commands.py tests/client/test_api.py tests/server/test_identity_routes.py tests/server/test_app_config.py -q`
+- `pytest -q`
+
 ## Completion Standard
 
 Each slice must:

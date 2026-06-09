@@ -322,8 +322,22 @@ def admin_invite_create(
         envvar="HOLLOW_LODGE_ADMIN_TOKEN",
         help="Server admin token.",
     ),
+    confirm: bool = typer.Option(
+        False,
+        "--confirm",
+        help="Create the invite on the server.",
+    ),
 ) -> None:
     """Create a one-use invite code."""
+    if not confirm:
+        packet = build_mutation_result_packet(
+            operation="admin_invite_create",
+            confirmed=False,
+            preview_fields={"server": server},
+        )
+        _echo_packet(packet, as_json=False)
+        return
+
     response = HollowLodgeApi(server_url=server).create_invite(
         admin_token=admin_token,
         idempotency_key=new_command_key("admin-invite-create"),
@@ -842,8 +856,22 @@ def admin_key_request_approve(
         envvar="HOLLOW_LODGE_ADMIN_TOKEN",
         help="Server admin token.",
     ),
+    confirm: bool = typer.Option(
+        False,
+        "--confirm",
+        help="Approve the access-key request on the server.",
+    ),
 ) -> None:
     """Approve an access-key request and print its invite code."""
+    if not confirm:
+        packet = build_mutation_result_packet(
+            operation="admin_key_request_approve",
+            confirmed=False,
+            preview_fields={"request_id": request_id},
+        )
+        _echo_packet(packet, as_json=False)
+        return
+
     response = HollowLodgeApi(server_url=server).approve_key_request(
         request_id=request_id,
         admin_token=admin_token,

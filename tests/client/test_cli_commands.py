@@ -1574,6 +1574,24 @@ def test_admin_invite_create_command_uses_admin_token_without_player_auth(tmp_pa
     monkeypatch.setattr(cli, "HollowLodgeApi", fake_client)
     monkeypatch.setattr(cli, "new_command_key", lambda prefix: f"{prefix}-key")
 
+    preview = runner.invoke(
+        cli.app,
+        [
+            "admin",
+            "invite-create",
+            "--server",
+            "http://testserver",
+            "--admin-token",
+            "admin-secret",
+        ],
+    )
+
+    assert preview.exit_code == 0
+    assert "Preview: admin_invite_create" in preview.output
+    assert "No server mutation was submitted." in preview.output
+    assert "- server: http://testserver" in preview.output
+    assert created_clients == []
+
     result = runner.invoke(
         cli.app,
         [
@@ -1583,6 +1601,7 @@ def test_admin_invite_create_command_uses_admin_token_without_player_auth(tmp_pa
             "http://testserver",
             "--admin-token",
             "admin-secret",
+            "--confirm",
         ],
     )
 
@@ -1643,6 +1662,25 @@ def test_admin_key_request_approve_command_prints_invite(tmp_path, monkeypatch):
     monkeypatch.setattr(cli, "HollowLodgeApi", fake_client)
     monkeypatch.setattr(cli, "new_command_key", lambda prefix: f"{prefix}-key")
 
+    preview = runner.invoke(
+        cli.app,
+        [
+            "admin",
+            "key-request-approve",
+            "key_request_0001",
+            "--server",
+            "http://testserver",
+            "--admin-token",
+            "admin-secret",
+        ],
+    )
+
+    assert preview.exit_code == 0
+    assert "Preview: admin_key_request_approve" in preview.output
+    assert "No server mutation was submitted." in preview.output
+    assert "- request_id: key_request_0001" in preview.output
+    assert created_clients == []
+
     result = runner.invoke(
         cli.app,
         [
@@ -1653,6 +1691,7 @@ def test_admin_key_request_approve_command_prints_invite(tmp_path, monkeypatch):
             "http://testserver",
             "--admin-token",
             "admin-secret",
+            "--confirm",
         ],
     )
 
