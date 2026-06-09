@@ -4427,6 +4427,32 @@ Expected verification:
 - `pytest tests/server/test_projection_store.py tests/server/test_contract_seed.py -q`
 - `pytest -q`
 
+### Slice 183: Projection-Backed Incoming Proof Fragments
+
+Status: completed.
+
+Move incoming proof-fragment inbox reads onto the projection path when the
+proof-fragment projection is fresh. SQLite and Postgres projection stores now
+materialize a dedicated recipient-only `proof_incoming_fragment` read model
+that stores only the inbox-safe `fragment_id` and `summary` shape, separate
+from the fuller `proof_fragment_surface` used by direct fragment inspection.
+
+The `/inbox` route now reads incoming proof fragments from that projection
+when available and falls back to authoritative Eventloom derivation only when
+the projection is stale, disabled, or unavailable. Focused tests prove the
+table contains only recipient rows, excludes sender and unrelated players,
+does not store provenance/source-chain/internal-transfer fields, avoids
+Eventloom replay on a fully fresh projected inbox request, and preserves stale
+fallback behavior.
+
+Expected verification:
+
+- `pytest tests/server/test_projection_store.py::test_projection_store_materializes_incoming_proof_fragments_for_recipient_only tests/server/test_projection_store.py::test_inbox_reads_fresh_incoming_proof_fragment_projection_without_replay tests/server/test_projection_store.py::test_inbox_incoming_proof_fragment_projection_falls_back_when_stale -q`
+- `pytest tests/server/test_projection_store.py -q`
+- `pytest tests/server/test_proof_routes.py tests/e2e/test_proof_fragment_codex_loop.py tests/client/test_render_packets.py tests/client/test_codex_session.py tests/test_mcp_server.py -q`
+- `pytest tests/eventlog/test_postgres_store.py tests/server/test_contract_seed.py -q`
+- `pytest -q`
+
 ## Completion Standard
 
 Each slice must:

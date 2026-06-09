@@ -297,6 +297,57 @@ def test_projection_store_materializes_proof_fragments_without_provenance_flags(
     assert "ink-after-binding" not in stored_text
 
 
+def test_projection_store_materializes_incoming_proof_fragments_for_recipient_only(
+    tmp_path,
+):
+    client = TestClient(create_app(data_dir=tmp_path, invite_codes=["a", "b", "c"]))
+    ada = register(client, "a", "Ada")
+    grace = register(client, "b", "Grace")
+    linus = register(client, "c", "Linus")
+
+    transfer = client.post(
+        "/proofs/fragments/fragment_starter_ledger/transfer",
+        headers=command_auth(ada["token"], "proof-transfer-incoming-projection"),
+        json={"recipient_player_id": grace["player_id"]},
+    )
+    copy_id = transfer.json()["fragment_id"]
+    projected = client.app.state.projection_store.read_incoming_proof_fragments(
+        grace["player_id"],
+    )
+    diagnostics = client.app.state.projection_store.diagnostics()
+    with sqlite3.connect(tmp_path / "server-projections.sqlite3") as connection:
+        rows = connection.execute(
+            """
+            select player_id, fragment_id, payload_json
+            from proof_incoming_fragment
+            order by player_id, fragment_id
+            """
+        ).fetchall()
+
+    assert transfer.status_code == 201
+    assert diagnostics["incoming_proof_fragment_count"] == 1
+    assert projected == [
+        {
+            "fragment_id": copy_id,
+            "summary": "A red ledger rubric names three prior owners.",
+        }
+    ]
+    assert client.app.state.projection_store.read_incoming_proof_fragments(
+        ada["player_id"],
+    ) == []
+    assert client.app.state.projection_store.read_incoming_proof_fragments(
+        linus["player_id"],
+    ) == []
+    assert [(row[0], row[1]) for row in rows] == [(grace["player_id"], copy_id)]
+    stored_text = "\n".join(row[2] for row in rows)
+    assert "source_chain" not in stored_text
+    assert "provenance_flags" not in stored_text
+    assert "copied-hand" not in stored_text
+    assert "ink-after-binding" not in stored_text
+    assert "source_fragment_id" not in stored_text
+    assert "proof.fragment.transferred.internal" not in stored_text
+
+
 def test_proof_fragment_route_reads_fresh_projection_when_enabled(
     tmp_path,
     monkeypatch,
@@ -402,6 +453,103 @@ def test_proof_fragment_transfer_refreshes_projection_for_flagged_reads(
     assert response.json()["provenance_checked"] is False
     assert "provenance_flags" not in response.text
     assert "ink-after-binding" not in response.text
+
+
+def test_inbox_reads_fresh_incoming_proof_fragment_projection_without_replay(
+    tmp_path,
+    monkeypatch,
+):
+    monkeypatch.setenv("HOLLOW_LODGE_CONTRACT_BOARD_PROJECTION_READS", "1")
+    monkeypatch.setenv("HOLLOW_LODGE_CONTRACT_UNLOCK_PROJECTION_READS", "1")
+    monkeypatch.setenv("HOLLOW_LODGE_ARTIFACT_PROJECTION_READS", "1")
+    monkeypatch.setenv("HOLLOW_LODGE_DEAL_PROJECTION_READS", "1")
+    monkeypatch.setenv("HOLLOW_LODGE_PENDING_DECISION_PROJECTION_READS", "1")
+    monkeypatch.setenv("HOLLOW_LODGE_PROOF_FRAGMENT_PROJECTION_READS", "1")
+    client = TestClient(create_app(data_dir=tmp_path, invite_codes=["a", "b"]))
+    ada = register(client, "a", "Ada")
+    grace = register(client, "b", "Grace")
+    create_crew(client, grace["token"], "crew-create-grace", "The Glass Choir")
+    transfer = client.post(
+        "/proofs/fragments/fragment_starter_ledger/transfer",
+        headers=command_auth(ada["token"], "proof-transfer-inbox-projection"),
+        json={"recipient_player_id": grace["player_id"]},
+    )
+    copy_id = transfer.json()["fragment_id"]
+    original_read_incoming = (
+        client.app.state.projection_store.read_incoming_proof_fragments
+    )
+    calls = {"count": 0}
+
+    def tracked_read_incoming(player_id: str):
+        calls["count"] += 1
+        return original_read_incoming(player_id)
+
+    client.app.state.projection_store.read_incoming_proof_fragments = (
+        tracked_read_incoming
+    )
+    event_log_diagnostics = client.app.state.event_store.diagnostics()
+    client.app.state.event_store.diagnostics = lambda: event_log_diagnostics
+    client.app.state.event_store.read = lambda *args, **kwargs: (_ for _ in ()).throw(
+        AssertionError("fresh projected inbox should not replay Eventloom")
+    )
+
+    response = client.get("/inbox", headers=auth(grace["token"]))
+
+    assert transfer.status_code == 201
+    assert response.status_code == 200
+    assert calls["count"] == 1
+    assert response.json()["incoming_proof_fragments"] == [
+        {
+            "fragment_id": copy_id,
+            "summary": "A red ledger rubric names three prior owners.",
+        }
+    ]
+    assert "copied-hand" not in str(response.json()["incoming_proof_fragments"])
+    assert "ink-after-binding" not in str(response.json()["incoming_proof_fragments"])
+
+
+def test_inbox_incoming_proof_fragment_projection_falls_back_when_stale(
+    tmp_path,
+    monkeypatch,
+):
+    monkeypatch.setenv("HOLLOW_LODGE_PROOF_FRAGMENT_PROJECTION_READS", "1")
+    client = TestClient(create_app(data_dir=tmp_path, invite_codes=["a", "b"]))
+    ada = register(client, "a", "Ada")
+    grace = register(client, "b", "Grace")
+    transfer = client.post(
+        "/proofs/fragments/fragment_starter_ledger/transfer",
+        headers=command_auth(ada["token"], "proof-transfer-inbox-stale"),
+        json={"recipient_player_id": grace["player_id"]},
+    )
+    copy_id = transfer.json()["fragment_id"]
+    client.app.state.projection_store.rebuild(client.app.state.event_store.read())
+    client.app.state.event_store.append_command(
+        event_type="contract.note.published",
+        actor_id="server",
+        visibility=EventVisibility.public(),
+        payload={"note": "projection stale marker"},
+        idempotency_key="incoming-proof-fragment-stale-marker",
+    )
+
+    def fail_if_projection_read(player_id: str):
+        raise AssertionError(
+            "stale incoming proof fragment projection should not be used"
+        )
+
+    client.app.state.projection_store.read_incoming_proof_fragments = (
+        fail_if_projection_read
+    )
+
+    response = client.get("/inbox", headers=auth(grace["token"]))
+
+    assert transfer.status_code == 201
+    assert response.status_code == 200
+    assert response.json()["incoming_proof_fragments"] == [
+        {
+            "fragment_id": copy_id,
+            "summary": "A red ledger rubric names three prior owners.",
+        }
+    ]
 
 
 def test_projection_store_records_schema_migration_ledger(tmp_path):

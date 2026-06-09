@@ -17,6 +17,7 @@ from hollow_lodge.server.projected_actions import projected_current_actions_for_
 from hollow_lodge.server.projected_artifacts import projected_visible_artifacts
 from hollow_lodge.server.projected_deals import projected_visible_deals
 from hollow_lodge.server.projected_dossiers import projected_proof_dossier
+from hollow_lodge.server.projected_fragments import projected_incoming_proof_fragments
 from hollow_lodge.server.projected_pending_decisions import projected_pending_decisions
 from hollow_lodge.server.projected_rumors import projected_visible_rumors_for_crew
 from hollow_lodge.server.projected_unlocks import (
@@ -130,11 +131,18 @@ def inbox(
     player: Player = Depends(current_player),
 ):
     board = _board_for_player_with_unlocks(request, player.player_id)
-    events = read_authoritative_events(request)
+    events = None
+    projected_fragments = projected_incoming_proof_fragments(
+        request,
+        player.player_id,
+    )
+    if projected_fragments is None:
+        events = read_authoritative_events(request)
     payload = inbox_from_board(
         player_id=player.player_id,
         board=board,
         events=events,
+        incoming_proof_fragments=projected_fragments,
     )
     payload["active_contracts"] = unlocked_actionable_contracts(
         payload["active_contracts"]
@@ -151,6 +159,8 @@ def inbox(
     if projected_decisions is not None:
         payload["pending_decisions"] = projected_decisions
     else:
+        if events is None:
+            events = read_authoritative_events(request)
         deals_by_crew = {
             crew_id: _deals_for_crew(request, player.player_id, crew_id)
             for crew_id in crew_ids

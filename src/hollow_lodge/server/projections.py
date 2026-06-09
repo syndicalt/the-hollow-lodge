@@ -53,6 +53,7 @@ def inbox_from_board(
     player_id: str,
     board: dict[str, Any],
     events: list[GameEvent] | None = None,
+    incoming_proof_fragments: list[dict[str, Any]] | None = None,
 ) -> dict[str, Any]:
     return {
         "player_id": player_id,
@@ -61,9 +62,13 @@ def inbox_from_board(
             for contract in board["contracts"]
             if contract.get("lifecycle_status", "active") != "archived"
         ],
-        "incoming_proof_fragments": incoming_proof_fragments_from_events(
-            player_id=player_id,
-            events=events or [],
+        "incoming_proof_fragments": (
+            incoming_proof_fragments
+            if incoming_proof_fragments is not None
+            else incoming_proof_fragments_from_events(
+                player_id=player_id,
+                events=events or [],
+            )
         ),
     }
 

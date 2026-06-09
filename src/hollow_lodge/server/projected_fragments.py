@@ -24,3 +24,20 @@ def projected_proof_fragment(
         )
     except Exception:
         return None
+
+
+def projected_incoming_proof_fragments(
+    request: Request,
+    player_id: str,
+) -> list[dict[str, Any]] | None:
+    if not projection_read_ready(
+        request,
+        "HOLLOW_LODGE_PROOF_FRAGMENT_PROJECTION_READS",
+    ):
+        return None
+    try:
+        return request.app.state.projection_store.read_incoming_proof_fragments(
+            player_id,
+        )
+    except Exception:
+        return None

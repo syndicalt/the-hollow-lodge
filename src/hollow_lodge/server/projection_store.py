@@ -17,6 +17,7 @@ from hollow_lodge.server.projections import (
     crew_legacy_from_contracts,
     crew_summaries_from_events,
     identity_admin_surfaces_from_events,
+    incoming_proof_fragments_from_events,
     unlocked_actionable_contracts,
 )
 from hollow_lodge.server.pending_decisions import pending_decisions_for_player
@@ -24,7 +25,7 @@ from hollow_lodge.server.proof_seed import STARTER_FRAGMENT
 from hollow_lodge.server.rumors import SAFE_RUMOR_FIELDS
 
 
-SCHEMA_VERSION = "11"
+SCHEMA_VERSION = "12"
 PROJECTION_SCHEMA_MIGRATIONS: tuple[tuple[str, str], ...] = (
     ("1", "initial projection read models"),
     ("2", "proof dossier projection read model"),
@@ -37,6 +38,7 @@ PROJECTION_SCHEMA_MIGRATIONS: tuple[tuple[str, str], ...] = (
     ("9", "artifact inspection projection read model"),
     ("10", "proof fragment projection read model"),
     ("11", "identity admin projection read model"),
+    ("12", "incoming proof fragment projection read model"),
 )
 
 
@@ -57,6 +59,7 @@ class SqliteProjectionStore:
         crew_legacies = snapshot["crew_legacies"]
         proof_dossiers = snapshot["proof_dossiers"]
         proof_fragments = snapshot["proof_fragments"]
+        incoming_proof_fragments = snapshot["incoming_proof_fragments"]
         chat_messages = snapshot["chat_messages"]
         actions_by_crew = snapshot["actions_by_crew"]
         pending_decisions = snapshot["pending_decisions"]
@@ -80,6 +83,7 @@ class SqliteProjectionStore:
             connection.execute("delete from crew_legacy")
             connection.execute("delete from proof_dossier")
             connection.execute("delete from proof_fragment_surface")
+            connection.execute("delete from proof_incoming_fragment")
             connection.execute("delete from identity_player_surface")
             connection.execute("delete from identity_invite_surface")
             connection.execute("delete from identity_key_request_surface")
@@ -303,6 +307,27 @@ class SqliteProjectionStore:
                 connection.execute(
                     """
                     insert into proof_fragment_surface (
+                        player_id,
+                        fragment_id,
+                        payload_json,
+                        updated_sequence
+                    ) values (?, ?, ?, ?)
+                    """,
+                    (
+                        row["player_id"],
+                        row["fragment_id"],
+                        json.dumps(
+                            row["surface"],
+                            sort_keys=True,
+                            separators=(",", ":"),
+                        ),
+                        last_sequence,
+                    ),
+                )
+            for row in incoming_proof_fragments:
+                connection.execute(
+                    """
+                    insert into proof_incoming_fragment (
                         player_id,
                         fragment_id,
                         payload_json,
@@ -565,6 +590,11 @@ class SqliteProjectionStore:
             self._set_meta(connection, "proof_fragment_count", str(len(proof_fragments)))
             self._set_meta(
                 connection,
+                "incoming_proof_fragment_count",
+                str(len(incoming_proof_fragments)),
+            )
+            self._set_meta(
+                connection,
                 "identity_player_count",
                 str(len(identity_admin_surfaces["players"])),
             )
@@ -642,6 +672,7 @@ class SqliteProjectionStore:
                 "crew_legacy_count": 0,
                 "proof_dossier_count": 0,
                 "proof_fragment_count": 0,
+                "incoming_proof_fragment_count": 0,
                 "identity_player_count": 0,
                 "identity_invite_count": 0,
                 "identity_key_request_count": 0,
@@ -681,6 +712,9 @@ class SqliteProjectionStore:
                 ).fetchone()[0]
                 proof_fragment_count = connection.execute(
                     "select count(*) from proof_fragment_surface"
+                ).fetchone()[0]
+                incoming_proof_fragment_count = connection.execute(
+                    "select count(*) from proof_incoming_fragment"
                 ).fetchone()[0]
                 identity_player_count = connection.execute(
                     "select count(*) from identity_player_surface"
@@ -754,6 +788,7 @@ class SqliteProjectionStore:
                 "crew_legacy_count": 0,
                 "proof_dossier_count": 0,
                 "proof_fragment_count": 0,
+                "incoming_proof_fragment_count": 0,
                 "identity_player_count": 0,
                 "identity_invite_count": 0,
                 "identity_key_request_count": 0,
@@ -797,6 +832,12 @@ class SqliteProjectionStore:
             ),
             "proof_fragment_count": int(
                 meta.get("proof_fragment_count", str(proof_fragment_count))
+            ),
+            "incoming_proof_fragment_count": int(
+                meta.get(
+                    "incoming_proof_fragment_count",
+                    str(incoming_proof_fragment_count),
+                )
             ),
             "identity_player_count": int(
                 meta.get("identity_player_count", str(identity_player_count))
@@ -910,6 +951,20 @@ class SqliteProjectionStore:
         if row is None:
             raise KeyError(fragment_id)
         return json.loads(row[0])
+
+    def read_incoming_proof_fragments(self, player_id: str) -> list[dict[str, Any]]:
+        with sqlite3.connect(self.path) as connection:
+            self._ensure_schema(connection)
+            rows = connection.execute(
+                """
+                select payload_json
+                from proof_incoming_fragment
+                where player_id = ?
+                order by fragment_id
+                """,
+                (player_id,),
+            ).fetchall()
+        return [json.loads(row[0]) for row in rows]
 
     def read_admin_players(self) -> list[dict[str, Any]]:
         with sqlite3.connect(self.path) as connection:
@@ -1305,6 +1360,23 @@ class SqliteProjectionStore:
         )
         connection.execute(
             """
+            create table if not exists proof_incoming_fragment (
+                player_id text not null,
+                fragment_id text not null,
+                payload_json text not null,
+                updated_sequence integer not null,
+                primary key (player_id, fragment_id)
+            )
+            """
+        )
+        connection.execute(
+            """
+            create index if not exists idx_proof_incoming_fragment_player
+            on proof_incoming_fragment (player_id, fragment_id)
+            """
+        )
+        connection.execute(
+            """
             create table if not exists identity_player_surface (
                 player_id text primary key,
                 display_name text not null,
@@ -1618,6 +1690,7 @@ def build_projection_snapshot(events: list[GameEvent]) -> dict[str, Any]:
     oracle_audits = _oracle_audits_from_events(events)
     proof_dossiers = proof_dossiers_from_events(events)
     proof_fragments = proof_fragments_from_events(events)
+    incoming_proof_fragments = incoming_proof_fragment_rows_from_events(events)
     identity_admin_surfaces = identity_admin_surfaces_from_events(events)
     actions_by_crew = _current_actions_by_crew_from_events(events)
     pending_decisions = _pending_decisions_from_projection_inputs(
@@ -1651,6 +1724,7 @@ def build_projection_snapshot(events: list[GameEvent]) -> dict[str, Any]:
         "oracle_audits": oracle_audits,
         "proof_dossiers": proof_dossiers,
         "proof_fragments": proof_fragments,
+        "incoming_proof_fragments": incoming_proof_fragments,
         "identity_admin_surfaces": identity_admin_surfaces,
         "actions_by_crew": actions_by_crew,
         "pending_decisions": pending_decisions,
@@ -1992,6 +2066,30 @@ def proof_fragments_from_events(events: list[GameEvent]) -> list[dict[str, Any]]
                     "player_id": str(player_id),
                     "fragment_id": surface["fragment_id"],
                     "surface": surface,
+                }
+            )
+    return rows
+
+
+def incoming_proof_fragment_rows_from_events(
+    events: list[GameEvent],
+) -> list[dict[str, Any]]:
+    player_ids = {
+        str(event.payload["recipient_player_id"])
+        for event in events
+        if event.type == "proof.fragment.transferred"
+    }
+    rows: list[dict[str, Any]] = []
+    for player_id in sorted(player_ids):
+        for fragment in incoming_proof_fragments_from_events(
+            player_id=player_id,
+            events=events,
+        ):
+            rows.append(
+                {
+                    "player_id": player_id,
+                    "fragment_id": fragment["fragment_id"],
+                    "surface": fragment,
                 }
             )
     return rows
