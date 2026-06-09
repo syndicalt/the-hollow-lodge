@@ -4,6 +4,7 @@ from typing import Any
 
 from pydantic import BaseModel, ConfigDict, Field
 
+from hollow_lodge.workflows.deterministic_oracle import DeterministicResolutionOracle
 from hollow_lodge.workflows.oracle_boundary import (
     AuctionPreviewOraclePacket,
     AuctionPreviewOracleResult,
@@ -13,7 +14,7 @@ from hollow_lodge.workflows.oracle_boundary import (
 )
 
 
-_PROMPT_VERSION = "auction-preview-resolution-v1"
+_PROMPT_VERSION = "auction-preview-resolution-v2"
 
 
 class OpenAICrewStanding(BaseModel):
@@ -82,6 +83,7 @@ class OpenAIResolutionOracle:
         self,
         packet: AuctionPreviewOraclePacket,
     ) -> AuctionPreviewOracleResult:
+        deterministic = DeterministicResolutionOracle().resolve_auction_preview(packet)
         response = self._client.responses.parse(
             model=self._model,
             input=[
@@ -91,7 +93,10 @@ class OpenAIResolutionOracle:
                 },
                 {
                     "role": "user",
-                    "content": packet.model_dump_json(),
+                    "content": {
+                        "packet": packet.model_dump(mode="json"),
+                        "deterministic_result": deterministic.model_dump(mode="json"),
+                    },
                 },
             ],
             text_format=OpenAIAuctionPreviewResolution,
@@ -99,22 +104,26 @@ class OpenAIResolutionOracle:
             timeout=self._timeout_seconds,
         )
         parsed = _parse_openai_output(response.output_parsed)
-        return AuctionPreviewOracleResult(
-            provider=self.runtime_metadata(),
-            **parsed.model_dump(),
+        return deterministic.model_copy(
+            update={
+                "provider": self.runtime_metadata(),
+                "narration": parsed.narration,
+                "validation_warnings": tuple(parsed.validation_warnings),
+            }
         )
 
 
 def _system_prompt() -> str:
     return (
         "Resolve Hollow Lodge Auction Preview packets into the requested JSON "
-        "schema. Preserve the hidden truth: never reveal, paraphrase, or confirm "
+        "schema. Deterministic standings are authoritative; do not change crew "
+        "scores, standing order, strengths, penalties, or revealed clues. "
+        "Preserve the hidden truth: never reveal, paraphrase, or confirm "
         "hidden_truth_summary content. Public clue output in contract_state and "
         "revealed_clues must use only exact strings from allowed_reveal_strings. "
-        "Score each crew from the packet evidence, rubric hooks, and noise fields. "
-        "Reward cited artifacts, direct quotes, and graph contradictions. "
-        "Penalize claims that lack artifact citations or rely only on broad action prose. "
-        "Do not reveal hidden graph nodes unless they are in allowed reveal strings."
+        "Use the structured packet and deterministic result only to write concise "
+        "narration and validation warnings. Do not reveal hidden graph nodes "
+        "unless they are in allowed reveal strings."
     )
 
 

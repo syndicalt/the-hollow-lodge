@@ -821,6 +821,7 @@ def _shape_mutation_result(operation: str, result: dict[str, Any]) -> dict[str, 
         "dossier_contribute",
         "dossier_cite_artifact",
         "dossier_update_framing",
+        "dossier_add_typed_claim",
         "vote_packet_lead",
     }:
         return _shape_dossier(result)
@@ -1802,6 +1803,7 @@ def _shape_dossier(dossier: dict[str, Any]) -> dict[str, Any]:
             "reasoning",
             "weaknesses",
             "provenance_concerns",
+            "typed_claims",
         )
         if key in dossier
     }

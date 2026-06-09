@@ -795,6 +795,54 @@ def test_dossier_update_framing_mcp_call_passes_fields_and_confirmation(monkeypa
     assert result.structuredContent["agent_context"]["mutation"] is False
 
 
+def test_dossier_add_typed_claim_mcp_call_passes_fields_and_confirmation(monkeypatch):
+    packet = RenderPacket(
+        surface="mutation",
+        player_markdown="Preview: dossier_add_typed_claim\nNo server mutation was submitted.",
+        agent_context={"operation": "dossier_add_typed_claim", "mutation": False},
+    )
+
+    class StubSession:
+        def dossier_add_typed_claim(
+            self,
+            *,
+            subject_id: str,
+            predicate: str,
+            confirm: bool,
+            crew_id: str | None = None,
+            object_id: str | None = None,
+            value: str | None = None,
+            citation_artifact_ids: list[str] | None = None,
+        ) -> RenderPacket:
+            assert subject_id == "artifact_ledger_rubric"
+            assert predicate == "contradicts"
+            assert object_id == "artifact_lot_card"
+            assert value is None
+            assert citation_artifact_ids == ["artifact_ledger_rubric"]
+            assert confirm is False
+            assert crew_id == "crew_0001"
+            return packet
+
+    monkeypatch.setattr(mcp_server, "_session", lambda: StubSession())
+
+    result = asyncio.run(
+        mcp_server.mcp.call_tool(
+            "dossier_add_typed_claim",
+            {
+                "crew_id": "crew_0001",
+                "subject_id": "artifact_ledger_rubric",
+                "predicate": "contradicts",
+                "object_id": "artifact_lot_card",
+                "citation_artifact_ids": ["artifact_ledger_rubric"],
+                "confirm": False,
+            },
+        )
+    )
+
+    assert result.content[0].text == packet.player_markdown
+    assert result.structuredContent["agent_context"]["mutation"] is False
+
+
 def test_inspect_artifact_mcp_call_passes_confirmation_to_session(monkeypatch):
     packet = RenderPacket(
         surface="mutation",
@@ -967,6 +1015,7 @@ def test_public_mcp_tools_do_not_expose_local_path_overrides():
         "dossier_contribute",
         "dossier_cite_artifact",
         "dossier_update_framing",
+        "dossier_add_typed_claim",
         "inspect_artifact",
         "propose_deal",
         "accept_deal",
@@ -993,6 +1042,7 @@ def test_mutating_mcp_tools_require_confirm_argument():
         "dossier_contribute",
         "dossier_cite_artifact",
         "dossier_update_framing",
+        "dossier_add_typed_claim",
         "inspect_artifact",
         "propose_deal",
         "accept_deal",
@@ -1010,6 +1060,8 @@ def test_mutating_mcp_tools_require_confirm_argument():
 
     assert "note" in tools["dossier_contribute"].inputSchema["required"]
     assert "evidence_ids" in tools["dossier_contribute"].inputSchema["required"]
+    assert "subject_id" in tools["dossier_add_typed_claim"].inputSchema["required"]
+    assert "predicate" in tools["dossier_add_typed_claim"].inputSchema["required"]
     assert "artifact_id" in tools["render_artifact"].inputSchema["required"]
     assert "artifact_id" in tools["inspect_artifact"].inputSchema["required"]
     assert "fragment_id" in tools["render_proof_fragment"].inputSchema["required"]

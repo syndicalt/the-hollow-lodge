@@ -26,13 +26,16 @@ def valid_packet() -> AuctionPreviewOraclePacket:
         crews=(
             AuctionPreviewCrewPacket(
                 crew_id="crew_gilt",
-                claim="The relic is likely false.",
                 evidence_ids=("fragment_starter_ledger",),
                 exposed_assets=("fragment_starter_ledger",),
-                reasoning="The ledger date contradicts the chapel timestamp.",
-                weaknesses="No material confirmation.",
-                provenance_concerns="Copied hand.",
-                action_intents=("Inspect the ledger for forged provenance.",),
+                compiled_actions=(
+                    {
+                        "version": "compiled-action-v1",
+                        "approach": "provenance_research",
+                        "scope": "proofwork",
+                        "risk_posture": "careful",
+                    },
+                ),
                 crew_noise=1,
             ),
         ),
@@ -74,13 +77,16 @@ def packet_with_two_crews() -> AuctionPreviewOraclePacket:
                 *packet.crews,
                 AuctionPreviewCrewPacket(
                     crew_id="crew_ember",
-                    claim="The relic is materially suspect.",
                     evidence_ids=("asset_door_omen",),
                     exposed_assets=("asset_door_omen",),
-                    reasoning="The debtor omen contradicts the public lot story.",
-                    weaknesses="No chain-of-custody proof.",
-                    provenance_concerns="Omen source is noisy.",
-                    action_intents=("Compare the omen against ledger residue.",),
+                    compiled_actions=(
+                        {
+                            "version": "compiled-action-v1",
+                            "approach": "occult_analysis",
+                            "scope": "proofwork",
+                            "risk_posture": "balanced",
+                        },
+                    ),
                     crew_noise=0,
                 ),
             )
@@ -253,13 +259,10 @@ def test_oracle_packet_accepts_artifact_citations_and_known_edges():
         crews=(
             AuctionPreviewCrewPacket(
                 crew_id="crew_0001",
-                claim="The ledger contradicts the lot card.",
                 evidence_ids=("artifact_ledger_rubric",),
                 artifact_citations=(
                     {
                         "artifact_id": "artifact_ledger_rubric",
-                        "claim": "The ledger contradicts the lot card.",
-                        "quote": "The last hand is redder and later than the binding.",
                     },
                 ),
                 known_edges=(
@@ -274,5 +277,17 @@ def test_oracle_packet_accepts_artifact_citations_and_known_edges():
         allowed_evidence_ids=("artifact_ledger_rubric",),
     )
 
-    assert packet.crews[0].artifact_citations[0]["artifact_id"] == "artifact_ledger_rubric"
+    assert packet.crews[0].artifact_citations[0].artifact_id == "artifact_ledger_rubric"
     assert packet.crews[0].known_edges[0]["relation"] == "contradicts"
+
+
+def test_auction_preview_crew_packet_has_no_raw_player_prose_fields():
+    forbidden = {
+        "claim",
+        "reasoning",
+        "weaknesses",
+        "provenance_concerns",
+        "action_intents",
+    }
+
+    assert forbidden.isdisjoint(AuctionPreviewCrewPacket.model_fields)

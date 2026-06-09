@@ -297,3 +297,59 @@ def test_artifact_citation_idempotency_conflict_rejects_changed_payload(tmp_path
     assert replay.status_code == 201
     assert replay.json()["artifact_citations"] == first.json()["artifact_citations"]
     assert conflict.status_code == 409
+
+
+def test_packet_lead_can_add_typed_dossier_claim_with_visible_citation(tmp_path):
+    client = TestClient(create_app(data_dir=tmp_path, invite_codes=["a"]))
+    ada = register(client, "a", "Ada")
+    crew = client.post(
+        "/crews",
+        headers=command_auth(ada["token"], "crew-create"),
+        json={"name": "The Gilt Knives"},
+    ).json()
+
+    response = client.post(
+        f"/proofs/dossiers/{crew['crew_id']}/typed-claims",
+        headers=command_auth(ada["token"], "typed-claim-1"),
+        json={
+            "subject_id": "artifact_ledger_rubric",
+            "predicate": "contradicts",
+            "object_id": "artifact_lot_card",
+            "citation_artifact_ids": ["artifact_ledger_rubric"],
+        },
+    )
+
+    assert response.status_code == 201
+    assert response.json()["typed_claims"] == [
+        {
+            "claim_id": "claim_000001",
+            "subject_id": "artifact_ledger_rubric",
+            "predicate": "contradicts",
+            "object_id": "artifact_lot_card",
+            "value": None,
+            "citation_artifact_ids": ["artifact_ledger_rubric"],
+        }
+    ]
+
+
+def test_typed_dossier_claim_rejects_hidden_citation_artifact(tmp_path):
+    client = TestClient(create_app(data_dir=tmp_path, invite_codes=["a"]))
+    ada = register(client, "a", "Ada")
+    crew = client.post(
+        "/crews",
+        headers=command_auth(ada["token"], "crew-create"),
+        json={"name": "The Gilt Knives"},
+    ).json()
+
+    response = client.post(
+        f"/proofs/dossiers/{crew['crew_id']}/typed-claims",
+        headers=command_auth(ada["token"], "typed-claim-hidden"),
+        json={
+            "subject_id": "artifact_chapel_debt_mark",
+            "predicate": "supports",
+            "citation_artifact_ids": ["artifact_chapel_debt_mark"],
+        },
+    )
+
+    assert response.status_code == 409
+    assert response.json()["detail"] == "unknown citation artifact: artifact_chapel_debt_mark"

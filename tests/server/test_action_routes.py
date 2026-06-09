@@ -130,7 +130,7 @@ def test_action_submit_replay_rejects_same_key_with_different_payload(tmp_path):
     assert conflict.status_code == 409
 
 
-def test_unconfirmed_action_does_not_reach_server(tmp_path):
+def test_unconfirmed_action_returns_compiled_preview_without_event(tmp_path):
     client = TestClient(create_app(data_dir=tmp_path, invite_codes=["a"]))
     ada = register(client, "a", "Ada")
     crew = create_crew(client, ada["token"])
@@ -145,7 +145,10 @@ def test_unconfirmed_action_does_not_reach_server(tmp_path):
         },
     )
 
-    assert response.status_code == 409
+    assert response.status_code == 201
+    assert response.json()["status"] == "preview"
+    assert response.json()["compiled_intent"]["approach"] == "provenance_research"
+    assert len(response.json()["compile_hash"]) == 64
     assert "action.submitted" not in client.get("/events", headers=auth(ada["token"])).text
 
 

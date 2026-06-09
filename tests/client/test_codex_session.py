@@ -595,6 +595,47 @@ class FakeApi:
             ],
         }
 
+    def add_typed_dossier_claim(
+        self,
+        *,
+        crew_id: str,
+        subject_id: str,
+        predicate: str,
+        object_id: str | None = None,
+        value: str | None = None,
+        citation_artifact_ids=(),
+        idempotency_key: str,
+    ):
+        self.calls.append(
+            (
+                "add_typed_dossier_claim",
+                {
+                    "crew_id": crew_id,
+                    "subject_id": subject_id,
+                    "predicate": predicate,
+                    "object_id": object_id,
+                    "value": value,
+                    "citation_artifact_ids": list(citation_artifact_ids),
+                    "idempotency_key": idempotency_key,
+                },
+            )
+        )
+        return {
+            "dossier_id": f"dossier_{crew_id}",
+            "crew_id": crew_id,
+            "packet_lead_player_id": "player_0001",
+            "typed_claims": [
+                {
+                    "claim_id": "claim_000001",
+                    "subject_id": subject_id,
+                    "predicate": predicate,
+                    "object_id": object_id,
+                    "value": value,
+                    "citation_artifact_ids": list(citation_artifact_ids),
+                }
+            ],
+        }
+
     def update_dossier_framing(
         self,
         *,
@@ -1928,6 +1969,13 @@ def test_codex_session_confirmed_mutations_use_expected_api_calls(tmp_path, monk
             quote="The last hand is later.",
             confirm=True,
         ),
+        session.dossier_add_typed_claim(
+            subject_id="artifact_ledger_rubric",
+            predicate="contradicts",
+            object_id="artifact_lot_card",
+            citation_artifact_ids=["artifact_ledger_rubric"],
+            confirm=True,
+        ),
         session.inspect_artifact(
             artifact_id="artifact_ledger_rubric",
             confirm=True,
@@ -1966,22 +2014,23 @@ def test_codex_session_confirmed_mutations_use_expected_api_calls(tmp_path, monk
             "evidence_ids": ["fragment_1", "artifact_ledger_rubric"],
         }
     ]
-    assert packets[2].agent_context["result"] == {
+    assert packets[3].agent_context["result"] == {
         "artifact_id": "artifact_ledger_rubric",
         "title": "Red Ledger Rubric",
         "kind": "ledger",
         "public_summary": "A copied rubric marks prior ownership.",
     }
-    assert "server_notes" not in str(packets[2].agent_context)
-    assert "Lot 19 passed under chapel seal" not in str(packets[2].agent_context)
-    assert packets[5].agent_context["result"]["recipient_received_artifact_ids"] == [
+    assert "server_notes" not in str(packets[3].agent_context)
+    assert "Lot 19 passed under chapel seal" not in str(packets[3].agent_context)
+    assert packets[6].agent_context["result"]["recipient_received_artifact_ids"] == [
         "artifact_ledger_rubric.dealcopy.deal_000001.crew_0002.1"
     ]
-    assert packets[6].agent_context["result"]["status"] == "declined"
-    assert packets[7].agent_context["result"]["status"] == "canceled"
+    assert packets[7].agent_context["result"]["status"] == "declined"
+    assert packets[8].agent_context["result"]["status"] == "canceled"
     assert keys == [
         "dossier-contribute",
         "dossier-cite-artifact",
+        "dossier-typed-claim",
         "artifact-inspect",
         "dossier-framing",
         "deal-propose",
@@ -2010,6 +2059,19 @@ def test_codex_session_confirmed_mutations_use_expected_api_calls(tmp_path, monk
                 "claim": "The ledger contradicts the lot card.",
                 "quote": "The last hand is later.",
                 "idempotency_key": "dossier-cite-artifact.fixed",
+            },
+        ),
+        "visible_events",
+        (
+            "add_typed_dossier_claim",
+            {
+                "crew_id": "crew_0001",
+                "subject_id": "artifact_ledger_rubric",
+                "predicate": "contradicts",
+                "object_id": "artifact_lot_card",
+                "value": None,
+                "citation_artifact_ids": ["artifact_ledger_rubric"],
+                "idempotency_key": "dossier-typed-claim.fixed",
             },
         ),
         "visible_events",

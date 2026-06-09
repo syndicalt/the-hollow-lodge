@@ -3,6 +3,17 @@ from __future__ import annotations
 from pydantic import BaseModel, ConfigDict, Field
 
 
+class DossierTypedClaim(BaseModel):
+    model_config = ConfigDict(frozen=True)
+
+    claim_id: str = Field(min_length=1)
+    subject_id: str = Field(min_length=1)
+    predicate: str = Field(min_length=1)
+    object_id: str | None = Field(default=None, min_length=1)
+    value: str | None = Field(default=None, min_length=1)
+    citation_artifact_ids: tuple[str, ...] = ()
+
+
 class ProofFragment(BaseModel):
     model_config = ConfigDict(frozen=True)
 
@@ -59,6 +70,7 @@ class ProofDossier(BaseModel):
     provenance_concerns: str = ""
     member_contributions: tuple[dict, ...] = ()
     artifact_citations: tuple[dict, ...] = ()
+    typed_claims: tuple[DossierTypedClaim, ...] = ()
 
     @classmethod
     def empty(
@@ -138,6 +150,26 @@ class ProofDossier(BaseModel):
                 )
             }
         )
+
+    def with_typed_claim(
+        self,
+        *,
+        claim_id: str,
+        subject_id: str,
+        predicate: str,
+        object_id: str | None = None,
+        value: str | None = None,
+        citation_artifact_ids: list[str] | tuple[str, ...] = (),
+    ) -> ProofDossier:
+        claim = DossierTypedClaim(
+            claim_id=claim_id,
+            subject_id=subject_id,
+            predicate=predicate,
+            object_id=object_id,
+            value=value,
+            citation_artifact_ids=tuple(citation_artifact_ids),
+        )
+        return self.model_copy(update={"typed_claims": (*self.typed_claims, claim)})
 
     def with_packet_lead(self, player_id: str) -> ProofDossier:
         return self.model_copy(update={"packet_lead_player_id": player_id})

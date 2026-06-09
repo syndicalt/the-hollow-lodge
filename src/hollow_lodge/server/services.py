@@ -22,7 +22,7 @@ from hollow_lodge.domain.identity import (
 )
 from hollow_lodge.domain.proofs import ProofDossier, ProofFragment
 from hollow_lodge.domain.scoring import AuctionPreviewScoreInput
-from hollow_lodge.domain.actions import NormalizedAction
+from hollow_lodge.domain.actions import NormalizedAction, compile_action_intent
 from hollow_lodge.eventlog.jsonl_store import EventStore, JsonlEventStore
 from hollow_lodge.eventlog.visibility import Principal
 from hollow_lodge.server.artifact_seed import STARTER_ARTIFACT_GRAPH, STARTER_PUBLIC_ARTIFACT_IDS
@@ -1658,15 +1658,16 @@ class ContractService:
             crews=tuple(
                 AuctionPreviewCrewPacket(
                     crew_id=score_input.crew_id,
-                    claim=score_input.claim,
-                    reasoning=score_input.reasoning,
-                    weaknesses=score_input.weaknesses,
-                    provenance_concerns=score_input.provenance_concerns,
                     evidence_ids=tuple(score_input.evidence_ids),
-                    artifact_citations=tuple(score_input.artifact_citations),
+                    artifact_citations=tuple(
+                        {"artifact_id": citation["artifact_id"]}
+                        for citation in score_input.artifact_citations
+                        if "artifact_id" in citation
+                    ),
                     known_edges=tuple(score_input.known_edges),
                     exposed_assets=tuple(score_input.exposed_assets),
-                    action_intents=tuple(score_input.action_intents),
+                    compiled_actions=tuple(score_input.compiled_actions),
+                    typed_claims=tuple(score_input.typed_claims),
                     crew_noise=score_input.crew_noise,
                 )
                 for score_input in score_inputs
@@ -1809,33 +1810,19 @@ class ContractService:
             )
             known_edges = self._known_edges_for_artifacts(citation_artifact_ids)
             evidence_ids = tuple(dict.fromkeys((*dossier.evidence_ids, *citation_artifact_ids)))
-            citation_reasoning = "\n".join(
-                f"{citation['artifact_id']}: {citation['claim']}"
-                for citation in dossier.artifact_citations
-            )
-            reasoning = "\n".join(
-                part for part in (dossier.reasoning, citation_reasoning) if part
-            )
-            citation_quotes = "\n".join(
-                f"{citation['artifact_id']}: {citation['quote']}"
-                for citation in dossier.artifact_citations
-            )
-            provenance_concerns = "\n".join(
-                part for part in (dossier.provenance_concerns, citation_quotes) if part
-            )
             submitted_actions = [
                 action
                 for action in actions_by_crew.get(crew_id, [])
                 if action["status"] == "submitted"
             ]
+            compiled_actions = tuple(
+                self._compiled_action_payload(action)
+                for action in submitted_actions
+            )
             score_inputs.append(
                 AuctionPreviewScoreInput(
                     crew_id=crew_id,
-                    claim=dossier.claim,
                     evidence_ids=evidence_ids,
-                    reasoning=reasoning,
-                    weaknesses=dossier.weaknesses,
-                    provenance_concerns=provenance_concerns,
                     artifact_citations=dossier.artifact_citations,
                     known_edges=known_edges,
                     exposed_assets=tuple(
@@ -1850,7 +1837,13 @@ class ContractService:
                             )
                         )
                     ),
-                    action_intents=[action["intent"] for action in submitted_actions],
+                    compiled_actions=compiled_actions,
+                    typed_claims=tuple(
+                        claim.model_dump(mode="json")
+                        if hasattr(claim, "model_dump")
+                        else claim
+                        for claim in getattr(dossier, "typed_claims", ())
+                    ),
                     crew_noise=sum(action["crew_noise_impact"] for action in submitted_actions),
                 )
             )
@@ -1883,6 +1876,7 @@ class ContractService:
                 "proof.dossier.framing.updated",
                 "proof.dossier.contribution.added",
                 "artifact.dossier.cited",
+                "proof.dossier.typed_claim.added",
                 "proof.packet_lead.replaced",
             }:
                 current = ProofDossier.model_validate(event.payload["dossier"])
@@ -1901,6 +1895,16 @@ class ContractService:
         for action in latest.values():
             by_crew.setdefault(action["crew_id"], []).append(action)
         return by_crew
+
+    def _compiled_action_payload(self, action: dict) -> dict:
+        compiled = action.get("compiled_intent")
+        if isinstance(compiled, dict):
+            return compiled
+        legacy = compile_action_intent(
+            intent=action.get("intent", ""),
+            action_number=2 if action.get("crew_noise_impact", 0) else 1,
+        )
+        return legacy.model_dump(mode="json")
 
     def _meaningful_action_count(self, *, contract_id: str, phase: str) -> int:
         return sum(
@@ -1925,6 +1929,7 @@ class ContractService:
         exposed_assets = set(action["exposed_assets"])
         if exposed_assets & {"fragment_starter_ledger", "asset_door_omen"}:
             return True
+        compiled = self._compiled_action_payload(action)
         graph = self._artifact_graph_for_contract(contract_id)
         if self._artifact_service is not None:
             visible = set(self._artifact_service.seeded_graphs()[contract_id][1])
@@ -1935,7 +1940,7 @@ class ContractService:
                 graph=graph,
                 contract_id=contract_id,
                 phase=phase,
-                intent=action["intent"],
+                matched_terms=compiled.get("matched_terms", ()),
                 exposed_assets=action.get("exposed_assets", ()),
                 already_visible_artifact_ids=visible,
             )
@@ -2285,6 +2290,74 @@ class ProofService:
             )
             return updated.model_dump(mode="json")
 
+    def add_typed_claim(
+        self,
+        *,
+        crew_id: str,
+        player_id: str,
+        subject_id: str,
+        predicate: str,
+        object_id: str | None,
+        value: str | None,
+        citation_artifact_ids: list[str],
+        idempotency_key: str,
+    ) -> dict:
+        if not self._crew_service.is_member(crew_id=crew_id, player_id=player_id):
+            raise PermissionError("not a crew member")
+        with COMMAND_SERIALIZATION_LOCK, self._lock:
+            existing = self._event_by_idempotency_key(idempotency_key)
+            if existing is not None:
+                if (
+                    existing.type != "proof.dossier.typed_claim.added"
+                    or existing.actor_id != player_id
+                    or existing.payload["crew_id"] != crew_id
+                    or existing.payload["subject_id"] != subject_id
+                    or existing.payload["predicate"] != predicate
+                    or existing.payload.get("object_id") != object_id
+                    or existing.payload.get("value") != value
+                    or existing.payload["citation_artifact_ids"] != citation_artifact_ids
+                ):
+                    raise ValueError("idempotency key conflict")
+                return existing.payload["dossier"]
+            if self._auction_preview_locked():
+                raise ValueError("phase locked")
+            current = self._current_dossier(crew_id)
+            if current.packet_lead_player_id != player_id:
+                raise PermissionError("packet lead only")
+            visible_artifact_ids = self._visible_dossier_artifact_ids(
+                player_id=player_id,
+                crew_id=crew_id,
+            )
+            for artifact_id in citation_artifact_ids:
+                if artifact_id not in visible_artifact_ids:
+                    raise ValueError(f"unknown citation artifact: {artifact_id}")
+            claim_id = f"claim_{len(current.typed_claims) + 1:06d}"
+            updated = current.with_typed_claim(
+                claim_id=claim_id,
+                subject_id=subject_id,
+                predicate=predicate,
+                object_id=object_id,
+                value=value,
+                citation_artifact_ids=citation_artifact_ids,
+            )
+            self._event_store.append_command(
+                event_type="proof.dossier.typed_claim.added",
+                actor_id=player_id,
+                visibility=EventVisibility.crews([crew_id]),
+                payload={
+                    "crew_id": crew_id,
+                    "claim_id": claim_id,
+                    "subject_id": subject_id,
+                    "predicate": predicate,
+                    "object_id": object_id,
+                    "value": value,
+                    "citation_artifact_ids": citation_artifact_ids,
+                    "dossier": updated.model_dump(mode="json"),
+                },
+                idempotency_key=idempotency_key,
+            )
+            return updated.model_dump(mode="json")
+
     def vote_packet_lead(
         self,
         *,
@@ -2347,12 +2420,25 @@ class ProofService:
                 "proof.dossier.framing.updated",
                 "proof.dossier.contribution.added",
                 "artifact.dossier.cited",
+                "proof.dossier.typed_claim.added",
                 "proof.packet_lead.replaced",
             }:
                 current = ProofDossier.model_validate(event.payload["dossier"])
         if current is None:
             raise KeyError(crew_id)
         return current
+
+    def _visible_dossier_artifact_ids(self, *, player_id: str, crew_id: str) -> set[str]:
+        visible_ids = {STARTER_FRAGMENT.fragment_id}
+        if self._artifact_service is not None:
+            visible = self._artifact_service.visible_artifacts_for_player(
+                player_id,
+                crew_ids=[crew_id],
+            )
+            visible_ids.update(
+                artifact["artifact_id"] for artifact in visible.get("artifacts", [])
+            )
+        return visible_ids
 
     def _packet_lead_majority_winner(self, crew_id: str) -> str | None:
         latest_votes: dict[str, str] = {}
@@ -2510,8 +2596,6 @@ class ActionService:
                 return existing.payload["action"]
             if self._auction_preview_locked():
                 raise ValueError("phase locked")
-            if not confirmed:
-                raise ValueError("unconfirmed action was not submitted")
             if not self._crew_service.is_member(crew_id=crew_id, player_id=player_id):
                 raise PermissionError(crew_id)
             if rumor_id is None and rumor_response_mode != "investigate":
@@ -2525,12 +2609,17 @@ class ActionService:
             if responds_to_rumor_escalation:
                 escalation = self._require_rumor_escalation(crew_id=crew_id)
             action_number = self._submitted_action_count(crew_id) + 1
-            frame = NormalizedAction.from_intent(
+            frame = self._compile_action_frame(
                 intent=intent,
                 actor_player_id=player_id,
                 crew_id=crew_id,
                 action_number=action_number,
             )
+            if not confirmed:
+                return {
+                    "status": "preview",
+                    **frame.model_dump(mode="json"),
+                }
             action = {
                 "action_id": f"action_{self._global_action_count() + 1:06d}",
                 "status": "submitted",
@@ -2796,8 +2885,15 @@ class ActionService:
             if self._auction_preview_locked():
                 raise ValueError("phase locked")
             action = self._current_action(action_id=action_id, player_id=player_id)
+            frame = self._compile_action_frame(
+                intent=intent,
+                actor_player_id=action["actor_player_id"],
+                crew_id=action["crew_id"],
+                action_number=2 if action.get("crew_noise_impact", 0) else 1,
+            )
             edited = {
                 **action,
+                **frame.model_dump(mode="json"),
                 "intent": intent,
                 "status": "submitted",
             }
@@ -2855,6 +2951,74 @@ class ActionService:
             if event.type == "action.submitted"
         )
 
+    def _compile_action_frame(
+        self,
+        *,
+        intent: str,
+        actor_player_id: str,
+        crew_id: str,
+        action_number: int,
+    ) -> NormalizedAction:
+        allowed_ids = self._visible_action_reference_ids(
+            player_id=actor_player_id,
+            crew_id=crew_id,
+        )
+        compiled = compile_action_intent(
+            intent=intent,
+            action_number=action_number,
+            allowed_target_ids=allowed_ids,
+            allowed_asset_ids=allowed_ids,
+            contract_terms=self._action_unlock_terms(),
+        )
+        return NormalizedAction(
+            intent=intent,
+            actor_player_id=actor_player_id,
+            crew_id=crew_id,
+            scope=compiled.scope,
+            approach=compiled.approach,
+            risk_posture=compiled.risk_posture,
+            exposed_assets=list(compiled.assets_staked),
+            crew_noise_impact=compiled.crew_noise_impact,
+            compiled_intent=compiled,
+            compile_hash=compiled.compile_hash,
+        )
+
+    def _visible_action_reference_ids(self, *, player_id: str, crew_id: str) -> set[str]:
+        visible_ids: set[str] = set()
+        if self._artifact_service is not None:
+            visible = self._artifact_service.visible_artifacts_for_player(
+                player_id,
+                crew_ids=[crew_id],
+            )
+            visible_ids.update(
+                artifact["artifact_id"] for artifact in visible.get("artifacts", [])
+            )
+        else:
+            visible_ids.update(STARTER_PUBLIC_ARTIFACT_IDS)
+        if self._owns_starter_fragment(player_id):
+            visible_ids.add(STARTER_FRAGMENT.fragment_id)
+        return visible_ids
+
+    def _owns_starter_fragment(self, player_id: str) -> bool:
+        for event in self._event_store.read():
+            if event.type == "identity.player.registered" and event.payload["player_id"] == player_id:
+                return True
+            if event.type == "identity.player.registered":
+                return False
+        return False
+
+    def _action_unlock_terms(self) -> set[str]:
+        terms: set[str] = set()
+        graphs = (
+            self._artifact_service.seeded_graphs().values()
+            if self._artifact_service is not None
+            else ((STARTER_ARTIFACT_GRAPH, STARTER_PUBLIC_ARTIFACT_IDS),)
+        )
+        for graph, _visible_ids in graphs:
+            for rule in graph.unlock_rules:
+                terms.update(rule.required_terms)
+        return terms
+
     def _global_action_count(self) -> int:
         return sum(1 for event in self._event_store.read() if event.type == "action.submitted")
 
@@ -2897,11 +3061,17 @@ class ActionService:
         }
         for graph, _ in self._artifact_service.seeded_graphs().values():
             phase = self._contract_phase_name(graph.contract_id)
+            compiled = action.get("compiled_intent")
+            if not isinstance(compiled, dict):
+                compiled = compile_action_intent(
+                    intent=action.get("intent", ""),
+                    action_number=2 if action.get("crew_noise_impact", 0) else 1,
+                ).model_dump(mode="json")
             candidates = action_unlock_candidates(
                 graph=graph,
                 contract_id=graph.contract_id,
                 phase=phase,
-                intent=action["intent"],
+                matched_terms=compiled.get("matched_terms", ()),
                 exposed_assets=action.get("exposed_assets", ()),
                 already_visible_artifact_ids=already_visible_artifact_ids,
             )

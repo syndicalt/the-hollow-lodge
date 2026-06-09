@@ -115,8 +115,8 @@ def test_action_revision_loop_scores_only_current_submitted_action(tmp_path):
     assert contract["phase_result"]["standings"] == [
         {
             "crew_id": result["crew_id"],
-            "standing": "Viable",
-            "score": 64,
+            "standing": "Strong lead",
+            "score": 70,
             "score_reasoning": {
                 "strengths": ["clean provenance contradiction"],
                 "weaknesses": ["no material confirmation"],
@@ -125,7 +125,7 @@ def test_action_revision_loop_scores_only_current_submitted_action(tmp_path):
             },
         }
     ]
-    assert f"- {result['crew_id']}: Viable (64)" in (
+    assert f"- {result['crew_id']}: Strong lead (70)" in (
         result["contract_board"]["player_markdown"]
     )
     assert "minor heat trace" not in str(result["contract_board"])
@@ -136,7 +136,7 @@ def test_action_revision_loop_scores_only_current_submitted_action(tmp_path):
     assert activity["agent_context"]["event_type_counts"]["action.edited"] == 1
     assert activity["agent_context"]["event_type_counts"]["action.canceled"] == 1
     assert activity["agent_context"]["event_type_counts"]["contract.phase.resolved"] == 1
-    assert f"phase result: {result['crew_id']} Viable 64" in activity["player_markdown"]
+    assert f"phase result: {result['crew_id']} Strong lead 70" in activity["player_markdown"]
 
     for packet_name in (
         "edited_preview",

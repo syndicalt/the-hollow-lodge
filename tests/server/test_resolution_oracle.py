@@ -254,7 +254,7 @@ def test_openai_oracle_resolves_phase_through_server_without_fallback(tmp_path):
         {
             "crew_id": crew["crew_id"],
             "standing": "Strong lead",
-            "score": 88,
+            "score": 70,
             "strengths": ["clean provenance contradiction"],
             "weaknesses": ["no material confirmation"],
             "penalties": [],
@@ -262,7 +262,8 @@ def test_openai_oracle_resolves_phase_through_server_without_fallback(tmp_path):
         }
     ]
     assert response.json()["contract_state"] == [
-        "Auction house provenance is now suspect."
+        "Auction house provenance is now suspect.",
+        "Rival alternate clue paths remain open.",
     ]
     assert len(fake_openai_client.responses.parse_calls) == 1
     parse_call = fake_openai_client.responses.parse_calls[0]
@@ -277,13 +278,13 @@ def test_openai_oracle_resolves_phase_through_server_without_fallback(tmp_path):
     assert requested[0].payload["audit_schema_version"] == 1
     assert requested[0].payload["provider_attempted"] == "openai"
     assert requested[0].payload["model"] == "gpt-test"
-    assert requested[0].payload["prompt_version"] == "auction-preview-resolution-v1"
+    assert requested[0].payload["prompt_version"] == "auction-preview-resolution-v2"
     assert requested[0].payload["validation_status"] == "not_started"
     assert requested[0].payload["input_packet_hash"]
     assert completed[0].payload["audit_schema_version"] == 1
     assert completed[0].payload["provider"] == "openai"
     assert completed[0].payload["model"] == "gpt-test"
-    assert completed[0].payload["prompt_version"] == "auction-preview-resolution-v1"
+    assert completed[0].payload["prompt_version"] == "auction-preview-resolution-v2"
     assert completed[0].payload["fallback"] is False
     assert completed[0].payload["fallback_reason"] is None
     assert completed[0].payload["validation_status"] == "validated"

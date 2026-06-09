@@ -49,13 +49,16 @@ def auction_preview_packet() -> AuctionPreviewOraclePacket:
         crews=(
             AuctionPreviewCrewPacket(
                 crew_id="crew_gilt",
-                claim="The relic is likely false.",
                 evidence_ids=("fragment_starter_ledger",),
                 exposed_assets=("fragment_starter_ledger",),
-                reasoning="The ledger date contradicts the chapel timestamp.",
-                weaknesses="No material confirmation.",
-                provenance_concerns="Copied hand.",
-                action_intents=("Inspect the ledger for forged provenance.",),
+                compiled_actions=(
+                    {
+                        "version": "compiled-action-v1",
+                        "approach": "provenance_research",
+                        "scope": "proofwork",
+                        "risk_posture": "careful",
+                    },
+                ),
                 crew_noise=1,
             ),
         ),
@@ -96,8 +99,9 @@ def test_openai_oracle_uses_structured_outputs_parse_contract():
 
     assert result.provider.provider == "openai"
     assert result.provider.model == "gpt-test"
-    assert result.provider.prompt_version == "auction-preview-resolution-v1"
-    assert result.standings[0].score == 76
+    assert result.provider.prompt_version == "auction-preview-resolution-v2"
+    assert result.standings[0].score != 76
+    assert result.narration == "The Gilt packet leads on provenance without settling material truth."
 
     assert len(client.responses.parse_calls) == 1
     parse_call = client.responses.parse_calls[0]
@@ -106,9 +110,9 @@ def test_openai_oracle_uses_structured_outputs_parse_contract():
     assert parse_call["store"] is False
     assert parse_call["text_format"] is OpenAIAuctionPreviewResolution
     assert "text" not in parse_call
-    assert "contract_false_finger" in str(parse_call["input"])
-    assert "Reward cited artifacts" in parse_call["input"][0]["content"]
-    assert "graph contradictions" in parse_call["input"][0]["content"]
+    assert parse_call["input"][1]["content"]["packet"]["contract_id"] == "contract_false_finger"
+    assert "Deterministic standings are authoritative" in parse_call["input"][0]["content"]
+    assert "raw action prose" not in str(parse_call["input"])
 
 
 def test_openai_oracle_does_not_require_real_api_when_client_injected():

@@ -1997,6 +1997,7 @@ def proof_dossiers_from_events(events: list[GameEvent]) -> dict[str, dict[str, A
             "proof.dossier.framing.updated",
             "proof.dossier.contribution.added",
             "artifact.dossier.cited",
+            "proof.dossier.typed_claim.added",
             "proof.packet_lead.replaced",
         }:
             dossier = ProofDossier.model_validate(event.payload["dossier"])

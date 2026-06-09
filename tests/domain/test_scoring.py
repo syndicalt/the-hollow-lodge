@@ -5,14 +5,14 @@ def test_clean_provenance_contradiction_beats_uncorroborated_occult_clue():
     clean = score_auction_preview(
         AuctionPreviewScoreInput(
             crew_id="crew_any",
-            claim="The relic is likely false.",
             evidence_ids=["fragment_starter_ledger"],
             exposed_assets=["fragment_starter_ledger"],
-            reasoning="The ledger date contradicts the chapel timestamp.",
-            weaknesses="No material confirmation.",
-            provenance_concerns="Copied hand, ink after binding.",
-            action_intents=[
-                "Quietly compare the red ledger date to the chapel timestamp for a forged provenance contradiction.",
+            compiled_actions=[
+                {
+                    "approach": "provenance_research",
+                    "scope": "proofwork",
+                    "risk_posture": "careful",
+                },
             ],
             crew_noise=1,
         )
@@ -20,13 +20,15 @@ def test_clean_provenance_contradiction_beats_uncorroborated_occult_clue():
     occult = score_auction_preview(
         AuctionPreviewScoreInput(
             crew_id="crew_other",
-            claim="The reliquary is occult but unstable.",
             evidence_ids=[],
             exposed_assets=["asset_door_omen"],
-            reasoning="A moth jar door omen appears near the auction room.",
-            weaknesses="Omen has no corroboration.",
-            provenance_concerns="Ledger chain is contaminated.",
-            action_intents=["Observe the sealed door omen and moth jar for occult resonance."],
+            compiled_actions=[
+                {
+                    "approach": "occult_analysis",
+                    "scope": "proofwork",
+                    "risk_posture": "balanced",
+                },
+            ],
             crew_noise=0,
         )
     )
@@ -40,13 +42,15 @@ def test_clean_provenance_contradiction_beats_uncorroborated_occult_clue():
 def test_scoring_uses_evidence_and_actions_not_crew_names():
     base = AuctionPreviewScoreInput(
         crew_id="crew_gilt_knives",
-        claim="The relic is likely false.",
         evidence_ids=["fragment_starter_ledger"],
         exposed_assets=["fragment_starter_ledger"],
-        reasoning="The ledger contradicts the chapel timestamp.",
-        weaknesses="No material confirmation.",
-        provenance_concerns="Copied hand.",
-        action_intents=["Inspect the ledger for forged provenance date correlation."],
+        compiled_actions=[
+            {
+                "approach": "provenance_research",
+                "scope": "proofwork",
+                "risk_posture": "careful",
+            },
+        ],
         crew_noise=0,
     )
     renamed = base.model_copy(update={"crew_id": "crew_moth_choir"})
@@ -58,14 +62,30 @@ def test_provenance_keywords_without_supporting_evidence_do_not_get_clean_clue()
     unsupported = score_auction_preview(
         AuctionPreviewScoreInput(
             crew_id="crew_any",
-            claim="The relic is likely false.",
             evidence_ids=[],
             exposed_assets=[],
-            reasoning="The ledger date is forged and contradicts the chapel timestamp.",
-            action_intents=["Say ledger provenance date correlation repeatedly."],
+            compiled_actions=[
+                {
+                    "approach": "provenance_research",
+                    "scope": "proofwork",
+                    "risk_posture": "careful",
+                },
+            ],
             crew_noise=0,
         )
     )
 
     assert "clean provenance contradiction" not in unsupported.strengths
     assert unsupported.standing == "Weak"
+
+
+def test_score_input_has_no_raw_prose_fields():
+    forbidden = {
+        "claim",
+        "reasoning",
+        "weaknesses",
+        "provenance_concerns",
+        "action_intents",
+    }
+
+    assert forbidden.isdisjoint(AuctionPreviewScoreInput.model_fields)

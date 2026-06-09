@@ -7,15 +7,12 @@ class AuctionPreviewScoreInput(BaseModel):
     model_config = ConfigDict(frozen=True)
 
     crew_id: str = Field(min_length=1)
-    claim: str = ""
     evidence_ids: tuple[str, ...] | list[str] = ()
     artifact_citations: tuple[dict, ...] | list[dict] = ()
     known_edges: tuple[dict, ...] | list[dict] = ()
     exposed_assets: tuple[str, ...] | list[str] = ()
-    reasoning: str = ""
-    weaknesses: str = ""
-    provenance_concerns: str = ""
-    action_intents: tuple[str, ...] | list[str] = ()
+    compiled_actions: tuple[dict, ...] | list[dict] = ()
+    typed_claims: tuple[dict, ...] | list[dict] = ()
     crew_noise: int = Field(ge=0)
 
 
@@ -32,66 +29,68 @@ class AuctionPreviewScore(BaseModel):
 
 
 def score_auction_preview(score_input: AuctionPreviewScoreInput) -> AuctionPreviewScore:
-    text = _combined_text(score_input)
     evidence_ids = tuple(dict.fromkeys(score_input.evidence_ids))
     exposed_assets = tuple(dict.fromkeys(score_input.exposed_assets))
+    compiled_actions = tuple(score_input.compiled_actions)
+    known_edges = tuple(score_input.known_edges)
+    typed_claims = tuple(score_input.typed_claims)
     strengths: list[str] = []
     weaknesses: list[str] = []
     penalties: list[str] = []
     revealed_clues: list[str] = []
     total = 0
 
+    evidence_set = set(evidence_ids) | set(exposed_assets)
+    action_approaches = {
+        str(action.get("approach", ""))
+        for action in compiled_actions
+        if isinstance(action, dict)
+    }
     has_ledger = (
-        "fragment_starter_ledger" in evidence_ids
-        or "fragment_starter_ledger" in exposed_assets
+        "fragment_starter_ledger" in evidence_set
+        or "artifact_ledger_rubric" in evidence_set
     )
-    has_provenance_work = any(
-        marker in text
-        for marker in (
-            "provenance",
-            "forged",
-            "forgery",
-            "date",
-            "timestamp",
-            "copied",
-            "ink",
-        )
+    has_provenance_work = bool(
+        action_approaches
+        & {
+            "provenance_research",
+            "forgery_analysis",
+            "surveillance",
+        }
+    ) or any(
+        isinstance(edge, dict)
+        and edge.get("relation") in {"contradicts", "copies", "points_to"}
+        for edge in known_edges
     )
     if has_ledger and has_provenance_work:
-        total += 64
+        total += 70
         strengths.append("clean provenance contradiction")
         weaknesses.append("no material confirmation")
         revealed_clues.append("auction-house provenance is now suspect")
 
-    has_occult_observation = any(
-        marker in text
-        for marker in (
-            "omen",
-            "moth",
-            "door",
-            "occult",
-            "resonance",
-        )
-    )
-    has_occult_support = "asset_door_omen" in exposed_assets
+    has_occult_observation = "occult_analysis" in action_approaches
+    has_occult_support = "asset_door_omen" in evidence_set
     if has_occult_observation and has_occult_support:
         total += 43
         strengths.append("occult clue may unlock alternate lane")
         weaknesses.append("uncorroborated omen")
         revealed_clues.append("sealed-door omen remains viable")
 
-    if score_input.claim:
-        total += 6
-    if score_input.reasoning:
-        total += min(12, len(score_input.reasoning.split()) // 2)
-    if score_input.provenance_concerns:
-        total += 8
+    if typed_claims:
+        total += min(12, 4 * len(typed_claims))
+    if score_input.artifact_citations:
+        total += min(12, 4 * len(score_input.artifact_citations))
+    if known_edges:
+        total += min(8, 4 * len(known_edges))
     if not evidence_ids and has_occult_observation:
         total += 3
     if not strengths:
         weaknesses.append("no resolved proof lane")
 
-    if "contaminated" in text:
+    if any(
+        isinstance(edge, dict) and edge.get("relation") == "contaminates"
+        for edge in known_edges
+    ):
         penalties.append("contaminated ledger chain")
         total = max(0, total - 5)
     if score_input.crew_noise:
@@ -107,18 +106,6 @@ def score_auction_preview(score_input: AuctionPreviewScoreInput) -> AuctionPrevi
         penalties=tuple(penalties),
         revealed_clues=tuple(revealed_clues),
     )
-
-
-def _combined_text(score_input: AuctionPreviewScoreInput) -> str:
-    return " ".join(
-        (
-            score_input.claim,
-            score_input.reasoning,
-            score_input.weaknesses,
-            score_input.provenance_concerns,
-            " ".join(score_input.action_intents),
-        )
-    ).lower()
 
 
 def _standing(*, total: int, strengths: list[str]) -> str:

@@ -377,7 +377,7 @@ def test_full_game_loop_with_escrow_trade(tmp_path):
     )
     assert "What changed since sequence 34:" in final_delta["player_markdown"]
     assert "- 35 contract.phase.locked" in final_delta["player_markdown"]
-    assert "- 38 phase result: crew_0002 Strong lead 100" in final_delta["player_markdown"]
+    assert "- 38 phase result: crew_0002 Strong lead 70" in final_delta["player_markdown"]
     assert "- 41 legacy crew_0002: Strong lead" in final_delta["player_markdown"]
     assert "- 42 legacy crew_0001: Weak" in final_delta["player_markdown"]
     serialized_delta = str(final_delta)

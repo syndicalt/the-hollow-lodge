@@ -68,7 +68,7 @@ def test_repeated_crew_actions_render_noise_penalty_after_resolution(tmp_path):
         {
             "crew_id": result["crew_id"],
             "standing": "Viable",
-            "score": 60,
+            "score": 66,
             "score_reasoning": {
                 "strengths": ["clean provenance contradiction"],
                 "weaknesses": ["no material confirmation"],
@@ -77,7 +77,7 @@ def test_repeated_crew_actions_render_noise_penalty_after_resolution(tmp_path):
             },
         }
     ]
-    assert f"- {result['crew_id']}: Viable (60)" in contract_board["player_markdown"]
+    assert f"- {result['crew_id']}: Viable (66)" in contract_board["player_markdown"]
     assert "penalties: minor heat trace" in contract_board["player_markdown"]
     assert "clues: Auction house provenance is now suspect." in (
         contract_board["player_markdown"]
@@ -95,7 +95,7 @@ def test_repeated_crew_actions_render_noise_penalty_after_resolution(tmp_path):
     assert "action action_000002: Pressure the auction clerk" in (
         activity["player_markdown"]
     )
-    assert f"phase result: {result['crew_id']} Viable 60" in (
+    assert f"phase result: {result['crew_id']} Viable 66" in (
         activity["player_markdown"]
     )
 

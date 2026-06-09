@@ -7,7 +7,7 @@ def test_action_mentions_tag_unlocks_matching_artifact_rule():
         graph=STARTER_ARTIFACT_GRAPH,
         contract_id="contract_false_finger",
         phase="Auction Preview",
-        intent="Question the chapel keeper about the debt mark.",
+        matched_terms=("chapel",),
         exposed_assets=(),
         already_visible_artifact_ids={"artifact_lot_card", "artifact_ledger_rubric"},
     )
@@ -22,7 +22,7 @@ def test_unlock_candidates_skip_already_visible_artifacts():
         graph=STARTER_ARTIFACT_GRAPH,
         contract_id="contract_false_finger",
         phase="Auction Preview",
-        intent="Question the chapel keeper about the debt mark.",
+        matched_terms=("chapel",),
         exposed_assets=(),
         already_visible_artifact_ids={
             "artifact_lot_card",
@@ -39,7 +39,7 @@ def test_action_mentions_tag_requires_all_terms():
         graph=STARTER_ARTIFACT_GRAPH,
         contract_id="contract_false_finger",
         phase="Auction Preview",
-        intent="Question the clerk.",
+        matched_terms=("clerk",),
         exposed_assets=(),
         already_visible_artifact_ids={"artifact_lot_card", "artifact_ledger_rubric"},
     )
@@ -47,7 +47,7 @@ def test_action_mentions_tag_requires_all_terms():
         graph=STARTER_ARTIFACT_GRAPH,
         contract_id="contract_false_finger",
         phase="Auction Preview",
-        intent="Question the clerk about the catalogue correction.",
+        matched_terms=("clerk", "catalogue"),
         exposed_assets=(),
         already_visible_artifact_ids={"artifact_lot_card", "artifact_ledger_rubric"},
     )

@@ -139,8 +139,8 @@ def test_saints_and_ledgers_auction_preview_vertical_slice(tmp_path):
     assert standings[0]["standing"] == "Strong lead"
     assert "clean provenance contradiction" in standings[0]["strengths"]
     assert standings[1]["crew_id"] == moth["crew_id"]
-    assert standings[1]["standing"] == "Viable but unstable"
-    assert "occult clue may unlock alternate lane" in standings[1]["strengths"]
+    assert standings[1]["standing"] == "Weak"
+    assert standings[1]["strengths"] == []
     assert "truth_false_finger_forgery" not in str(reveal.json())
 
     moth_log = LocalEventLog(tmp_path / "moth-local.jsonl")

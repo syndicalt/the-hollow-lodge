@@ -307,6 +307,29 @@ def dossier_update_framing(
 
 
 @mcp.tool()
+def dossier_add_typed_claim(
+    subject_id: str,
+    predicate: str,
+    confirm: bool,
+    crew_id: str | None = None,
+    object_id: str | None = None,
+    value: str | None = None,
+    citation_artifact_ids: list[str] | None = None,
+) -> CallToolResult:
+    return packet_response(
+        _session().dossier_add_typed_claim(
+            subject_id=subject_id,
+            predicate=predicate,
+            object_id=object_id,
+            value=value,
+            citation_artifact_ids=citation_artifact_ids or [],
+            confirm=confirm,
+            crew_id=crew_id,
+        )
+    )
+
+
+@mcp.tool()
 def propose_deal(
     recipient_crew_id: str,
     offered_artifact_ids: list[str],

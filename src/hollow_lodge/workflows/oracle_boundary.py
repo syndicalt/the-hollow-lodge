@@ -13,19 +13,46 @@ MAX_ORACLE_TEXT_CHARS = 500
 BoundedOracleText = Annotated[str, Field(max_length=MAX_ORACLE_TEXT_CHARS)]
 
 
+class ArtifactCitationSignal(BaseModel):
+    model_config = ConfigDict(frozen=True, extra="forbid")
+
+    artifact_id: str = Field(min_length=1)
+
+
+class CompiledActionSignal(BaseModel):
+    model_config = ConfigDict(frozen=True, extra="forbid")
+
+    version: str = Field(min_length=1)
+    approach: str = Field(min_length=1)
+    scope: str = Field(min_length=1)
+    risk_posture: str = Field(min_length=1)
+    target_ids: tuple[str, ...] = ()
+    assets_staked: tuple[str, ...] = ()
+    matched_terms: tuple[str, ...] = ()
+    action_cost: int = Field(default=1, ge=1)
+    crew_noise_impact: int = Field(default=0, ge=0)
+
+
+class TypedClaimSignal(BaseModel):
+    model_config = ConfigDict(frozen=True, extra="forbid")
+
+    subject_id: str = Field(min_length=1)
+    predicate: str = Field(min_length=1)
+    object_id: str | None = Field(default=None, min_length=1)
+    value: str | None = Field(default=None, min_length=1)
+    citation_artifact_ids: tuple[str, ...] = ()
+
+
 class AuctionPreviewCrewPacket(BaseModel):
     model_config = ConfigDict(frozen=True)
 
     crew_id: str = Field(min_length=1)
-    claim: str = ""
-    reasoning: str = ""
-    weaknesses: str = ""
-    provenance_concerns: str = ""
     evidence_ids: tuple[str, ...] = ()
-    artifact_citations: tuple[dict, ...] = ()
+    artifact_citations: tuple[ArtifactCitationSignal, ...] = ()
     known_edges: tuple[dict, ...] = ()
     exposed_assets: tuple[str, ...] = ()
-    action_intents: tuple[str, ...] = ()
+    compiled_actions: tuple[CompiledActionSignal, ...] = ()
+    typed_claims: tuple[TypedClaimSignal, ...] = ()
     crew_noise: int = Field(default=0, ge=0)
 
 

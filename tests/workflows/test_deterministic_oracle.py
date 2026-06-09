@@ -18,24 +18,30 @@ def test_deterministic_oracle_preserves_current_scoring_shape():
         crews=(
             AuctionPreviewCrewPacket(
                 crew_id="crew_gilt",
-                claim="The relic is likely false.",
                 evidence_ids=("fragment_starter_ledger",),
                 exposed_assets=("fragment_starter_ledger",),
-                reasoning="The ledger date contradicts the chapel timestamp.",
-                weaknesses="No material confirmation.",
-                provenance_concerns="Copied hand.",
-                action_intents=("Inspect the ledger for forged provenance.",),
+                compiled_actions=(
+                    {
+                        "version": "compiled-action-v1",
+                        "approach": "provenance_research",
+                        "scope": "proofwork",
+                        "risk_posture": "careful",
+                    },
+                ),
                 crew_noise=1,
             ),
             AuctionPreviewCrewPacket(
                 crew_id="crew_moth",
-                claim="The reliquary is occult but unstable.",
                 evidence_ids=(),
                 exposed_assets=("asset_door_omen",),
-                reasoning="A moth jar door omen appears near the auction room.",
-                weaknesses="Omen has no corroboration.",
-                provenance_concerns="",
-                action_intents=("Observe the sealed door omen for occult resonance.",),
+                compiled_actions=(
+                    {
+                        "version": "compiled-action-v1",
+                        "approach": "occult_analysis",
+                        "scope": "proofwork",
+                        "risk_posture": "balanced",
+                    },
+                ),
                 crew_noise=0,
             ),
         ),
@@ -50,7 +56,7 @@ def test_deterministic_oracle_preserves_current_scoring_shape():
     assert result.provider.model is None
     assert result.provider.prompt_version == "deterministic-v1"
     assert result.standings[0].crew_id == "crew_gilt"
-    assert result.standings[0].standing == "Strong lead"
+    assert result.standings[0].standing == "Viable"
     assert "clean provenance contradiction" in result.standings[0].strengths
     assert result.standings[0].revealed_clues == (
         "Auction house provenance is now suspect.",
@@ -80,13 +86,10 @@ def test_deterministic_oracle_rewards_artifact_citations_and_known_edges():
         crews=(
             AuctionPreviewCrewPacket(
                 crew_id="crew_gilt",
-                claim="The ledger contradicts the lot card.",
                 evidence_ids=("artifact_lot_card", "artifact_ledger_rubric"),
                 artifact_citations=(
                     {
                         "artifact_id": "artifact_ledger_rubric",
-                        "claim": "The ledger contradicts the lot card.",
-                        "quote": "The last hand is redder and later than the binding.",
                     },
                 ),
                 known_edges=(

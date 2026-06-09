@@ -41,6 +41,14 @@ class ArtifactCitationRequest(BaseModel):
     quote: str = Field(min_length=1)
 
 
+class TypedClaimRequest(BaseModel):
+    subject_id: str = Field(min_length=1)
+    predicate: str = Field(min_length=1)
+    object_id: str | None = Field(default=None, min_length=1)
+    value: str | None = Field(default=None, min_length=1)
+    citation_artifact_ids: list[str] = Field(default_factory=list)
+
+
 class PacketLeadVoteRequest(BaseModel):
     candidate_player_id: str = Field(min_length=1)
 
@@ -206,6 +214,33 @@ def cite_artifact_in_dossier(
         raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="not a crew member") from exc
     except KeyError as exc:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="artifact not found") from exc
+    except ValueError as exc:
+        raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail=str(exc)) from exc
+
+
+@router.post("/dossiers/{crew_id}/typed-claims", status_code=status.HTTP_201_CREATED)
+def add_typed_claim(
+    crew_id: str,
+    payload: TypedClaimRequest,
+    request: Request,
+    idempotency_key: str = Header(..., alias="Idempotency-Key"),
+    player: Player = Depends(current_player),
+):
+    try:
+        result = _proof_service(request).add_typed_claim(
+            crew_id=crew_id,
+            player_id=player.player_id,
+            subject_id=payload.subject_id,
+            predicate=payload.predicate,
+            object_id=payload.object_id,
+            value=payload.value,
+            citation_artifact_ids=payload.citation_artifact_ids,
+            idempotency_key=idempotency_key,
+        )
+        _refresh_projection_store(request)
+        return result
+    except PermissionError as exc:
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail=str(exc)) from exc
     except ValueError as exc:
         raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail=str(exc)) from exc
 

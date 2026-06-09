@@ -1848,7 +1848,7 @@ def test_player_can_progress_contract_through_actual_mcp_tools(tmp_path, monkeyp
         {
             "crew_id": crew["crew_id"],
             "standing": "Strong lead",
-            "score": 94,
+            "score": 74,
             "score_reasoning": {
                 "strengths": [
                     "clean provenance contradiction",
@@ -1872,7 +1872,7 @@ def test_player_can_progress_contract_through_actual_mcp_tools(tmp_path, monkeyp
         },
     ]
     assert "Phase result:" in contract_board["player_markdown"]
-    assert f"- {crew['crew_id']}: Strong lead (94)" in contract_board["player_markdown"]
+    assert f"- {crew['crew_id']}: Strong lead (74)" in contract_board["player_markdown"]
 
     activity = _assert_packet(_call_tool("render_activity"), surface="activity")
     assert activity["agent_context"]["event_type_counts"]["artifact.inspected"] == 1

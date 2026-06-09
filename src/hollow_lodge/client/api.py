@@ -567,6 +567,32 @@ class HollowLodgeApi:
             idempotency_key=idempotency_key,
         )
 
+    def add_typed_dossier_claim(
+        self,
+        *,
+        crew_id: str,
+        subject_id: str,
+        predicate: str,
+        object_id: str | None = None,
+        value: str | None = None,
+        citation_artifact_ids: list[str] | tuple[str, ...] = (),
+        idempotency_key: str,
+    ) -> dict[str, Any]:
+        payload: dict[str, Any] = {
+            "subject_id": subject_id,
+            "predicate": predicate,
+            "citation_artifact_ids": list(citation_artifact_ids),
+        }
+        if object_id is not None:
+            payload["object_id"] = object_id
+        if value is not None:
+            payload["value"] = value
+        return self._post(
+            f"/proofs/dossiers/{crew_id}/typed-claims",
+            json=payload,
+            idempotency_key=idempotency_key,
+        )
+
     def vote_packet_lead(
         self,
         *,

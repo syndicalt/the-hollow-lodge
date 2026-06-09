@@ -11,11 +11,11 @@ def action_unlock_candidates(
     graph: ArtifactGraph,
     contract_id: str,
     phase: str,
-    intent: str,
+    matched_terms: tuple[str, ...] | list[str] = (),
     exposed_assets: tuple[str, ...] | list[str],
     already_visible_artifact_ids: set[str],
 ) -> list[ArtifactUnlockRule]:
-    normalized_intent = intent.casefold()
+    normalized_terms = {term.casefold() for term in matched_terms}
     exposed_asset_ids = set(exposed_assets)
     candidates: list[ArtifactUnlockRule] = []
 
@@ -25,7 +25,9 @@ def action_unlock_candidates(
         if rule.artifact_id in already_visible_artifact_ids:
             continue
         if rule.trigger == "action_mentions_tag":
-            if all(term.casefold() in normalized_intent for term in rule.required_terms):
+            if {term.casefold() for term in rule.required_terms}.issubset(
+                normalized_terms
+            ):
                 candidates.append(rule)
         elif rule.trigger == "action_exposes_asset":
             if set(rule.required_artifact_ids).issubset(exposed_asset_ids):

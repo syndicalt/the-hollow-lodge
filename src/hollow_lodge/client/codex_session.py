@@ -519,6 +519,50 @@ class CodexGameSession:
             result=result,
         )
 
+    def dossier_add_typed_claim(
+        self,
+        *,
+        subject_id: str,
+        predicate: str,
+        confirm: bool,
+        crew_id: str | None = None,
+        object_id: str | None = None,
+        value: str | None = None,
+        citation_artifact_ids: list[str] | tuple[str, ...] = (),
+    ) -> RenderPacket:
+        target_crew_id = self._target_crew_id(crew_id)
+        preview = {
+            "crew_id": target_crew_id,
+            "subject_id": subject_id,
+            "predicate": predicate,
+            "citation_artifact_ids": list(citation_artifact_ids),
+        }
+        if object_id is not None:
+            preview["object_id"] = object_id
+        if value is not None:
+            preview["value"] = value
+        if not confirm:
+            return build_mutation_result_packet(
+                operation="dossier_add_typed_claim",
+                confirmed=False,
+                preview_fields=preview,
+            )
+        result = self.api.add_typed_dossier_claim(
+            crew_id=target_crew_id,
+            subject_id=subject_id,
+            predicate=predicate,
+            object_id=object_id,
+            value=value,
+            citation_artifact_ids=citation_artifact_ids,
+            idempotency_key=new_command_key("dossier-typed-claim"),
+        )
+        self.sync()
+        return build_mutation_result_packet(
+            operation="dossier_add_typed_claim",
+            confirmed=True,
+            result=result,
+        )
+
     def propose_deal(
         self,
         *,

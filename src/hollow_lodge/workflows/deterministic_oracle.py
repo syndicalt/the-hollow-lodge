@@ -47,26 +47,30 @@ class DeterministicResolutionOracle:
             score = score_auction_preview(
                 AuctionPreviewScoreInput(
                     crew_id=crew.crew_id,
-                    claim=crew.claim,
                     evidence_ids=crew.evidence_ids,
+                    artifact_citations=tuple(
+                        citation.model_dump(mode="json")
+                        for citation in crew.artifact_citations
+                    ),
+                    known_edges=crew.known_edges,
                     exposed_assets=crew.exposed_assets,
-                    reasoning=crew.reasoning,
-                    weaknesses=crew.weaknesses,
-                    provenance_concerns=crew.provenance_concerns,
-                    action_intents=crew.action_intents,
+                    compiled_actions=tuple(
+                        action.model_dump(mode="json")
+                        for action in crew.compiled_actions
+                    ),
+                    typed_claims=tuple(
+                        claim.model_dump(mode="json")
+                        for claim in crew.typed_claims
+                    ),
                     crew_noise=crew.crew_noise,
                 )
-            )
-            bonus = min(12, 4 * len(crew.artifact_citations)) + min(
-                8,
-                4 * len(crew.known_edges),
             )
             strengths = list(score.strengths)
             if crew.artifact_citations:
                 strengths.append("cited artifact source material")
             if crew.known_edges:
                 strengths.append("mapped evidence contradiction")
-            adjusted_total = min(packet.score_max, score.total + bonus)
+            adjusted_total = min(packet.score_max, score.total)
             adjusted_strengths = tuple(dict.fromkeys(strengths))
             scores.append(
                 score.model_copy(
