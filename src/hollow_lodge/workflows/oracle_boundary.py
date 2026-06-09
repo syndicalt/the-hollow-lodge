@@ -3,9 +3,14 @@ from __future__ import annotations
 import re
 import unicodedata
 from collections.abc import Iterable
-from typing import Protocol, Self
+from typing import Annotated, Protocol, Self
 
 from pydantic import BaseModel, ConfigDict, Field, model_validator
+
+
+MAX_ORACLE_RESULT_LINES = 12
+MAX_ORACLE_TEXT_CHARS = 500
+BoundedOracleText = Annotated[str, Field(max_length=MAX_ORACLE_TEXT_CHARS)]
 
 
 class AuctionPreviewCrewPacket(BaseModel):
@@ -57,11 +62,23 @@ class AuctionPreviewCrewResult(BaseModel):
 
     crew_id: str = Field(min_length=1)
     score: int = Field(ge=0)
-    standing: str = Field(min_length=1)
-    strengths: tuple[str, ...] = ()
-    weaknesses: tuple[str, ...] = ()
-    penalties: tuple[str, ...] = ()
-    revealed_clues: tuple[str, ...] = ()
+    standing: BoundedOracleText = Field(min_length=1)
+    strengths: tuple[BoundedOracleText, ...] = Field(
+        default=(),
+        max_length=MAX_ORACLE_RESULT_LINES,
+    )
+    weaknesses: tuple[BoundedOracleText, ...] = Field(
+        default=(),
+        max_length=MAX_ORACLE_RESULT_LINES,
+    )
+    penalties: tuple[BoundedOracleText, ...] = Field(
+        default=(),
+        max_length=MAX_ORACLE_RESULT_LINES,
+    )
+    revealed_clues: tuple[BoundedOracleText, ...] = Field(
+        default=(),
+        max_length=MAX_ORACLE_RESULT_LINES,
+    )
 
 
 class AuctionPreviewOracleResult(BaseModel):
@@ -69,9 +86,15 @@ class AuctionPreviewOracleResult(BaseModel):
 
     provider: OracleProviderMetadata
     standings: tuple[AuctionPreviewCrewResult, ...]
-    contract_state: tuple[str, ...] = ()
-    narration: str = ""
-    validation_warnings: tuple[str, ...] = ()
+    contract_state: tuple[BoundedOracleText, ...] = Field(
+        default=(),
+        max_length=MAX_ORACLE_RESULT_LINES,
+    )
+    narration: BoundedOracleText = ""
+    validation_warnings: tuple[BoundedOracleText, ...] = Field(
+        default=(),
+        max_length=MAX_ORACLE_RESULT_LINES,
+    )
 
 
 class ResolutionOracle(Protocol):

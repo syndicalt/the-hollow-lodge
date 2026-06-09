@@ -6,6 +6,8 @@ from hollow_lodge.workflows.oracle_boundary import (
     AuctionPreviewCrewResult,
     AuctionPreviewOraclePacket,
     AuctionPreviewOracleResult,
+    MAX_ORACLE_RESULT_LINES,
+    MAX_ORACLE_TEXT_CHARS,
     OracleProviderMetadata,
     validate_auction_preview_result,
 )
@@ -201,6 +203,38 @@ def test_negative_score_is_rejected_at_model_construction():
             weaknesses=(),
             penalties=(),
             revealed_clues=(),
+        )
+
+
+def test_oracle_result_rejects_unbounded_score_reasoning_lines():
+    with pytest.raises(ValidationError):
+        AuctionPreviewCrewResult(
+            crew_id="crew_gilt",
+            score=80,
+            standing="Strong lead",
+            strengths=tuple(
+                f"strength {index}"
+                for index in range(MAX_ORACLE_RESULT_LINES + 1)
+            ),
+        )
+
+
+def test_oracle_result_rejects_unbounded_text_fields():
+    with pytest.raises(ValidationError):
+        AuctionPreviewOracleResult(
+            provider=OracleProviderMetadata(
+                provider="deterministic",
+                model=None,
+                prompt_version="deterministic-v1",
+            ),
+            standings=(
+                AuctionPreviewCrewResult(
+                    crew_id="crew_gilt",
+                    score=76,
+                    standing="Strong lead",
+                ),
+            ),
+            narration="x" * (MAX_ORACLE_TEXT_CHARS + 1),
         )
 
 

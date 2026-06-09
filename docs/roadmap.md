@@ -1342,6 +1342,24 @@ Expected verification:
 - `pytest tests/client/test_render_packets.py tests/client/test_codex_session.py tests/test_mcp_server.py tests/client/test_api.py tests/client/test_dossier_cli.py tests/server/test_proof_routes.py tests/server/test_packet_lead.py -q`
 - `pytest -q`
 
+### Slice 51: Bounded Oracle Output Schema
+
+Status: completed.
+
+Harden the Milestone 3 oracle boundary by adding shared output-size limits for
+score-reasoning lists and generated text fields. Auction preview oracle
+results now reject oversized narration, contract state, validation warnings,
+standing labels, strengths, weaknesses, penalties, and revealed clues before
+they can become accepted game output. The OpenAI structured-output schema uses
+the same bounds, so unbounded provider responses fail parsing and flow into the
+existing deterministic fallback and audit path.
+
+Expected verification:
+
+- `pytest tests/workflows/test_oracle_boundary.py::test_oracle_result_rejects_unbounded_score_reasoning_lines tests/workflows/test_oracle_boundary.py::test_oracle_result_rejects_unbounded_text_fields tests/workflows/test_openai_oracle.py::test_openai_oracle_rejects_unbounded_parsed_output -q`
+- `pytest tests/workflows/test_oracle_boundary.py tests/workflows/test_openai_oracle.py tests/workflows/test_deterministic_oracle.py tests/workflows/test_oracle_factory.py tests/server/test_resolution_oracle.py tests/server/test_phase_resolution.py -q`
+- `pytest -q`
+
 ## Completion Standard
 
 Each slice must:

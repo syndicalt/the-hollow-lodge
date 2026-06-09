@@ -7,6 +7,8 @@ from pydantic import BaseModel, ConfigDict, Field
 from hollow_lodge.workflows.oracle_boundary import (
     AuctionPreviewOraclePacket,
     AuctionPreviewOracleResult,
+    BoundedOracleText,
+    MAX_ORACLE_RESULT_LINES,
     OracleProviderMetadata,
 )
 
@@ -19,20 +21,38 @@ class OpenAICrewStanding(BaseModel):
 
     crew_id: str = Field(min_length=1)
     score: int = Field(ge=0)
-    standing: str = Field(min_length=1)
-    strengths: list[str] = Field(default_factory=list)
-    weaknesses: list[str] = Field(default_factory=list)
-    penalties: list[str] = Field(default_factory=list)
-    revealed_clues: list[str] = Field(default_factory=list)
+    standing: BoundedOracleText = Field(min_length=1)
+    strengths: list[BoundedOracleText] = Field(
+        default_factory=list,
+        max_length=MAX_ORACLE_RESULT_LINES,
+    )
+    weaknesses: list[BoundedOracleText] = Field(
+        default_factory=list,
+        max_length=MAX_ORACLE_RESULT_LINES,
+    )
+    penalties: list[BoundedOracleText] = Field(
+        default_factory=list,
+        max_length=MAX_ORACLE_RESULT_LINES,
+    )
+    revealed_clues: list[BoundedOracleText] = Field(
+        default_factory=list,
+        max_length=MAX_ORACLE_RESULT_LINES,
+    )
 
 
 class OpenAIAuctionPreviewResolution(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
     standings: list[OpenAICrewStanding]
-    contract_state: list[str] = Field(default_factory=list)
-    narration: str = ""
-    validation_warnings: list[str] = Field(default_factory=list)
+    contract_state: list[BoundedOracleText] = Field(
+        default_factory=list,
+        max_length=MAX_ORACLE_RESULT_LINES,
+    )
+    narration: BoundedOracleText = ""
+    validation_warnings: list[BoundedOracleText] = Field(
+        default_factory=list,
+        max_length=MAX_ORACLE_RESULT_LINES,
+    )
 
 
 class OpenAIResolutionOracle:

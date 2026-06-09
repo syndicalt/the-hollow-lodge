@@ -11,6 +11,8 @@ from hollow_lodge.workflows.openai_oracle import (
 from hollow_lodge.workflows.oracle_boundary import (
     AuctionPreviewCrewPacket,
     AuctionPreviewOraclePacket,
+    MAX_ORACLE_RESULT_LINES,
+    MAX_ORACLE_TEXT_CHARS,
 )
 
 
@@ -150,6 +152,24 @@ def test_openai_oracle_rejects_non_object_parsed_output():
 def test_openai_oracle_rejects_schema_invalid_parsed_dict():
     invalid_output = parsed_output()
     invalid_output["standings"][0].pop("crew_id")
+    client = FakeClient(invalid_output)
+    oracle = OpenAIResolutionOracle(
+        client=client,
+        model="gpt-test",
+        timeout_seconds=20,
+    )
+
+    with pytest.raises(Exception):
+        oracle.resolve_auction_preview(auction_preview_packet())
+
+
+def test_openai_oracle_rejects_unbounded_parsed_output():
+    invalid_output = parsed_output()
+    invalid_output["narration"] = "x" * (MAX_ORACLE_TEXT_CHARS + 1)
+    invalid_output["standings"][0]["strengths"] = [
+        f"strength {index}"
+        for index in range(MAX_ORACLE_RESULT_LINES + 1)
+    ]
     client = FakeClient(invalid_output)
     oracle = OpenAIResolutionOracle(
         client=client,
