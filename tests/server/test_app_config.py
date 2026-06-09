@@ -181,6 +181,7 @@ def test_diagnostics_reports_safe_operational_status(tmp_path, monkeypatch):
     assert body["data"]["storage_guards"] == {
         "require_postgres_event_log": False,
         "require_postgres_projection": False,
+        "require_postgres_operational": False,
     }
     assert body["data"]["projection_refresh"] == {
         "status": "ok",
@@ -646,6 +647,99 @@ def test_require_postgres_projection_rejects_invalid_flag_value(
         create_app(data_dir=tmp_path)
 
     assert "HOLLOW_LODGE_REQUIRE_POSTGRES_PROJECTION must be one of" in str(
+        exc_info.value
+    )
+
+
+def test_require_postgres_operational_rejects_missing_database_url(
+    tmp_path,
+    monkeypatch,
+):
+    monkeypatch.setenv("HOLLOW_LODGE_REQUIRE_POSTGRES_OPERATIONAL", "1")
+    monkeypatch.delenv("HOLLOW_LODGE_OPERATIONAL_DATABASE_URL", raising=False)
+
+    with pytest.raises(RuntimeError) as exc_info:
+        create_app(data_dir=tmp_path)
+
+    assert "HOLLOW_LODGE_REQUIRE_POSTGRES_OPERATIONAL=1 requires" in str(
+        exc_info.value
+    )
+    assert "HOLLOW_LODGE_OPERATIONAL_DATABASE_URL=postgresql://..." in str(
+        exc_info.value
+    )
+
+
+def test_require_postgres_operational_rejects_sqlite_url_without_secret_leak(
+    tmp_path,
+    monkeypatch,
+):
+    operational_path = tmp_path / "operational.sqlite3"
+    monkeypatch.setenv("HOLLOW_LODGE_REQUIRE_POSTGRES_OPERATIONAL", "true")
+    monkeypatch.setenv(
+        "HOLLOW_LODGE_OPERATIONAL_DATABASE_URL",
+        f"sqlite:///{operational_path}",
+    )
+
+    with pytest.raises(RuntimeError) as exc_info:
+        create_app(data_dir=tmp_path)
+
+    message = str(exc_info.value)
+    assert "rejects SQLite operational URLs" in message
+    assert str(operational_path) in message
+
+
+def test_require_postgres_operational_allows_postgres_backend(
+    tmp_path,
+    monkeypatch,
+):
+    from hollow_lodge.server.identity_replay_store import PostgresIdentityReplayStore
+
+    class FakeOperationalConnection:
+        def __enter__(self):
+            return self
+
+        def __exit__(self, exc_type, exc, traceback):
+            return False
+
+        def execute(self, statement, params=None):
+            return self
+
+        def fetchall(self):
+            return []
+
+    monkeypatch.setenv("HOLLOW_LODGE_REQUIRE_POSTGRES_OPERATIONAL", "yes")
+    monkeypatch.setenv(
+        "HOLLOW_LODGE_OPERATIONAL_DATABASE_URL",
+        "postgresql://user:secret@example.com:5432/hollow_lodge",
+    )
+    monkeypatch.setattr(
+        PostgresIdentityReplayStore,
+        "_connect",
+        lambda self: FakeOperationalConnection(),
+    )
+
+    client = TestClient(create_app(data_dir=tmp_path))
+
+    diagnostics = client.get("/diagnostics").json()["data"]
+    assert client.app.state.identity_service.replay_store.backend == "postgres"
+    assert diagnostics["identity_replay_store"] == {
+        "backend": "postgres",
+        "database_url": "postgresql://user:***@example.com:5432/hollow_lodge",
+        "database_url_env": "HOLLOW_LODGE_OPERATIONAL_DATABASE_URL",
+    }
+    assert diagnostics["storage_guards"]["require_postgres_operational"] is True
+
+
+def test_require_postgres_operational_rejects_invalid_flag_value(
+    tmp_path,
+    monkeypatch,
+):
+    monkeypatch.setenv("HOLLOW_LODGE_REQUIRE_POSTGRES_OPERATIONAL", "sometimes")
+
+    with pytest.raises(RuntimeError) as exc_info:
+        create_app(data_dir=tmp_path)
+
+    assert "HOLLOW_LODGE_REQUIRE_POSTGRES_OPERATIONAL must be one of" in str(
         exc_info.value
     )
 

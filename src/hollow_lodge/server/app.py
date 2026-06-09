@@ -33,7 +33,10 @@ from hollow_lodge.server.runtime_services import (
     projection_refresh_diagnostics,
     record_projection_refresh_success,
 )
-from hollow_lodge.server.identity_replay_store import identity_replay_store_from_env
+from hollow_lodge.server.identity_replay_store import (
+    identity_replay_store_from_env,
+    identity_replay_store_guard_diagnostics,
+)
 from hollow_lodge.server.services import (
     ActionService,
     ChatService,
@@ -187,6 +190,7 @@ def create_app(
                 "storage_guards": {
                     **event_store_guard_diagnostics(),
                     **projection_guard_diagnostics(),
+                    **identity_replay_store_guard_diagnostics(),
                 },
                 "maintenance": _maintenance_diagnostics(app),
                 "identity_replay_store": app.state.identity_service.replay_store.diagnostics(),

@@ -53,6 +53,7 @@ def test_projection_backend_smoke_accepts_available_zero_lag_backend():
                 "storage_guards": {
                     "require_postgres_event_log": True,
                     "require_postgres_projection": True,
+                    "require_postgres_operational": True,
                 },
                 "projection_refresh": {
                     "status": "ok",
@@ -118,6 +119,7 @@ def test_backend_smoke_accepts_event_and_projection_backends():
                 "storage_guards": {
                     "require_postgres_event_log": True,
                     "require_postgres_projection": True,
+                    "require_postgres_operational": True,
                 },
                 "projection_refresh": {
                     "status": "ok",
@@ -141,6 +143,7 @@ def test_backend_smoke_accepts_event_and_projection_backends():
         require_sequence_alignment=True,
         require_postgres_event_log_guard=True,
         require_postgres_projection_guard=True,
+        require_postgres_operational_guard=True,
         require_projection_refresh_ok=True,
         expected_operational_backend="postgres",
     )
@@ -159,6 +162,7 @@ def test_backend_smoke_accepts_event_and_projection_backends():
     assert result["storage_guards"] == {
         "require_postgres_event_log": True,
         "require_postgres_projection": True,
+        "require_postgres_operational": True,
     }
     assert result["projection_refresh"]["status"] == "ok"
     assert result["identity_replay_store"]["backend"] == "postgres"
@@ -212,6 +216,7 @@ def test_run_smoke_production_postgres_preset_forwards_required_checks(monkeypat
             "event_log_manifest": None,
             "require_postgres_event_log_guard": True,
             "require_postgres_projection_guard": True,
+            "require_postgres_operational_guard": True,
             "require_projection_refresh_ok": True,
             "require_maintenance_read_only": False,
             "require_maintenance_read_write": True,
@@ -618,6 +623,7 @@ def test_backend_smoke_rejects_missing_required_storage_guards():
             expected_event_backend="postgres",
             require_postgres_event_log_guard=True,
             require_postgres_projection_guard=True,
+            require_postgres_operational_guard=True,
         )
     except RuntimeError as exc:
         message = str(exc)
@@ -627,6 +633,7 @@ def test_backend_smoke_rejects_missing_required_storage_guards():
     assert "diagnostics response did not include data.storage_guards" in message
     assert "Postgres event-log startup guard is not enabled" in message
     assert "Postgres projection startup guard is not enabled" in message
+    assert "Postgres operational startup guard is not enabled" in message
 
 
 def test_backend_smoke_rejects_disabled_required_storage_guards():
@@ -649,6 +656,7 @@ def test_backend_smoke_rejects_disabled_required_storage_guards():
                     "storage_guards": {
                         "require_postgres_event_log": False,
                         "require_postgres_projection": False,
+                        "require_postgres_operational": False,
                     },
                 }
             },
@@ -656,6 +664,7 @@ def test_backend_smoke_rejects_disabled_required_storage_guards():
             expected_event_backend="postgres",
             require_postgres_event_log_guard=True,
             require_postgres_projection_guard=True,
+            require_postgres_operational_guard=True,
         )
     except RuntimeError as exc:
         message = str(exc)
@@ -664,6 +673,7 @@ def test_backend_smoke_rejects_disabled_required_storage_guards():
 
     assert "Postgres event-log startup guard is not enabled" in message
     assert "Postgres projection startup guard is not enabled" in message
+    assert "Postgres operational startup guard is not enabled" in message
 
 
 def test_backend_smoke_rejects_event_log_guard_with_non_postgres_backend():
@@ -686,6 +696,7 @@ def test_backend_smoke_rejects_event_log_guard_with_non_postgres_backend():
                     "storage_guards": {
                         "require_postgres_event_log": True,
                         "require_postgres_projection": True,
+                        "require_postgres_operational": True,
                     },
                 }
             },
@@ -725,6 +736,7 @@ def test_backend_smoke_rejects_projection_guard_with_non_postgres_backend():
                     "storage_guards": {
                         "require_postgres_event_log": True,
                         "require_postgres_projection": True,
+                        "require_postgres_operational": True,
                     },
                 }
             },
@@ -742,6 +754,49 @@ def test_backend_smoke_rejects_projection_guard_with_non_postgres_backend():
         "Postgres projection guard is enabled but projection backend is sqlite"
         in message
     )
+
+
+def test_backend_smoke_rejects_operational_guard_with_non_postgres_backend():
+    smoke = _load_smoke_module()
+
+    try:
+        smoke.validate_backend_diagnostics(
+            {
+                "data": {
+                    "event_log": {
+                        "backend": "postgres",
+                        "status": "available",
+                        "event_count": 3,
+                    },
+                    "projection_db": {
+                        "backend": "postgres",
+                        "status": "available",
+                        "lag": 0,
+                    },
+                    "identity_replay_store": {"backend": "jsonl-sidecar"},
+                    "storage_guards": {
+                        "require_postgres_event_log": True,
+                        "require_postgres_projection": True,
+                        "require_postgres_operational": True,
+                    },
+                }
+            },
+            expected_backend="postgres",
+            expected_event_backend="postgres",
+            expected_operational_backend="jsonl-sidecar",
+            require_postgres_event_log_guard=True,
+            require_postgres_projection_guard=True,
+            require_postgres_operational_guard=True,
+        )
+    except RuntimeError as exc:
+        message = str(exc)
+    else:
+        raise AssertionError("operational guard with non-Postgres backend should fail")
+
+    assert (
+        "Postgres operational guard is enabled but operational backend is "
+        "jsonl-sidecar"
+    ) in message
 
 
 def test_backend_smoke_accepts_event_log_manifest_chain_head(tmp_path):

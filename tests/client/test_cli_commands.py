@@ -100,6 +100,7 @@ class FakeApi:
                 "storage_guards": {
                     "require_postgres_event_log": False,
                     "require_postgres_projection": False,
+                    "require_postgres_operational": False,
                 },
                 "projection_refresh": {
                     "status": "ok",
@@ -1832,6 +1833,7 @@ def test_admin_backend_smoke_command_accepts_production_postgres_preset(monkeypa
             payload["data"]["storage_guards"] = {
                 "require_postgres_event_log": True,
                 "require_postgres_projection": True,
+                "require_postgres_operational": True,
             }
             payload["data"]["maintenance"] = {
                 "read_only": False,
@@ -2052,6 +2054,7 @@ def test_admin_backend_smoke_command_verifies_required_storage_guards(monkeypatc
             payload["data"]["storage_guards"] = {
                 "require_postgres_event_log": True,
                 "require_postgres_projection": True,
+                "require_postgres_operational": True,
             }
             return payload
 
@@ -2088,6 +2091,7 @@ def test_admin_backend_smoke_command_rejects_event_log_guard_backend_mismatch(
             payload["data"]["storage_guards"] = {
                 "require_postgres_event_log": True,
                 "require_postgres_projection": True,
+                "require_postgres_operational": True,
             }
             return payload
 
@@ -2138,6 +2142,45 @@ def test_admin_backend_smoke_command_rejects_disabled_event_log_guard(monkeypatc
 
     assert result.exit_code != 0
     assert "Postgres event-log startup guard is not enabled" in result.output
+
+
+def test_admin_backend_smoke_command_rejects_disabled_operational_guard(monkeypatch):
+    class DisabledOperationalGuardApi(FakeApi):
+        def diagnostics(self):
+            payload = super().diagnostics()
+            payload["data"]["identity_replay_store"] = {
+                "backend": "postgres",
+                "database_url": "postgresql://operational:***@host:5432/hollow_lodge",
+                "database_url_env": "HOLLOW_LODGE_OPERATIONAL_DATABASE_URL",
+            }
+            payload["data"]["storage_guards"] = {
+                "require_postgres_event_log": True,
+                "require_postgres_projection": True,
+                "require_postgres_operational": False,
+            }
+            return payload
+
+    monkeypatch.setattr(cli, "HollowLodgeApi", DisabledOperationalGuardApi)
+    runner = CliRunner()
+
+    result = runner.invoke(
+        cli.app,
+        [
+            "admin",
+            "backend-smoke",
+            "--server",
+            "http://testserver",
+            "--expected-backend",
+            "postgres",
+            "--expected-operational-backend",
+            "postgres",
+            "--require-postgres-operational-guard",
+        ],
+    )
+
+    assert result.exit_code != 0
+    assert "Postgres operational startup guard is not enabled" in result.output
+    assert "operational:***" not in result.output
 
 
 def test_admin_backend_smoke_command_rejects_unredacted_database_url(monkeypatch):

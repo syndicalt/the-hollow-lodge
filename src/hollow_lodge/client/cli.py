@@ -604,6 +604,11 @@ def admin_backend_smoke(
         "--require-postgres-projection-guard",
         help="Require the deployed server to enforce Postgres projection startup.",
     ),
+    require_postgres_operational_guard: bool = typer.Option(
+        False,
+        "--require-postgres-operational-guard",
+        help="Require the deployed server to enforce Postgres operational startup.",
+    ),
     require_projection_refresh_ok: bool = typer.Option(
         False,
         "--require-projection-refresh-ok",
@@ -653,6 +658,7 @@ def admin_backend_smoke(
             require_sequence_alignment=require_sequence_alignment,
             require_postgres_event_log_guard=require_postgres_event_log_guard,
             require_postgres_projection_guard=require_postgres_projection_guard,
+            require_postgres_operational_guard=require_postgres_operational_guard,
             require_projection_refresh_ok=require_projection_refresh_ok,
             require_maintenance_read_only=require_maintenance_read_only,
             require_maintenance_read_write=require_maintenance_read_write,

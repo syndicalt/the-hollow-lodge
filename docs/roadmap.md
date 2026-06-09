@@ -3089,6 +3089,32 @@ Expected verification:
 - `pytest tests/e2e/test_projection_backend_smoke.py tests/client/test_cli_commands.py -q`
 - `pytest -q`
 
+### Slice 123: Operational Postgres Startup Guard
+
+Status: completed.
+
+Close the operational database invariant at process startup. Production can now
+set `HOLLOW_LODGE_REQUIRE_POSTGRES_OPERATIONAL=1` alongside
+`HOLLOW_LODGE_OPERATIONAL_DATABASE_URL=postgresql://...`; startup rejects
+missing, SQLite, and non-Postgres operational URLs before the server can accept
+registrations or admin invite creation.
+
+`/diagnostics.data.storage_guards` now reports
+`require_postgres_operational`, and the shared backend-smoke validator,
+`scripts/smoke_projection_backend.py`, and
+`hollow-lodge admin backend-smoke` expose
+`--require-postgres-operational-guard`. The `--production-postgres` preset now
+requires all three Postgres startup guards: authoritative event log,
+projections, and operational replay storage.
+
+Expected verification:
+
+- `pytest tests/server/test_app_config.py::test_diagnostics_reports_safe_operational_status tests/server/test_app_config.py::test_require_postgres_operational_rejects_missing_database_url tests/server/test_app_config.py::test_require_postgres_operational_rejects_sqlite_url_without_secret_leak tests/server/test_app_config.py::test_require_postgres_operational_allows_postgres_backend tests/server/test_app_config.py::test_require_postgres_operational_rejects_invalid_flag_value -q`
+- `pytest tests/e2e/test_projection_backend_smoke.py::test_run_smoke_production_postgres_preset_forwards_required_checks tests/e2e/test_projection_backend_smoke.py::test_backend_smoke_rejects_missing_required_storage_guards tests/e2e/test_projection_backend_smoke.py::test_backend_smoke_rejects_disabled_required_storage_guards tests/e2e/test_projection_backend_smoke.py::test_backend_smoke_rejects_operational_guard_with_non_postgres_backend -q`
+- `pytest tests/client/test_cli_commands.py::test_admin_backend_smoke_command_accepts_production_postgres_preset tests/client/test_cli_commands.py::test_admin_backend_smoke_command_rejects_disabled_operational_guard -q`
+- `pytest tests/server/test_app_config.py tests/e2e/test_projection_backend_smoke.py tests/client/test_cli_commands.py -q`
+- `pytest -q`
+
 ## Completion Standard
 
 Each slice must:

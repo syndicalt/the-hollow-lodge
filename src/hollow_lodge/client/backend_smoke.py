@@ -35,6 +35,7 @@ def resolve_backend_smoke_options(
     require_sequence_alignment: bool = False,
     require_postgres_event_log_guard: bool = False,
     require_postgres_projection_guard: bool = False,
+    require_postgres_operational_guard: bool = False,
     require_projection_refresh_ok: bool = False,
     require_maintenance_read_only: bool = False,
     require_maintenance_read_write: bool = False,
@@ -70,6 +71,7 @@ def resolve_backend_smoke_options(
             "require_sequence_alignment": True,
             "require_postgres_event_log_guard": True,
             "require_postgres_projection_guard": True,
+            "require_postgres_operational_guard": True,
             "require_projection_refresh_ok": True,
             "require_maintenance_read_only": require_maintenance_read_only,
             "require_maintenance_read_write": not require_maintenance_read_only,
@@ -91,6 +93,7 @@ def resolve_backend_smoke_options(
         "require_sequence_alignment": require_sequence_alignment,
         "require_postgres_event_log_guard": require_postgres_event_log_guard,
         "require_postgres_projection_guard": require_postgres_projection_guard,
+        "require_postgres_operational_guard": require_postgres_operational_guard,
         "require_projection_refresh_ok": require_projection_refresh_ok,
         "require_maintenance_read_only": require_maintenance_read_only,
         "require_maintenance_read_write": require_maintenance_read_write,
@@ -110,6 +113,7 @@ def run_backend_smoke(
     event_log_manifest: Path | None = None,
     require_postgres_event_log_guard: bool = False,
     require_postgres_projection_guard: bool = False,
+    require_postgres_operational_guard: bool = False,
     require_projection_refresh_ok: bool = False,
     require_maintenance_read_only: bool = False,
     require_maintenance_read_write: bool = False,
@@ -142,6 +146,7 @@ def run_backend_smoke(
             event_log_manifest=manifest,
             require_postgres_event_log_guard=require_postgres_event_log_guard,
             require_postgres_projection_guard=require_postgres_projection_guard,
+            require_postgres_operational_guard=require_postgres_operational_guard,
             require_projection_refresh_ok=require_projection_refresh_ok,
             require_maintenance_read_only=require_maintenance_read_only,
             require_maintenance_read_write=require_maintenance_read_write,
@@ -161,6 +166,7 @@ def validate_backend_diagnostics(
     event_log_manifest: dict[str, Any] | None = None,
     require_postgres_event_log_guard: bool = False,
     require_postgres_projection_guard: bool = False,
+    require_postgres_operational_guard: bool = False,
     require_projection_refresh_ok: bool = False,
     require_maintenance_read_only: bool = False,
     require_maintenance_read_write: bool = False,
@@ -179,7 +185,11 @@ def validate_backend_diagnostics(
 
     errors: list[str] = []
     storage_guards = data.get("storage_guards")
-    if require_postgres_event_log_guard or require_postgres_projection_guard:
+    if (
+        require_postgres_event_log_guard
+        or require_postgres_projection_guard
+        or require_postgres_operational_guard
+    ):
         if not isinstance(storage_guards, dict):
             errors.append("diagnostics response did not include data.storage_guards")
             storage_guards = {}
@@ -195,6 +205,11 @@ def validate_backend_diagnostics(
         and storage_guards.get("require_postgres_projection") is not True
     ):
         errors.append("Postgres projection startup guard is not enabled")
+    if (
+        require_postgres_operational_guard
+        and storage_guards.get("require_postgres_operational") is not True
+    ):
+        errors.append("Postgres operational startup guard is not enabled")
 
     projection_refresh = data.get("projection_refresh")
     if require_projection_refresh_ok:
@@ -247,6 +262,14 @@ def validate_backend_diagnostics(
         if database_url_exposes_password(operational_database_url):
             errors.append(
                 "operational diagnostics expose an unredacted database URL password"
+            )
+        if (
+            require_postgres_operational_guard
+            and identity_replay_store.get("backend") != "postgres"
+        ):
+            errors.append(
+                "Postgres operational guard is enabled but operational backend is "
+                f"{identity_replay_store.get('backend')}"
             )
 
     event_backend = event_log.get("backend")
@@ -470,6 +493,7 @@ def validate_projection_diagnostics(
     event_log_manifest: dict[str, Any] | None = None,
     require_postgres_event_log_guard: bool = False,
     require_postgres_projection_guard: bool = False,
+    require_postgres_operational_guard: bool = False,
     require_projection_refresh_ok: bool = False,
     require_maintenance_read_only: bool = False,
     require_maintenance_read_write: bool = False,
@@ -495,6 +519,7 @@ def validate_projection_diagnostics(
         event_log_manifest=event_log_manifest,
         require_postgres_event_log_guard=require_postgres_event_log_guard,
         require_postgres_projection_guard=require_postgres_projection_guard,
+        require_postgres_operational_guard=require_postgres_operational_guard,
         require_projection_refresh_ok=require_projection_refresh_ok,
         require_maintenance_read_only=require_maintenance_read_only,
         require_maintenance_read_write=require_maintenance_read_write,

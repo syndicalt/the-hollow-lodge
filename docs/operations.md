@@ -200,6 +200,17 @@ or:
 HOLLOW_LODGE_OPERATIONAL_DATABASE_URL=postgresql://user:password@host:5432/database
 ```
 
+Production deployments should also require that operational replay storage is
+actually Postgres:
+
+```sh
+HOLLOW_LODGE_REQUIRE_POSTGRES_OPERATIONAL=1
+```
+
+That startup guard rejects missing, SQLite, or non-Postgres operational URLs so
+registration and invite replay secrets cannot silently fall back to local
+sidecar files in production.
+
 The operational store currently owns only identity replay secrets: registration
 tokens and generated invite codes keyed by idempotency key and bounded by their
 existing replay TTLs. It does not replace player, invite, crew, contract,
@@ -404,7 +415,7 @@ hollow-lodge admin backend-smoke \
 
 `--production-postgres` is the installed-client preset for the full production
 database invariant: Postgres authoritative event log, Postgres projections,
-Postgres operational replay storage, both Postgres startup guards, all
+Postgres operational replay storage, all three Postgres startup guards, all
 implemented projection reads enabled, current projection schema, zero
 projection lag, aligned authoritative/projection sequences, a successful latest
 projection refresh, and maintenance read-only mode disabled. During an

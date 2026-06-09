@@ -11,6 +11,7 @@ from urllib.parse import unquote, urlparse, urlunparse
 REGISTRATION_REPLAY_SCOPE = "registration"
 INVITE_REPLAY_SCOPE = "invite"
 IDENTITY_REPLAY_DATABASE_URL_ENV = "HOLLOW_LODGE_OPERATIONAL_DATABASE_URL"
+REQUIRE_POSTGRES_OPERATIONAL_ENV = "HOLLOW_LODGE_REQUIRE_POSTGRES_OPERATIONAL"
 
 
 class IdentityReplayStore(Protocol):
@@ -484,20 +485,43 @@ class PostgresIdentityReplayStore:
 
 def identity_replay_store_from_env(root: Path) -> IdentityReplayStore:
     database_url = os.environ.get(IDENTITY_REPLAY_DATABASE_URL_ENV, "").strip()
+    require_postgres = _env_flag(REQUIRE_POSTGRES_OPERATIONAL_ENV)
     if not database_url:
+        if require_postgres:
+            raise RuntimeError(
+                f"{REQUIRE_POSTGRES_OPERATIONAL_ENV}=1 requires "
+                f"{IDENTITY_REPLAY_DATABASE_URL_ENV}=postgresql://..."
+            )
         return JsonFileIdentityReplayStore(root)
 
     parsed = urlparse(database_url)
     scheme = parsed.scheme.lower()
     if scheme in {"sqlite", "sqlite3"}:
+        if require_postgres:
+            raise RuntimeError(
+                f"{REQUIRE_POSTGRES_OPERATIONAL_ENV}=1 rejects SQLite operational "
+                f"URLs; configured URL: {_redact_database_url(database_url)}"
+            )
         return SqliteIdentityReplayStore(_sqlite_path_from_url(database_url))
     if scheme in {"postgres", "postgresql"}:
         return PostgresIdentityReplayStore(database_url)
+    if require_postgres:
+        raise RuntimeError(
+            f"{REQUIRE_POSTGRES_OPERATIONAL_ENV}=1 rejects non-Postgres "
+            "operational URLs; configured URL: "
+            f"{_redact_database_url(database_url)}"
+        )
     raise RuntimeError(
         "Unsupported operational database URL scheme "
         f"{scheme!r}; expected sqlite:/// or postgresql://. "
         f"Configured URL: {_redact_database_url(database_url)}"
     )
+
+
+def identity_replay_store_guard_diagnostics() -> dict[str, object]:
+    return {
+        "require_postgres_operational": _env_flag(REQUIRE_POSTGRES_OPERATIONAL_ENV),
+    }
 
 
 def _format_instant(value: datetime) -> str:
@@ -536,3 +560,15 @@ def _redact_database_url(database_url: str) -> str:
     if parsed.port:
         netloc = f"{netloc}:{parsed.port}"
     return urlunparse(parsed._replace(netloc=netloc))
+
+
+def _env_flag(name: str) -> bool:
+    value = os.environ.get(name, "").strip().lower()
+    if value in {"", "0", "false", "no", "off"}:
+        return False
+    if value in {"1", "true", "yes", "on"}:
+        return True
+    raise RuntimeError(
+        f"{name} must be one of 1, true, yes, on, 0, false, no, or off; "
+        f"got {value!r}"
+    )
