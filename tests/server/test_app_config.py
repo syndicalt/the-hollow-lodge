@@ -139,6 +139,7 @@ def test_postgres_projection_database_url_selects_postgres_backend(
     assert client.app.state.projection_store.backend == "postgres"
     assert projection["backend"] == "postgres"
     assert projection["database_url"] == "postgresql://user:***@example.com:5432/hollow_lodge"
+    assert projection["database_url_env"] == "HOLLOW_LODGE_PROJECTION_DATABASE_URL"
     assert projection["status"] == "available"
     assert projection["lag"] == 0
     assert "secret" not in str(projection)
@@ -149,12 +150,89 @@ def test_postgres_projection_database_url_selects_postgres_backend(
     assert any(connection.committed for connection in fake.connections)
 
 
+def test_platform_database_url_selects_postgres_projection_backend(
+    tmp_path,
+    monkeypatch,
+):
+    from hollow_lodge.server.projection_postgres_store import PostgresProjectionStore
+
+    monkeypatch.delenv("HOLLOW_LODGE_PROJECTION_DATABASE_URL", raising=False)
+    monkeypatch.setenv(
+        "DATABASE_URL",
+        "postgresql://platform:secret@example.com:5432/hollow_lodge",
+    )
+    fake = FakePostgresConnector(
+        meta_rows=[
+            ("schema_version", SCHEMA_VERSION),
+            ("last_sequence", "100"),
+            ("contract_count", "1"),
+            ("crew_count", "0"),
+            ("deal_count", "0"),
+            ("crew_legacy_count", "0"),
+            ("visible_event_count", "1"),
+            ("public_artifact_count", "2"),
+            ("scoped_artifact_count", "0"),
+        ]
+    )
+    monkeypatch.setattr(PostgresProjectionStore, "_connect", lambda self: fake())
+
+    client = TestClient(create_app(data_dir=tmp_path))
+
+    projection = client.get("/diagnostics").json()["data"]["projection_db"]
+    assert client.app.state.projection_store.backend == "postgres"
+    assert projection["backend"] == "postgres"
+    assert projection["database_url"] == (
+        "postgresql://platform:***@example.com:5432/hollow_lodge"
+    )
+    assert projection["database_url_env"] == "DATABASE_URL"
+    assert "secret" not in str(projection)
+
+
+def test_explicit_projection_database_url_overrides_platform_database_url(
+    tmp_path,
+    monkeypatch,
+):
+    from hollow_lodge.server.projection_postgres_store import PostgresProjectionStore
+
+    monkeypatch.setenv(
+        "HOLLOW_LODGE_PROJECTION_DATABASE_URL",
+        "postgresql://explicit:secret@example.com:5432/hollow_lodge",
+    )
+    monkeypatch.setenv(
+        "DATABASE_URL",
+        "postgresql://platform:secret@example.com:5432/other",
+    )
+    fake = FakePostgresConnector(
+        meta_rows=[
+            ("schema_version", SCHEMA_VERSION),
+            ("last_sequence", "100"),
+            ("contract_count", "1"),
+            ("crew_count", "0"),
+            ("deal_count", "0"),
+            ("crew_legacy_count", "0"),
+            ("visible_event_count", "1"),
+            ("public_artifact_count", "2"),
+            ("scoped_artifact_count", "0"),
+        ]
+    )
+    monkeypatch.setattr(PostgresProjectionStore, "_connect", lambda self: fake())
+
+    client = TestClient(create_app(data_dir=tmp_path))
+
+    projection = client.get("/diagnostics").json()["data"]["projection_db"]
+    assert projection["database_url"] == (
+        "postgresql://explicit:***@example.com:5432/hollow_lodge"
+    )
+    assert projection["database_url_env"] == "HOLLOW_LODGE_PROJECTION_DATABASE_URL"
+
+
 def test_require_postgres_projection_rejects_missing_database_url(
     tmp_path,
     monkeypatch,
 ):
     monkeypatch.setenv("HOLLOW_LODGE_REQUIRE_POSTGRES_PROJECTION", "1")
     monkeypatch.delenv("HOLLOW_LODGE_PROJECTION_DATABASE_URL", raising=False)
+    monkeypatch.delenv("DATABASE_URL", raising=False)
 
     with pytest.raises(RuntimeError) as exc_info:
         create_app(data_dir=tmp_path)
@@ -163,6 +241,41 @@ def test_require_postgres_projection_rejects_missing_database_url(
     assert "HOLLOW_LODGE_PROJECTION_DATABASE_URL=postgresql://..." in str(
         exc_info.value
     )
+    assert "DATABASE_URL=postgresql://..." in str(exc_info.value)
+
+
+def test_require_postgres_projection_accepts_platform_database_url(
+    tmp_path,
+    monkeypatch,
+):
+    from hollow_lodge.server.projection_postgres_store import PostgresProjectionStore
+
+    monkeypatch.setenv("HOLLOW_LODGE_REQUIRE_POSTGRES_PROJECTION", "1")
+    monkeypatch.delenv("HOLLOW_LODGE_PROJECTION_DATABASE_URL", raising=False)
+    monkeypatch.setenv(
+        "DATABASE_URL",
+        "postgresql://platform:secret@example.com:5432/hollow_lodge",
+    )
+    fake = FakePostgresConnector(
+        meta_rows=[
+            ("schema_version", SCHEMA_VERSION),
+            ("last_sequence", "100"),
+            ("contract_count", "1"),
+            ("crew_count", "0"),
+            ("deal_count", "0"),
+            ("crew_legacy_count", "0"),
+            ("visible_event_count", "1"),
+            ("public_artifact_count", "2"),
+            ("scoped_artifact_count", "0"),
+        ]
+    )
+    monkeypatch.setattr(PostgresProjectionStore, "_connect", lambda self: fake())
+
+    client = TestClient(create_app(data_dir=tmp_path))
+
+    projection = client.get("/diagnostics").json()["data"]["projection_db"]
+    assert projection["backend"] == "postgres"
+    assert projection["database_url_env"] == "DATABASE_URL"
 
 
 def test_require_postgres_projection_rejects_sqlite_url_without_secret_leak(

@@ -219,6 +219,11 @@ Status:
 - Admin player detail lookup completed: admins can inspect one player's
   sanitized status and crew memberships without exposing tokens, token hashes,
   invite hashes, raw invite codes, or crew join codes.
+- Platform Postgres projection configuration completed: hosted deployments can
+  use Railway-style `DATABASE_URL` as the projection database when the
+  Hollow-specific projection URL is unset, while explicit
+  `HOLLOW_LODGE_PROJECTION_DATABASE_URL` remains the override and diagnostics
+  report which env var selected the backend without leaking credentials.
 
 Proof gate:
 
@@ -343,6 +348,10 @@ Status:
   pending-decision fallback paths can read current submitted actions from
   SQLite when fresh, while action submission, editing, cancellation,
   authorization, and artifact unlocks remain authoritative event-log writes.
+- Platform Postgres projection URL completed: Railway-style `DATABASE_URL`
+  can now select the Postgres projection backend when the Hollow-specific
+  projection URL is unset, preserving the explicit override and the
+  authoritative Eventloom JSONL write model.
 - Admin oracle audit surface completed: operators can inspect redacted
   provider, validation, fallback, count, and hash evidence for server-only
   oracle audit events without exposing raw oracle inputs, hidden truth, or
@@ -1807,6 +1816,26 @@ Expected verification:
 
 - `pytest tests/client/test_api.py::test_api_gets_health_without_auth_headers tests/client/test_codex_mcp_config.py::test_codex_mcp_server_registered_reads_existing_config tests/client/test_cli_commands.py::test_doctor_reports_registered_player_and_mcp_without_secret_material tests/client/test_cli_commands.py::test_doctor_reports_pending_onboarding_without_contact tests/client/test_cli_commands.py::test_doctor_reports_unconfigured_install_and_unreachable_server tests/client/test_installer_script.py::test_install_script_bootstraps_cli_and_runs_onboarding -q`
 - `pytest tests/client/test_api.py tests/client/test_cli_commands.py tests/client/test_codex_mcp_config.py tests/client/test_installer_script.py -q`
+- `pytest -q`
+
+### Slice 73: Platform Postgres Projection URL
+
+Status: completed.
+
+Make the production database path fit Railway's default environment contract
+without weakening explicit configuration. Projection store startup now uses
+`HOLLOW_LODGE_PROJECTION_DATABASE_URL` when set, otherwise falls back to
+`DATABASE_URL`; `HOLLOW_LODGE_REQUIRE_POSTGRES_PROJECTION=1` accepts either
+Postgres source and still rejects missing or SQLite-backed projection storage.
+Postgres projection diagnostics include `database_url_env`, and continue to
+redact credentials, so operators can verify whether the Hollow-specific
+override or the platform database secret selected the active projection backend.
+The authoritative Eventloom JSONL log remains unchanged by this slice.
+
+Expected verification:
+
+- `pytest tests/server/test_app_config.py::test_platform_database_url_selects_postgres_projection_backend tests/server/test_app_config.py::test_explicit_projection_database_url_overrides_platform_database_url tests/server/test_app_config.py::test_require_postgres_projection_accepts_platform_database_url tests/server/test_app_config.py::test_require_postgres_projection_rejects_missing_database_url -q`
+- `pytest tests/server/test_app_config.py tests/e2e/test_projection_backend_smoke.py -q`
 - `pytest -q`
 
 ## Completion Standard

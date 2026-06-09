@@ -9,6 +9,7 @@ from hollow_lodge.server.projection_store import SqliteProjectionStore
 
 
 PROJECTION_DATABASE_URL_ENV = "HOLLOW_LODGE_PROJECTION_DATABASE_URL"
+PLATFORM_DATABASE_URL_ENV = "DATABASE_URL"
 REQUIRE_POSTGRES_PROJECTION_ENV = "HOLLOW_LODGE_REQUIRE_POSTGRES_PROJECTION"
 PROJECTION_READS_ENV = "HOLLOW_LODGE_PROJECTION_READS"
 PROJECTION_READ_SURFACE_ENVS = {
@@ -26,13 +27,14 @@ PROJECTION_READ_SURFACE_ENVS = {
 
 
 def projection_store_from_env(root: Path) -> SqliteProjectionStore | PostgresProjectionStore:
-    database_url = os.environ.get(PROJECTION_DATABASE_URL_ENV, "").strip()
+    database_url, database_url_env = _projection_database_url_from_env()
     require_postgres = _env_flag(REQUIRE_POSTGRES_PROJECTION_ENV)
     if not database_url:
         if require_postgres:
             raise RuntimeError(
                 f"{REQUIRE_POSTGRES_PROJECTION_ENV}=1 requires "
-                f"{PROJECTION_DATABASE_URL_ENV}=postgresql://..."
+                f"{PROJECTION_DATABASE_URL_ENV}=postgresql://... or "
+                f"{PLATFORM_DATABASE_URL_ENV}=postgresql://..."
             )
         return SqliteProjectionStore(root / "server-projections.sqlite3")
 
@@ -47,13 +49,26 @@ def projection_store_from_env(root: Path) -> SqliteProjectionStore | PostgresPro
         return SqliteProjectionStore(_sqlite_path_from_url(database_url))
 
     if scheme in {"postgres", "postgresql"}:
-        return PostgresProjectionStore(database_url)
+        return PostgresProjectionStore(
+            database_url,
+            database_url_env=database_url_env or PROJECTION_DATABASE_URL_ENV,
+        )
 
     raise RuntimeError(
         "Unsupported projection database URL scheme "
         f"{scheme!r}; expected sqlite:/// or postgresql://. "
         f"Configured URL: {_redact_database_url(database_url)}"
     )
+
+
+def _projection_database_url_from_env() -> tuple[str, str | None]:
+    explicit_url = os.environ.get(PROJECTION_DATABASE_URL_ENV, "").strip()
+    if explicit_url:
+        return explicit_url, PROJECTION_DATABASE_URL_ENV
+    platform_url = os.environ.get(PLATFORM_DATABASE_URL_ENV, "").strip()
+    if platform_url:
+        return platform_url, PLATFORM_DATABASE_URL_ENV
+    return "", None
 
 
 def projection_read_enabled(surface_env: str) -> bool:

@@ -56,6 +56,12 @@ Postgres projection storage can be enabled explicitly with:
 HOLLOW_LODGE_PROJECTION_DATABASE_URL=postgresql://user:password@host:5432/database
 ```
 
+If `HOLLOW_LODGE_PROJECTION_DATABASE_URL` is unset, the server will also accept
+the platform `DATABASE_URL` value used by Railway and other PaaS providers.
+The Hollow-specific variable remains the explicit override when both are set.
+`/diagnostics` reports `database_url_env` so operators can tell which variable
+selected the active Postgres projection backend without exposing the password.
+
 Production deployments can require Postgres and fail fast instead of silently
 falling back to local SQLite:
 
@@ -63,10 +69,10 @@ falling back to local SQLite:
 HOLLOW_LODGE_REQUIRE_POSTGRES_PROJECTION=1
 ```
 
-When this guard is enabled, server startup rejects a missing projection URL or
-any `sqlite:///` projection URL. Local development and tests should leave the
-guard unset unless they are intentionally exercising the production cutover
-path.
+When this guard is enabled, server startup rejects a missing projection URL
+from both `HOLLOW_LODGE_PROJECTION_DATABASE_URL` and `DATABASE_URL`, or any
+`sqlite:///` projection URL. Local development and tests should leave the guard
+unset unless they are intentionally exercising the production cutover path.
 
 Production deployments can enable all implemented projection-backed read paths
 with one switch:
@@ -94,7 +100,8 @@ python scripts/smoke_projection_backend.py \
   --expected-backend sqlite
 ```
 
-After configuring `HOLLOW_LODGE_PROJECTION_DATABASE_URL` and redeploying the
+After configuring `HOLLOW_LODGE_PROJECTION_DATABASE_URL`, or attaching a
+Railway Postgres database that provides `DATABASE_URL`, and redeploying the
 server, verify the new backend:
 
 ```sh

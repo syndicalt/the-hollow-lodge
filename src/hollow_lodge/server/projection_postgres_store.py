@@ -20,9 +20,15 @@ from hollow_lodge.server.projection_store import (
 class PostgresProjectionStore:
     backend = "postgres"
 
-    def __init__(self, database_url: str):
+    def __init__(
+        self,
+        database_url: str,
+        *,
+        database_url_env: str = "HOLLOW_LODGE_PROJECTION_DATABASE_URL",
+    ):
         self.database_url = database_url
         self.safe_database_url = _redact_database_url(database_url)
+        self.database_url_env = database_url_env
 
     def rebuild(self, events: list[GameEvent]) -> dict[str, Any]:
         snapshot = build_projection_snapshot(events)
@@ -389,6 +395,7 @@ class PostgresProjectionStore:
             return {
                 "backend": self.backend,
                 "database_url": self.safe_database_url,
+                "database_url_env": self.database_url_env,
                 "exists": False,
                 "status": "unavailable",
                 "schema_version": int(SCHEMA_VERSION),
@@ -419,6 +426,7 @@ class PostgresProjectionStore:
         return {
             "backend": self.backend,
             "database_url": self.safe_database_url,
+            "database_url_env": self.database_url_env,
             "exists": True,
             "status": "stale" if lag else "available",
             "schema_version": int(meta.get("schema_version", SCHEMA_VERSION)),
