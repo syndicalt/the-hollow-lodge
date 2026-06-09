@@ -51,6 +51,7 @@ from hollow_lodge.client.render_packets import (
     build_contract_board_packet,
     build_crew_board_packet,
     build_inbox_packet,
+    build_mutation_result_packet,
     payload_matches_conversation,
 )
 from hollow_lodge.domain.events import GameEvent
@@ -1107,9 +1108,21 @@ def artifact(
 def artifact_transfer(
     artifact_id: str = typer.Argument(..., help="Artifact id."),
     recipient: str = typer.Argument(..., help="Recipient player id."),
+    confirm: bool = typer.Option(False, "--confirm", help="Transfer the artifact copy on the server."),
     config: Path = typer.Option(DEFAULT_CONFIG_PATH, "--config", help="Local config path."),
 ) -> None:
     """Transfer a copy of a visible artifact to another player."""
+    if not confirm:
+        packet = build_mutation_result_packet(
+            operation="transfer_artifact",
+            confirmed=False,
+            preview_fields={
+                "artifact_id": artifact_id,
+                "recipient_player_id": recipient,
+            },
+        )
+        typer.echo(packet.player_markdown)
+        return
     response = _api_from_config(load_config(config)).transfer_artifact(
         artifact_id=artifact_id,
         recipient_player_id=recipient,

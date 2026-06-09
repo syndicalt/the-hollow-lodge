@@ -3836,6 +3836,27 @@ Expected verification:
 - `pytest tests/client/test_codex_session.py tests/client/test_render_packets.py tests/test_mcp_server.py tests/e2e/test_full_game_loop_with_escrow.py -q`
 - `pytest -q`
 
+### Slice 157: CLI Artifact Transfer Confirmation Guard
+
+Status: completed.
+
+Bring the shell artifact transfer command in line with the Codex mutation
+contract. `hollow-lodge artifact-transfer` now renders a no-mutation
+`transfer_artifact` preview by default, showing the artifact id and recipient
+player id, and only sends the server transfer request when rerun with
+`--confirm`.
+
+This prevents accidental artifact-copy transfers from the CLI while preserving
+the existing confirmed output and idempotency behavior. The preview reuses the
+same mutation packet builder as Codex session transfers, keeping CLI and MCP
+language aligned around irreversible artifact custody changes.
+
+Expected verification:
+
+- `pytest tests/client/test_cli_commands.py::test_artifact_transfer_command_previews_until_confirmed -q`
+- `pytest tests/client/test_cli_commands.py tests/client/test_deal_cli.py tests/client/test_codex_session.py tests/test_mcp_server.py -q`
+- `pytest -q`
+
 ## Completion Standard
 
 Each slice must:
