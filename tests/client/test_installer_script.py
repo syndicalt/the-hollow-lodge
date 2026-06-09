@@ -272,7 +272,7 @@ def test_operations_docs_describe_current_doctor_readiness_checks():
     assert "saved auth status" in operations
     assert "inbox readiness" in operations
     assert "local event-sync cache" in operations
-    assert "Codex inbox render readiness" in operations
+    assert "Codex inbox and what-now render readiness" in operations
     assert "hollow-lodge doctor --strict" in operations
     assert "exits non-zero unless a registered player is fully ready" in operations
     assert "runs a non-strict `hollow-lodge doctor` readiness report" in operations
@@ -281,6 +281,7 @@ def test_operations_docs_describe_current_doctor_readiness_checks():
     assert "runs a redacted `hollow-lodge doctor` readiness" in readme
     assert "saved auth, inbox readiness" in readme
     assert "Codex MCP" in readme
+    assert "Codex inbox and what-now render readiness" in readme
     assert "doctor --strict" in readme
     assert "HOLLOW_LODGE_SERVER_URL=https://staging.example.invalid sh" in readme
 
@@ -296,5 +297,8 @@ def test_codex_play_guide_describes_doctor_and_mcp_render_readiness():
     assert "saved auth" in guide
     assert "local event-sync cache" in guide
     assert "codex inbox render: ok surface=inbox" in guide
+    assert "codex what-now render: ok surface=what_now" in guide
     assert "MCP `render_inbox` tool" in guide
-    assert "tokens, invite codes, contract titles, event bodies" in guide
+    assert "MCP `render_what_now` tool" in guide
+    assert "bearer tokens, invite codes" in guide
+    assert "contract titles, event bodies" in guide

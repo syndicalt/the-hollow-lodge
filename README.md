@@ -29,8 +29,8 @@ invite can request an access key.
 Use `HOLLOW_LODGE_SKIP_DOCTOR=1` if you need to suppress the automatic doctor
 report during scripted installation. You can run `hollow-lodge doctor` later to
 verify server reachability, saved auth, inbox readiness, Codex MCP
-registration, and Codex inbox render readiness without printing token or
-gameplay payload details.
+registration, and Codex inbox and what-now render readiness without printing
+token or gameplay payload details.
 
 For staging or self-hosted servers, set the server before installing:
 

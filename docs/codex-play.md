@@ -58,16 +58,20 @@ non-zero for pending onboarding or any failed readiness line.
 
 For a registered player, `doctor` should verify saved auth, server
 reachability, inbox readiness, local event-sync cache writes, Codex inbox render
-packet construction, MCP config registration, and `hollow-lodge-mcp` command
-availability. The output is intentionally redacted; it should not print bearer
-tokens, invite codes, contract titles, event bodies, player markdown, or agent
-context. Pending players should see pending onboarding state and MCP readiness,
-but auth, inbox, event sync, and render checks are skipped until registration.
+packet construction, Codex what-now render packet construction, MCP config
+registration, and `hollow-lodge-mcp` command availability. The output is
+intentionally redacted; it should not print bearer tokens, invite codes,
+contract titles, event bodies, player markdown, or agent context. Pending
+players should see pending onboarding state and MCP readiness, but auth, inbox,
+event sync, and render checks are skipped until registration.
 
 If `doctor` reports `codex inbox render: ok surface=inbox`, the local CLI can
 construct the same inbox render packet that the MCP `render_inbox` tool will
-return inside Codex. If it reports `failed`, fix the earlier failing line first:
-auth, inbox reachability, event sync, MCP config, or command availability.
+return inside Codex. If it reports
+`codex what-now render: ok surface=what_now`, the local CLI can construct the
+landing packet that the MCP `render_what_now` tool will return inside Codex. If
+either reports `failed`, fix the earlier failing line first: auth, inbox
+reachability, event sync, MCP config, or command availability.
 
 Admins can review and approve requests from the CLI:
 

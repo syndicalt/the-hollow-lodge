@@ -364,6 +364,25 @@ class FakeApi:
             "incoming_proof_fragments": [],
         }
 
+    def profile(self):
+        self.calls.append(("profile", {}))
+        return {
+            "player_id": "player_0001",
+            "display_name": "Ada",
+            "crew_count": 1,
+            "crews": [
+                {
+                    "crew_id": "crew_0001",
+                    "name": "The Gilt Knives",
+                    "active": True,
+                }
+            ],
+        }
+
+    def deals(self):
+        self.calls.append(("deals", {}))
+        return {"deals": []}
+
     def crew_board(self, *, crew_id: str):
         self.calls.append(("crew_board", {"crew_id": crew_id}))
         return {
@@ -880,6 +899,7 @@ def test_doctor_reports_registered_player_and_mcp_without_secret_material(
     assert "inbox: ok active_contracts=1" in result.output
     assert "event sync: ok synced=1 max_sequence=7" in result.output
     assert "codex inbox render: ok surface=inbox" in result.output
+    assert "codex what-now render: ok surface=what_now" in result.output
     assert f"mcp: registered {codex_config}" in result.output
     assert "mcp config command: ok hollow-lodge-mcp" in result.output
     assert "mcp command: available hollow-lodge-mcp" in result.output
@@ -895,6 +915,13 @@ def test_doctor_reports_registered_player_and_mcp_without_secret_material(
     assert created_clients[3].calls == [("visible_events", {})]
     assert created_clients[4].token == "secret-token"
     assert created_clients[4].calls == [("visible_events", {}), ("inbox", {})]
+    assert created_clients[5].token == "secret-token"
+    assert created_clients[5].calls == [
+        ("visible_events", {}),
+        ("profile", {}),
+        ("inbox", {}),
+        ("deals", {}),
+    ]
     assert "No public claims until lock." in local_log_path.read_text(encoding="utf-8")
 
 
@@ -949,6 +976,7 @@ def test_doctor_server_override_applies_to_registered_readiness_checks(
     assert result.exit_code == 0
     assert "server: ok http://override-server" in result.output
     assert [client.server_url for client in created_clients] == [
+        "http://override-server",
         "http://override-server",
         "http://override-server",
         "http://override-server",
@@ -1044,6 +1072,7 @@ def test_doctor_reports_pending_onboarding_without_contact(tmp_path, monkeypatch
     assert "inbox:" not in result.output
     assert "event sync:" not in result.output
     assert "codex inbox render:" not in result.output
+    assert "codex what-now render:" not in result.output
     assert f"mcp: missing {codex_config}" in result.output
     assert "mcp config command: missing" in result.output
     assert "mcp command: missing hollow-lodge-mcp" in result.output
@@ -1122,6 +1151,7 @@ def test_doctor_reports_unconfigured_install_and_unreachable_server(tmp_path, mo
     assert "inbox:" not in result.output
     assert "event sync:" not in result.output
     assert "codex inbox render:" not in result.output
+    assert "codex what-now render:" not in result.output
     assert "mcp: missing" in result.output
     assert "mcp config command: missing" in result.output
     assert "mcp command: missing hollow-lodge-mcp" in result.output
@@ -1262,6 +1292,7 @@ def test_doctor_reports_failed_saved_auth_without_leaking_error(tmp_path, monkey
     assert "inbox: ok active_contracts=1" in result.output
     assert "event sync: ok synced=1 max_sequence=7" in result.output
     assert "codex inbox render: ok surface=inbox" in result.output
+    assert "codex what-now render: ok surface=what_now" in result.output
     assert "secret-token" not in result.output
 
 
@@ -1308,6 +1339,7 @@ def test_doctor_reports_saved_auth_player_mismatch_without_leaking_token(tmp_pat
     assert "inbox: ok active_contracts=1" in result.output
     assert "event sync: ok synced=1 max_sequence=7" in result.output
     assert "codex inbox render: ok surface=inbox" in result.output
+    assert "codex what-now render: ok surface=what_now" in result.output
     assert "player_9999" not in result.output
     assert "secret-token" not in result.output
 
@@ -1354,6 +1386,7 @@ def test_doctor_reports_failed_inbox_without_leaking_error_or_payload(tmp_path, 
     assert "inbox: failed" in result.output
     assert "event sync: ok synced=1 max_sequence=7" in result.output
     assert "codex inbox render: failed" in result.output
+    assert "codex what-now render: failed" in result.output
     assert "secret-token" not in result.output
     assert "The Saint's False Finger" not in result.output
 
@@ -1403,6 +1436,7 @@ def test_doctor_reports_inbox_player_mismatch_without_leaking_returned_player(tm
     assert "inbox: mismatch" in result.output
     assert "event sync: ok synced=1 max_sequence=7" in result.output
     assert "codex inbox render: failed" in result.output
+    assert "codex what-now render: failed" in result.output
     assert "player_9999" not in result.output
     assert "The Saint's False Finger" not in result.output
 
@@ -1449,6 +1483,7 @@ def test_doctor_reports_failed_event_sync_without_leaking_event_payload(tmp_path
     assert "inbox: ok active_contracts=1" in result.output
     assert "event sync: failed" in result.output
     assert "codex inbox render: failed" in result.output
+    assert "codex what-now render: failed" in result.output
     assert "secret-token" not in result.output
     assert "No public claims until lock." not in result.output
 

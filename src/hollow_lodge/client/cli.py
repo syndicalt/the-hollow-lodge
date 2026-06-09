@@ -236,6 +236,7 @@ def doctor(
     inbox_status: str | None = None
     event_sync_status: str | None = None
     codex_inbox_render_status: str | None = None
+    codex_what_now_render_status: str | None = None
 
     if registered_config is not None:
         readiness_config = registered_config.model_copy(update={"server_url": resolved_server})
@@ -253,10 +254,16 @@ def doctor(
             config,
             local_log,
         )
+        codex_what_now_render_status = _codex_what_now_render_status(
+            readiness_config,
+            config,
+            local_log,
+        )
         typer.echo(f"auth: {auth_status}")
         typer.echo(f"inbox: {inbox_status}")
         typer.echo(f"event sync: {event_sync_status}")
         typer.echo(f"codex inbox render: {codex_inbox_render_status}")
+        typer.echo(f"codex what-now render: {codex_what_now_render_status}")
     elif pending_config is not None:
         typer.echo(
             f"player: pending {pending_config.request_id} "
@@ -284,6 +291,7 @@ def doctor(
             inbox_status=inbox_status,
             event_sync_status=event_sync_status,
             codex_inbox_render_status=codex_inbox_render_status,
+            codex_what_now_render_status=codex_what_now_render_status,
             mcp_status=mcp_status,
             mcp_config_command_status=mcp_config_command_status,
             mcp_command_status=mcp_command_status,
@@ -1588,6 +1596,25 @@ def _codex_inbox_render_status(
     return "ok surface=inbox"
 
 
+def _codex_what_now_render_status(
+    config: ClientConfig,
+    config_path: Path,
+    local_log_path: Path,
+) -> str:
+    try:
+        packet = CodexGameSession(
+            config_path=config_path,
+            local_log_path=local_log_path,
+            api=_api_from_config(config),
+        ).render_what_now()
+    except Exception:
+        return "failed"
+
+    if packet.surface != "what_now":
+        return "unexpected"
+    return "ok surface=what_now"
+
+
 def _doctor_strict_ready(
     *,
     server_status: str,
@@ -1597,6 +1624,7 @@ def _doctor_strict_ready(
     inbox_status: str | None,
     event_sync_status: str | None,
     codex_inbox_render_status: str | None,
+    codex_what_now_render_status: str | None,
     mcp_status: str,
     mcp_config_command_status: str,
     mcp_command_status: str,
@@ -1609,6 +1637,7 @@ def _doctor_strict_ready(
         and _doctor_ok_status(inbox_status)
         and _doctor_ok_status(event_sync_status)
         and _doctor_ok_status(codex_inbox_render_status)
+        and _doctor_ok_status(codex_what_now_render_status)
         and mcp_status == "registered"
         and mcp_config_command_status == "ok"
         and mcp_command_status == "available"

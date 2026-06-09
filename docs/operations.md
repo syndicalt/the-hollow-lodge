@@ -742,8 +742,8 @@ hollow-lodge doctor
 
 The doctor reports CLI version, selected server health, registered or pending
 player state, saved auth status, inbox readiness, local event-sync cache
-status, Codex inbox render readiness, Codex MCP config status, and whether the
-`hollow-lodge-mcp` command is available on `PATH`.
+status, Codex inbox and what-now render readiness, Codex MCP config status,
+and whether the `hollow-lodge-mcp` command is available on `PATH`.
 
 Use strict mode for automated clean-install gates:
 
@@ -753,4 +753,5 @@ hollow-lodge doctor --strict
 
 Strict mode prints the same redacted report and exits non-zero unless a registered player is fully ready to play through Codex. Pending onboarding,
 missing MCP registration, failed auth, failed inbox reads, failed event sync,
-or failed Codex inbox rendering all fail the strict gate.
+failed Codex inbox rendering, or failed Codex what-now rendering all fail the
+strict gate.

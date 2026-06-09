@@ -3702,6 +3702,28 @@ Expected verification:
 - `pytest tests/client/test_cli_commands.py tests/client/test_installer_script.py tests/client/test_codex_mcp_config.py tests/client/test_local_log.py tests/client/test_codex_session.py -q`
 - `pytest -q`
 
+### Slice 151: Doctor What-Now Render Validation
+
+Status: completed.
+
+Align the installed-client readiness gate with the actual Codex entry flow. The
+play guide tells agents to start by rendering `render_what_now`; `hollow-lodge
+doctor` now validates that same `CodexGameSession.render_what_now()` path in
+addition to the existing inbox render smoke.
+
+Registered-player doctor output reports only bounded status strings such as
+`codex what-now render: ok surface=what_now`, `failed`, or `unexpected`. It does
+not print what-now Markdown, agent context, contract titles, event bodies, deal
+details, bearer tokens, or invite material. Strict mode now requires both
+Codex inbox and what-now render checks to pass before claiming the installed
+client is ready for play through Codex.
+
+Expected verification:
+
+- `pytest tests/client/test_cli_commands.py::test_doctor_reports_registered_player_and_mcp_without_secret_material tests/client/test_cli_commands.py::test_doctor_strict_passes_for_registered_ready_install -q`
+- `pytest tests/client/test_cli_commands.py tests/client/test_installer_script.py tests/client/test_codex_mcp_config.py tests/client/test_local_log.py tests/client/test_codex_session.py -q`
+- `pytest -q`
+
 ## Completion Standard
 
 Each slice must:
