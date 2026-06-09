@@ -6,7 +6,10 @@ import pytest
 from fastapi.testclient import TestClient
 
 from hollow_lodge.server.app import create_app
-from hollow_lodge.server.projection_config import projection_read_enabled
+from hollow_lodge.server.projection_config import (
+    PROJECTION_READ_SURFACE_ENVS,
+    projection_read_enabled,
+)
 from hollow_lodge.server.projection_store import SCHEMA_VERSION
 
 
@@ -356,6 +359,7 @@ def test_global_projection_read_flag_enables_all_surfaces(tmp_path, monkeypatch)
     projection_reads = client.get("/diagnostics").json()["data"]["projection_reads"]
     assert projection_reads["global_enabled"] is True
     assert projection_reads["surfaces"]
+    assert set(projection_reads["surfaces"]) == set(PROJECTION_READ_SURFACE_ENVS)
     assert all(projection_reads["surfaces"].values())
     assert projection_read_enabled("HOLLOW_LODGE_CONTRACT_BOARD_PROJECTION_READS") is True
 

@@ -9,11 +9,13 @@ from hollow_lodge.server.projection_store import (
     PROJECTION_SCHEMA_MIGRATIONS,
     SCHEMA_VERSION,
 )
+from hollow_lodge.server.projection_config import PROJECTION_READ_SURFACE_ENVS
 
 
 PASSWORD_IN_URL_PATTERN = re.compile(r"://[^/\s:]+:([^*@/\s]+)@")
 CURRENT_PROJECTION_SCHEMA_VERSION = int(SCHEMA_VERSION)
 CURRENT_PROJECTION_SCHEMA_MIGRATION_COUNT = len(PROJECTION_SCHEMA_MIGRATIONS)
+CURRENT_PROJECTION_READ_SURFACES = tuple(sorted(PROJECTION_READ_SURFACE_ENVS))
 
 
 def run_backend_smoke(
@@ -22,6 +24,7 @@ def run_backend_smoke(
     expected_backend: str,
     expected_event_backend: str | None = None,
     require_projection_reads: bool = False,
+    require_current_projection_read_surfaces: bool = False,
     require_current_projection_schema: bool = False,
     require_sequence_alignment: bool = False,
 ) -> dict[str, Any]:
@@ -39,6 +42,9 @@ def run_backend_smoke(
             expected_backend=expected_backend,
             expected_event_backend=expected_event_backend,
             require_projection_reads=require_projection_reads,
+            require_current_projection_read_surfaces=(
+                require_current_projection_read_surfaces
+            ),
             require_current_projection_schema=require_current_projection_schema,
             require_sequence_alignment=require_sequence_alignment,
         )
@@ -50,6 +56,7 @@ def validate_backend_diagnostics(
     expected_backend: str,
     expected_event_backend: str | None = None,
     require_projection_reads: bool = False,
+    require_current_projection_read_surfaces: bool = False,
     require_current_projection_schema: bool = False,
     require_sequence_alignment: bool = False,
 ) -> dict[str, Any]:
@@ -164,7 +171,8 @@ def validate_backend_diagnostics(
             )
 
     projection_reads = data.get("projection_reads")
-    if require_projection_reads:
+    projection_read_surfaces: dict[str, Any] | None = None
+    if require_projection_reads or require_current_projection_read_surfaces:
         if not isinstance(projection_reads, dict):
             errors.append("diagnostics response did not include data.projection_reads")
         else:
@@ -172,9 +180,30 @@ def validate_backend_diagnostics(
             if not isinstance(surfaces, dict) or not surfaces:
                 errors.append("projection read diagnostics did not include surfaces")
             else:
-                disabled = sorted(
-                    surface for surface, enabled in surfaces.items() if enabled is not True
-                )
+                projection_read_surfaces = surfaces
+                if require_current_projection_read_surfaces:
+                    reported = set(surfaces)
+                    expected = set(CURRENT_PROJECTION_READ_SURFACES)
+                    missing = sorted(expected - reported)
+                    unexpected = sorted(reported - expected)
+                    if missing:
+                        errors.append(
+                            "projection read surfaces missing from diagnostics: "
+                            + ", ".join(missing)
+                        )
+                    if unexpected:
+                        errors.append(
+                            "projection read surfaces unexpected in diagnostics: "
+                            + ", ".join(unexpected)
+                        )
+                if not require_projection_reads:
+                    disabled = []
+                else:
+                    disabled = sorted(
+                        surface
+                        for surface, enabled in surfaces.items()
+                        if enabled is not True
+                    )
                 if disabled:
                     errors.append(
                         "projection read surfaces disabled: " + ", ".join(disabled)
@@ -200,6 +229,7 @@ def validate_backend_diagnostics(
             "latest_schema_migration": latest_schema_migration,
         },
         "projection_reads": projection_reads,
+        "projection_read_surfaces": projection_read_surfaces,
     }
 
 
@@ -208,6 +238,7 @@ def validate_projection_diagnostics(
     *,
     expected_backend: str,
     require_projection_reads: bool = False,
+    require_current_projection_read_surfaces: bool = False,
     require_current_projection_schema: bool = False,
     require_sequence_alignment: bool = False,
 ) -> dict[str, Any]:
@@ -225,6 +256,7 @@ def validate_projection_diagnostics(
         diagnostics,
         expected_backend=expected_backend,
         require_projection_reads=require_projection_reads,
+        require_current_projection_read_surfaces=require_current_projection_read_surfaces,
         require_current_projection_schema=require_current_projection_schema,
         require_sequence_alignment=require_sequence_alignment,
     )
@@ -239,6 +271,7 @@ def validate_projection_diagnostics(
         "schema_migration_count": projection["schema_migration_count"],
         "latest_schema_migration": projection["latest_schema_migration"],
         "projection_reads": result["projection_reads"],
+        "projection_read_surfaces": result["projection_read_surfaces"],
     }
 
 

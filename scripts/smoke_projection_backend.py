@@ -37,6 +37,11 @@ def main() -> None:
         help="Require all implemented projection read surfaces to be enabled.",
     )
     parser.add_argument(
+        "--require-current-projection-read-surfaces",
+        action="store_true",
+        help="Require projection read diagnostics to include this package's surfaces.",
+    )
+    parser.add_argument(
         "--require-current-projection-schema",
         action="store_true",
         help="Require projection diagnostics to match this package's schema version.",
@@ -53,6 +58,9 @@ def main() -> None:
         expected_backend=args.expected_backend,
         expected_event_backend=args.expected_event_backend,
         require_projection_reads=args.require_projection_reads,
+        require_current_projection_read_surfaces=(
+            args.require_current_projection_read_surfaces
+        ),
         require_current_projection_schema=args.require_current_projection_schema,
         require_sequence_alignment=args.require_sequence_alignment,
     )
@@ -76,6 +84,7 @@ def run_smoke(
     expected_backend: str,
     expected_event_backend: str | None = None,
     require_projection_reads: bool = False,
+    require_current_projection_read_surfaces: bool = False,
     require_current_projection_schema: bool = False,
     require_sequence_alignment: bool = False,
 ) -> dict[str, Any]:
@@ -84,6 +93,7 @@ def run_smoke(
         expected_backend=expected_backend,
         expected_event_backend=expected_event_backend,
         require_projection_reads=require_projection_reads,
+        require_current_projection_read_surfaces=require_current_projection_read_surfaces,
         require_current_projection_schema=require_current_projection_schema,
         require_sequence_alignment=require_sequence_alignment,
     )

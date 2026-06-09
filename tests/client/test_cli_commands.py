@@ -3,6 +3,7 @@ from __future__ import annotations
 from typer.testing import CliRunner
 
 from hollow_lodge.client.backend_smoke import (
+    CURRENT_PROJECTION_READ_SURFACES,
     CURRENT_PROJECTION_SCHEMA_MIGRATION_COUNT,
     CURRENT_PROJECTION_SCHEMA_VERSION,
 )
@@ -86,8 +87,7 @@ class FakeApi:
                 },
                 "projection_reads": {
                     "surfaces": {
-                        "contract_board": True,
-                        "crew_summary": True,
+                        surface: True for surface in CURRENT_PROJECTION_READ_SURFACES
                     }
                 },
             }
@@ -1345,6 +1345,7 @@ def test_admin_backend_smoke_command_reports_safe_backend_status(monkeypatch):
             "--expected-event-backend",
             "jsonl",
             "--require-projection-reads",
+            "--require-current-projection-read-surfaces",
             "--require-current-projection-schema",
             "--require-sequence-alignment",
         ],
@@ -1437,6 +1438,36 @@ def test_admin_backend_smoke_command_rejects_stale_projection_schema(monkeypatch
         f"{CURRENT_PROJECTION_SCHEMA_VERSION - 1}; "
         f"expected {CURRENT_PROJECTION_SCHEMA_VERSION}"
     ) in result.output
+
+
+def test_admin_backend_smoke_command_rejects_missing_projection_read_surface(monkeypatch):
+    class MissingSurfaceApi(FakeApi):
+        def diagnostics(self):
+            payload = super().diagnostics()
+            payload["data"]["projection_reads"]["surfaces"].pop("visible_events")
+            return payload
+
+    monkeypatch.setattr(cli, "HollowLodgeApi", MissingSurfaceApi)
+    runner = CliRunner()
+
+    result = runner.invoke(
+        cli.app,
+        [
+            "admin",
+            "backend-smoke",
+            "--server",
+            "http://testserver",
+            "--expected-backend",
+            "postgres",
+            "--require-current-projection-read-surfaces",
+        ],
+    )
+
+    assert result.exit_code != 0
+    assert (
+        "projection read surfaces missing from diagnostics: visible_events"
+        in result.output
+    )
 
 
 def test_admin_backend_smoke_command_rejects_sequence_mismatch(monkeypatch):

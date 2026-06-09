@@ -454,6 +454,11 @@ def admin_backend_smoke(
         "--require-projection-reads",
         help="Require all implemented projection read surfaces to be enabled.",
     ),
+    require_current_projection_read_surfaces: bool = typer.Option(
+        False,
+        "--require-current-projection-read-surfaces",
+        help="Require projection read diagnostics to include this package's surfaces.",
+    ),
     require_current_projection_schema: bool = typer.Option(
         False,
         "--require-current-projection-schema",
@@ -482,6 +487,9 @@ def admin_backend_smoke(
             expected_backend=expected_backend,
             expected_event_backend=expected_event_backend,
             require_projection_reads=require_projection_reads,
+            require_current_projection_read_surfaces=(
+                require_current_projection_read_surfaces
+            ),
             require_current_projection_schema=require_current_projection_schema,
             require_sequence_alignment=require_sequence_alignment,
         )

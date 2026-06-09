@@ -2,6 +2,7 @@ import importlib.util
 from pathlib import Path
 
 from hollow_lodge.client.backend_smoke import (
+    CURRENT_PROJECTION_READ_SURFACES,
     CURRENT_PROJECTION_SCHEMA_MIGRATION_COUNT,
     CURRENT_PROJECTION_SCHEMA_VERSION,
 )
@@ -41,12 +42,15 @@ def test_projection_backend_smoke_accepts_available_zero_lag_backend():
                 },
                 "projection_reads": {
                     "global_enabled": True,
-                    "surfaces": {"contract_board": True, "crew_summary": True},
+                    "surfaces": {
+                        surface: True for surface in CURRENT_PROJECTION_READ_SURFACES
+                    },
                 },
             },
         },
         expected_backend="postgres",
         require_projection_reads=True,
+        require_current_projection_read_surfaces=True,
         require_current_projection_schema=True,
     )
 
@@ -84,13 +88,16 @@ def test_backend_smoke_accepts_event_and_projection_backends():
                 },
                 "projection_reads": {
                     "global_enabled": True,
-                    "surfaces": {"contract_board": True, "crew_summary": True},
+                    "surfaces": {
+                        surface: True for surface in CURRENT_PROJECTION_READ_SURFACES
+                    },
                 },
             },
         },
         expected_backend="postgres",
         expected_event_backend="postgres",
         require_projection_reads=True,
+        require_current_projection_read_surfaces=True,
         require_current_projection_schema=True,
         require_sequence_alignment=True,
     )
@@ -272,6 +279,70 @@ def test_projection_backend_smoke_rejects_disabled_projection_read_surfaces():
         raise AssertionError("disabled projection read surfaces should fail the smoke")
 
     assert "projection read surfaces disabled: crew_summary" in message
+
+
+def test_projection_backend_smoke_rejects_missing_projection_read_surfaces():
+    smoke = _load_smoke_module()
+    surfaces = {surface: True for surface in CURRENT_PROJECTION_READ_SURFACES}
+    surfaces.pop("visible_events")
+
+    try:
+        smoke.validate_projection_diagnostics(
+            {
+                "data": {
+                    "projection_db": {
+                        "backend": "postgres",
+                        "database_url": "postgresql://user:***@host:5432/db",
+                        "status": "available",
+                        "lag": 0,
+                    },
+                    "projection_reads": {
+                        "global_enabled": True,
+                        "surfaces": surfaces,
+                    },
+                }
+            },
+            expected_backend="postgres",
+            require_current_projection_read_surfaces=True,
+        )
+    except RuntimeError as exc:
+        message = str(exc)
+    else:
+        raise AssertionError("missing projection read surfaces should fail the smoke")
+
+    assert "projection read surfaces missing from diagnostics: visible_events" in message
+
+
+def test_projection_backend_smoke_rejects_unexpected_projection_read_surfaces():
+    smoke = _load_smoke_module()
+    surfaces = {surface: True for surface in CURRENT_PROJECTION_READ_SURFACES}
+    surfaces["future_surface"] = True
+
+    try:
+        smoke.validate_projection_diagnostics(
+            {
+                "data": {
+                    "projection_db": {
+                        "backend": "postgres",
+                        "database_url": "postgresql://user:***@host:5432/db",
+                        "status": "available",
+                        "lag": 0,
+                    },
+                    "projection_reads": {
+                        "global_enabled": True,
+                        "surfaces": surfaces,
+                    },
+                }
+            },
+            expected_backend="postgres",
+            require_current_projection_read_surfaces=True,
+        )
+    except RuntimeError as exc:
+        message = str(exc)
+    else:
+        raise AssertionError("unexpected projection read surfaces should fail the smoke")
+
+    assert "projection read surfaces unexpected in diagnostics: future_surface" in message
 
 
 def test_projection_backend_smoke_rejects_stale_projection_schema():

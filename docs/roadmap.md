@@ -2012,6 +2012,26 @@ Expected verification:
 - `pytest tests/e2e/test_projection_backend_smoke.py tests/client/test_cli_commands.py tests/server/test_projection_store.py::test_projection_store_records_schema_migration_ledger -q`
 - `pytest -q`
 
+### Slice 81: Projection Read Surface Coverage Gate
+
+Status: completed.
+
+Add an explicit installed-package projection read surface coverage check to the
+hosted backend readiness smoke. `scripts/smoke_projection_backend.py` and
+`hollow-lodge admin backend-smoke` now accept
+`--require-current-projection-read-surfaces`, which requires
+`/diagnostics.data.projection_reads.surfaces` to contain exactly the projection
+read surfaces implemented by the installed package. This catches stale hosted
+servers that omit newer projection-backed read paths before operators turn on
+`HOLLOW_LODGE_PROJECTION_READS=1`; `--require-projection-reads` still enforces
+that the reported surfaces are enabled.
+
+Expected verification:
+
+- `pytest tests/e2e/test_projection_backend_smoke.py tests/client/test_cli_commands.py::test_admin_backend_smoke_command_reports_safe_backend_status tests/client/test_cli_commands.py::test_admin_backend_smoke_command_rejects_missing_projection_read_surface -q`
+- `pytest tests/e2e/test_projection_backend_smoke.py tests/client/test_cli_commands.py tests/server/test_app_config.py::test_global_projection_read_flag_enables_all_surfaces -q`
+- `pytest -q`
+
 ## Completion Standard
 
 Each slice must:
