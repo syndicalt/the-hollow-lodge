@@ -216,6 +216,32 @@ Avoid hidden truths that are only flavor:
 
 Those are moods, not scoreable truths.
 
+## What Players Learn
+
+The hidden truth is not a riddle answer that appears on the contract board. It
+is server-side adjudication material. During play, players should only see
+artifacts, visible graph links, crew actions, trades, rumors, and safe reveal
+text.
+
+At resolution, players should learn a bounded case finding: what the winning
+proof established, what remains uncertain, and which visible artifacts carried
+the result. This should not dump the raw `hidden_truth.summary` or server-only
+truth id. It should translate the hidden truth into player-facing closure.
+
+Good case finding:
+
+> The evidence supports a forged relic with a genuine chapel debt attached. The
+> false custody chain lost, but the debt mark survived scrutiny.
+
+Weak case finding:
+
+> Hidden truth: `truth_false_finger_forgery`.
+
+If players never learn what their proof established, the hidden truth becomes a
+floating signifier. If they learn it too early or too literally, the contract
+stops being an investigation. Keep the raw truth sealed; reveal the consequence
+of the proof.
+
 ## Proof Lanes
 
 Proof lanes are the ways a crew can build a compelling packet. They give the GM

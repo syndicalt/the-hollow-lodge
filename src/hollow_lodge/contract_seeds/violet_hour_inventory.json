@@ -1,0 +1,141 @@
+{
+  "campaign": {
+    "campaign_id": "campaign_saints_ledgers",
+    "title": "Saints & Ledgers"
+  },
+  "contract": {
+    "contract_id": "contract_violet_hour_inventory",
+    "campaign_id": "campaign_saints_ledgers",
+    "title": "The Violet Hour Inventory",
+    "premise": "A devotional clock appears on two authenticated inventories for the same hour.",
+    "phase": {
+      "name": "Inventory Preview",
+      "remaining_hours": 7
+    },
+    "evidence_assets": [
+      {
+        "asset_id": "asset_devotional_clock_card",
+        "title": "Devotional clock card",
+        "public_summary": "An auction card lists a devotional clock with conflicting room marks."
+      },
+      {
+        "asset_id": "asset_delivery_ledger",
+        "title": "Delivery ledger",
+        "public_summary": "A carrier ledger places the same clock at a second address."
+      }
+    ],
+    "proof_dossier_needs": [
+      "object identity",
+      "delivery chronology",
+      "witness contradiction"
+    ],
+    "crew_heat": 0
+  },
+  "hidden_truth": {
+    "truth_id": "truth_violet_hour_repeat_debt",
+    "summary": "The devotional clock repeats a pledged hour so the same debt can be collected twice."
+  },
+  "artifact_graph": {
+    "contract_id": "contract_violet_hour_inventory",
+    "artifacts": [
+      {
+        "artifact_id": "artifact_clock_inventory_card",
+        "contract_id": "contract_violet_hour_inventory",
+        "kind": "catalogue",
+        "title": "Devotional Clock Inventory Card",
+        "public_summary": "The clock card carries two room marks in the same clerk's hand.",
+        "full_text": "Inventory card: gilt devotional clock, violet enamel dial, marked for the west parlor and east study in the same hour.",
+        "tags": ["clock", "inventory", "violet", "room"],
+        "proof_lanes": ["provenance", "material"],
+        "phase_relevance": ["Inventory Preview"],
+        "visible_flags": ["duplicate-location"]
+      },
+      {
+        "artifact_id": "artifact_delivery_ledger",
+        "contract_id": "contract_violet_hour_inventory",
+        "kind": "ledger",
+        "title": "Carrier Delivery Ledger",
+        "public_summary": "The carrier ledger records two deliveries for one devotional clock.",
+        "full_text": "Delivery ledger: one clock collected from Calder House, delivered twice under the same docket number.",
+        "tags": ["delivery", "ledger", "docket", "carrier"],
+        "proof_lanes": ["provenance", "leverage"],
+        "phase_relevance": ["Inventory Preview"],
+        "visible_flags": ["duplicate-docket"]
+      },
+      {
+        "artifact_id": "artifact_clockmaker_scratch",
+        "contract_id": "contract_violet_hour_inventory",
+        "kind": "rubbing",
+        "title": "Clockmaker Scratch",
+        "public_summary": "A case rubbing reveals a repair mark hidden under the enamel dial.",
+        "full_text": "Rubbing: clockmaker scratch under the violet enamel reads 'one hour owing.' The mark predates the auction card.",
+        "tags": ["clockmaker", "scratch", "enamel", "repair"],
+        "proof_lanes": ["material", "occult"],
+        "phase_relevance": ["Inventory Preview"],
+        "hidden_flags": ["owed-hour"]
+      },
+      {
+        "artifact_id": "artifact_tram_witness_ticket",
+        "contract_id": "contract_violet_hour_inventory",
+        "kind": "witness_note",
+        "title": "Tram Witness Ticket",
+        "public_summary": "A witness ticket places the carrier away from one alleged delivery.",
+        "full_text": "Witness ticket: carrier punched the north tram at the minute the ledger says the second delivery was signed.",
+        "tags": ["tram", "witness", "carrier", "minute"],
+        "proof_lanes": ["witness", "leverage"],
+        "phase_relevance": ["Inventory Preview"],
+        "hidden_flags": ["carrier-alibi"]
+      }
+    ],
+    "edges": [
+      {
+        "source_id": "artifact_clock_inventory_card",
+        "target_id": "artifact_clockmaker_scratch",
+        "relation": "points_to",
+        "public_summary": "The violet enamel note points toward the clockmaker's hidden repair mark."
+      },
+      {
+        "source_id": "artifact_delivery_ledger",
+        "target_id": "artifact_tram_witness_ticket",
+        "relation": "contradicts",
+        "public_summary": "The delivery ledger conflicts with the tram witness timing."
+      },
+      {
+        "source_id": "artifact_clockmaker_scratch",
+        "target_id": "artifact_tram_witness_ticket",
+        "relation": "supports",
+        "public_summary": "The repair mark and witness ticket make the duplicate delivery harder to dismiss."
+      }
+    ],
+    "unlock_rules": [
+      {
+        "rule_id": "unlock-clockmaker-scratch",
+        "artifact_id": "artifact_clockmaker_scratch",
+        "contract_id": "contract_violet_hour_inventory",
+        "phase": "Inventory Preview",
+        "trigger": "action_mentions_tag",
+        "required_terms": ["clockmaker"],
+        "award_scope": "crew",
+        "award_reason": "Asked a clockmaker to lift the enamel repair mark."
+      },
+      {
+        "rule_id": "unlock-tram-witness-ticket",
+        "artifact_id": "artifact_tram_witness_ticket",
+        "contract_id": "contract_violet_hour_inventory",
+        "phase": "Inventory Preview",
+        "trigger": "action_mentions_tag",
+        "required_terms": ["tram"],
+        "award_scope": "crew",
+        "award_reason": "Checked the carrier's route against tram ticket punches."
+      }
+    ]
+  },
+  "public_artifact_ids": ["artifact_clock_inventory_card", "artifact_delivery_ledger"],
+  "scoring_hints": {
+    "rubric_hooks": ["object identity", "delivery chronology", "witness contradiction"],
+    "allowed_reveal_strings": [
+      "The clock's identity holds, but the hour does not.",
+      "The carrier ledger now has a witness contradiction."
+    ]
+  }
+}

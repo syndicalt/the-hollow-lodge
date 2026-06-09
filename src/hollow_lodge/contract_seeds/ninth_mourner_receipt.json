@@ -1,0 +1,141 @@
+{
+  "campaign": {
+    "campaign_id": "campaign_saints_ledgers",
+    "title": "Saints & Ledgers"
+  },
+  "contract": {
+    "contract_id": "contract_ninth_mourner_receipt",
+    "campaign_id": "campaign_saints_ledgers",
+    "title": "The Ninth Mourner's Receipt",
+    "premise": "An undertaker's receipt bills an estate for a ninth mourner no one remembers hiring.",
+    "phase": {
+      "name": "Wake Preview",
+      "remaining_hours": 6
+    },
+    "evidence_assets": [
+      {
+        "asset_id": "asset_mourner_receipt",
+        "title": "Undertaker receipt",
+        "public_summary": "A paid receipt lists one mourner more than the household account admits."
+      },
+      {
+        "asset_id": "asset_estate_notice",
+        "title": "Estate sale notice",
+        "public_summary": "A mourning ring lot was added after the printed catalogue closed."
+      }
+    ],
+    "proof_dossier_needs": [
+      "attendance chain",
+      "estate provenance",
+      "ritual motive"
+    ],
+    "crew_heat": 0
+  },
+  "hidden_truth": {
+    "truth_id": "truth_ninth_mourner_debt_proxy",
+    "summary": "The ninth mourner is a debt proxy used to move a living heir's obligation into the corpse ledger."
+  },
+  "artifact_graph": {
+    "contract_id": "contract_ninth_mourner_receipt",
+    "artifacts": [
+      {
+        "artifact_id": "artifact_mourner_receipt",
+        "contract_id": "contract_ninth_mourner_receipt",
+        "kind": "receipt",
+        "title": "Undertaker Receipt",
+        "public_summary": "The undertaker charged for nine veiled attendants at a wake recorded with only eight witnesses.",
+        "full_text": "Receipt: nine veiled attendants paid from the estate purse. Clerk's margin: one name was settled off-ledger.",
+        "tags": ["undertaker", "receipt", "mourner", "wake"],
+        "proof_lanes": ["provenance", "leverage"],
+        "phase_relevance": ["Wake Preview"],
+        "visible_flags": ["estate-account"]
+      },
+      {
+        "artifact_id": "artifact_estate_notice",
+        "contract_id": "contract_ninth_mourner_receipt",
+        "kind": "catalogue",
+        "title": "Mourning Ring Notice",
+        "public_summary": "A mourning ring lot was inserted after catalogue closure.",
+        "full_text": "Catalogue notice: black enamel ring added by private instruction after print. Viewing restricted to bonded crews.",
+        "tags": ["ring", "estate", "catalogue", "bonded"],
+        "proof_lanes": ["provenance", "material"],
+        "phase_relevance": ["Wake Preview"],
+        "visible_flags": ["late-addition"]
+      },
+      {
+        "artifact_id": "artifact_parish_burial_index",
+        "contract_id": "contract_ninth_mourner_receipt",
+        "kind": "ledger",
+        "title": "Parish Burial Index",
+        "public_summary": "The parish index records an altered witness count and a scratched family initial.",
+        "full_text": "Burial index: witness count overwritten from eight to nine. The scratched initial matches the estate's disputed heir.",
+        "tags": ["burial", "parish", "witness", "heir"],
+        "proof_lanes": ["witness", "provenance"],
+        "phase_relevance": ["Wake Preview"],
+        "hidden_flags": ["living-heir-transfer"]
+      },
+      {
+        "artifact_id": "artifact_black_glove_thread",
+        "contract_id": "contract_ninth_mourner_receipt",
+        "kind": "rubbing",
+        "title": "Black Glove Thread",
+        "public_summary": "A glove thread carries chapel wax and funeral soot.",
+        "full_text": "Material note: black glove thread recovered from ring case hinge. Wax trace matches a chapel taper, not a funeral candle.",
+        "tags": ["glove", "wax", "thread", "chapel"],
+        "proof_lanes": ["material", "occult"],
+        "phase_relevance": ["Wake Preview"],
+        "hidden_flags": ["chapel-substitution"]
+      }
+    ],
+    "edges": [
+      {
+        "source_id": "artifact_mourner_receipt",
+        "target_id": "artifact_parish_burial_index",
+        "relation": "points_to",
+        "public_summary": "The receipt's ninth attendant points toward the parish witness count."
+      },
+      {
+        "source_id": "artifact_estate_notice",
+        "target_id": "artifact_black_glove_thread",
+        "relation": "points_to",
+        "public_summary": "The restricted ring viewing points toward material left in the case."
+      },
+      {
+        "source_id": "artifact_parish_burial_index",
+        "target_id": "artifact_black_glove_thread",
+        "relation": "supports",
+        "public_summary": "The altered witness record and glove trace support a chapel-linked substitution."
+      }
+    ],
+    "unlock_rules": [
+      {
+        "rule_id": "unlock-parish-burial-index",
+        "artifact_id": "artifact_parish_burial_index",
+        "contract_id": "contract_ninth_mourner_receipt",
+        "phase": "Wake Preview",
+        "trigger": "action_mentions_tag",
+        "required_terms": ["burial"],
+        "award_scope": "crew",
+        "award_reason": "Checked the parish burial index behind the undertaker's receipt."
+      },
+      {
+        "rule_id": "unlock-black-glove-thread",
+        "artifact_id": "artifact_black_glove_thread",
+        "contract_id": "contract_ninth_mourner_receipt",
+        "phase": "Wake Preview",
+        "trigger": "action_mentions_tag",
+        "required_terms": ["glove"],
+        "award_scope": "crew",
+        "award_reason": "Inspected the ring case for glove and wax traces."
+      }
+    ]
+  },
+  "public_artifact_ids": ["artifact_mourner_receipt", "artifact_estate_notice"],
+  "scoring_hints": {
+    "rubric_hooks": ["attendance chain", "estate provenance", "ritual motive"],
+    "allowed_reveal_strings": [
+      "The witness count no longer holds.",
+      "The ring case carries a chapel trace."
+    ]
+  }
+}

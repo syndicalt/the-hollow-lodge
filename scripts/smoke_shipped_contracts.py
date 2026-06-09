@@ -36,7 +36,7 @@ SHIPPED_CONTRACT_SMOKES = (
     {
         "contract_id": "contract_ash_window",
         "title": "The Ash Window",
-        "seed": "tests/fixtures/ash_window_contract.json",
+        "seed": "src/hollow_lodge/contract_seeds/ash_window.json",
         "hours_elapsed": 4,
         "crew_actions": (
             "Follow the ash notice into the soot cooling pattern.",
@@ -51,6 +51,66 @@ SHIPPED_CONTRACT_SMOKES = (
             "truth_ash_window_future_burn",
             "cinder oracle",
             "future-burn",
+        ),
+    },
+    {
+        "contract_id": "contract_ninth_mourner_receipt",
+        "title": "The Ninth Mourner's Receipt",
+        "seed": "src/hollow_lodge/contract_seeds/ninth_mourner_receipt.json",
+        "hours_elapsed": 6,
+        "crew_actions": (
+            "Check the burial index behind the undertaker receipt and compare the witness count.",
+            "Inspect the ring case for a black glove thread and any chapel wax trace.",
+        ),
+        "artifact_citation": {
+            "artifact_id": "artifact_mourner_receipt",
+            "claim": "The undertaker receipt contradicts the household witness count.",
+            "quote": "nine veiled attendants paid",
+        },
+        "hidden_terms": (
+            "truth_ninth_mourner_debt_proxy",
+            "debt proxy",
+            "corpse ledger",
+        ),
+    },
+    {
+        "contract_id": "contract_wax_eclipse_bond",
+        "title": "The Wax Eclipse Bond",
+        "seed": "src/hollow_lodge/contract_seeds/wax_eclipse_bond.json",
+        "hours_elapsed": 5,
+        "crew_actions": (
+            "Pull the notary counterbook for the chapel repair bond and compare the seal impression.",
+            "Follow the almanac bell note to the private noon invoice.",
+        ),
+        "artifact_citation": {
+            "artifact_id": "artifact_eclipse_bond",
+            "claim": "The repair bond date conflicts with the recorded sky event.",
+            "quote": "Filing date precedes the almanac by three days.",
+        },
+        "hidden_terms": (
+            "truth_wax_eclipse_backdated_vow",
+            "eclipse vow",
+            "consecrated wax",
+        ),
+    },
+    {
+        "contract_id": "contract_violet_hour_inventory",
+        "title": "The Violet Hour Inventory",
+        "seed": "src/hollow_lodge/contract_seeds/violet_hour_inventory.json",
+        "hours_elapsed": 7,
+        "crew_actions": (
+            "Ask a clockmaker to lift the enamel scratch and verify the violet dial repair mark.",
+            "Check the delivery ledger against the carrier tram witness ticket.",
+        ),
+        "artifact_citation": {
+            "artifact_id": "artifact_clock_inventory_card",
+            "claim": "The clock inventory card places one object in two rooms during the same hour.",
+            "quote": "marked for the west parlor and east study in the same hour",
+        },
+        "hidden_terms": (
+            "truth_violet_hour_repeat_debt",
+            "pledged hour",
+            "collected twice",
         ),
     },
 )

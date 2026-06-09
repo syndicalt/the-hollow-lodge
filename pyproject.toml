@@ -31,6 +31,9 @@ hollow-lodge-mcp = "hollow_lodge.mcp_server:main"
 [tool.setuptools.packages.find]
 where = ["src"]
 
+[tool.setuptools.package-data]
+"hollow_lodge.contract_seeds" = ["*.json"]
+
 [tool.pytest.ini_options]
 pythonpath = ["src"]
 testpaths = ["tests"]

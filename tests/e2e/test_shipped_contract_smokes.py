@@ -32,15 +32,13 @@ def _load_smoke_module():
     return module
 
 
-def test_contract_seed_fixtures_are_registered_for_shipped_smokes():
+def test_packaged_contract_seeds_are_registered_for_shipped_smokes():
     module = _load_smoke_module()
     repository_root = Path(__file__).resolve().parents[2]
-    fixture_paths = {
+    seed_paths = {
         str(path)
         for path in sorted(
-            (repository_root / "tests" / "fixtures").glob(
-                "*_contract.json"
-            )
+            (repository_root / "src" / "hollow_lodge" / "contract_seeds").glob("*.json")
         )
     }
     registered_paths = {
@@ -49,7 +47,7 @@ def test_contract_seed_fixtures_are_registered_for_shipped_smokes():
         if scenario["seed"] is not None
     }
 
-    assert registered_paths == fixture_paths
+    assert registered_paths == seed_paths
 
     for scenario in module.SHIPPED_CONTRACT_SMOKES:
         seed_path = scenario["seed"]
@@ -69,6 +67,9 @@ def test_all_shipped_contracts_have_playthrough_smokes(tmp_path):
     assert {smoke["contract_id"] for smoke in result["smokes"]} == {
         "contract_false_finger",
         "contract_ash_window",
+        "contract_ninth_mourner_receipt",
+        "contract_wax_eclipse_bond",
+        "contract_violet_hour_inventory",
     }
     for smoke in result["smokes"]:
         assert smoke["resolved_standings"]
@@ -82,5 +83,17 @@ def test_all_shipped_contracts_have_playthrough_smokes(tmp_path):
     )
     assert any(
         line.startswith("contract_ash_window: resolved")
+        for line in result["lines"]
+    )
+    assert any(
+        line.startswith("contract_ninth_mourner_receipt: resolved")
+        for line in result["lines"]
+    )
+    assert any(
+        line.startswith("contract_wax_eclipse_bond: resolved")
+        for line in result["lines"]
+    )
+    assert any(
+        line.startswith("contract_violet_hour_inventory: resolved")
         for line in result["lines"]
     )

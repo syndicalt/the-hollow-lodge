@@ -1,0 +1,141 @@
+{
+  "campaign": {
+    "campaign_id": "campaign_saints_ledgers",
+    "title": "Saints & Ledgers"
+  },
+  "contract": {
+    "contract_id": "contract_wax_eclipse_bond",
+    "campaign_id": "campaign_saints_ledgers",
+    "title": "The Wax Eclipse Bond",
+    "premise": "A sealed bond for a chapel repair fund bears an eclipse mark dated three days too early.",
+    "phase": {
+      "name": "Bond Preview",
+      "remaining_hours": 5
+    },
+    "evidence_assets": [
+      {
+        "asset_id": "asset_eclipse_bond",
+        "title": "Chapel repair bond",
+        "public_summary": "The bond seal includes a darkened sun before the almanac says it appeared."
+      },
+      {
+        "asset_id": "asset_almanac_leaf",
+        "title": "Almanac leaf",
+        "public_summary": "A torn almanac page narrows the impossible date."
+      }
+    ],
+    "proof_dossier_needs": [
+      "seal chronology",
+      "notary chain",
+      "auction leverage"
+    ],
+    "crew_heat": 0
+  },
+  "hidden_truth": {
+    "truth_id": "truth_wax_eclipse_backdated_vow",
+    "summary": "The bond was backdated with consecrated wax to bind the repair fund to an eclipse vow."
+  },
+  "artifact_graph": {
+    "contract_id": "contract_wax_eclipse_bond",
+    "artifacts": [
+      {
+        "artifact_id": "artifact_eclipse_bond",
+        "contract_id": "contract_wax_eclipse_bond",
+        "kind": "letter",
+        "title": "Sealed Repair Bond",
+        "public_summary": "A chapel repair bond carries a sun-dark seal dated before the recorded sky event.",
+        "full_text": "Bond abstract: repair fund assigned under a blackened sun seal. Filing date precedes the almanac by three days.",
+        "tags": ["bond", "seal", "eclipse", "repair"],
+        "proof_lanes": ["provenance", "leverage"],
+        "phase_relevance": ["Bond Preview"],
+        "visible_flags": ["date-conflict"]
+      },
+      {
+        "artifact_id": "artifact_almanac_leaf",
+        "contract_id": "contract_wax_eclipse_bond",
+        "kind": "other",
+        "title": "Torn Almanac Leaf",
+        "public_summary": "The almanac leaf places the sky event after the bond was filed.",
+        "full_text": "Almanac leaf: total obscuration listed three days after the bond filing. Margin note: bells kept ringing through noon.",
+        "tags": ["almanac", "date", "bells", "noon"],
+        "proof_lanes": ["witness", "provenance"],
+        "phase_relevance": ["Bond Preview"],
+        "visible_flags": ["calendar-check"]
+      },
+      {
+        "artifact_id": "artifact_notary_counterbook",
+        "contract_id": "contract_wax_eclipse_bond",
+        "kind": "ledger",
+        "title": "Notary Counterbook",
+        "public_summary": "The notary counterbook shows a missing oath line and a second seal impression.",
+        "full_text": "Counterbook: oath line left blank, then filled in a different hand. Secondary impression was pressed through warm wax.",
+        "tags": ["notary", "counterbook", "oath", "wax"],
+        "proof_lanes": ["provenance", "material"],
+        "phase_relevance": ["Bond Preview"],
+        "hidden_flags": ["vow-ledger"]
+      },
+      {
+        "artifact_id": "artifact_bell_invoice",
+        "contract_id": "contract_wax_eclipse_bond",
+        "kind": "receipt",
+        "title": "Bell Ringer Invoice",
+        "public_summary": "An invoice pays bell ringers for a noon service no parish calendar lists.",
+        "full_text": "Invoice: four bell ringers paid for a private noon service. Disbursement references the same repair fund as the bond.",
+        "tags": ["bell", "invoice", "repair", "noon"],
+        "proof_lanes": ["witness", "leverage"],
+        "phase_relevance": ["Bond Preview"],
+        "hidden_flags": ["private-service"]
+      }
+    ],
+    "edges": [
+      {
+        "source_id": "artifact_eclipse_bond",
+        "target_id": "artifact_notary_counterbook",
+        "relation": "points_to",
+        "public_summary": "The bond filing points toward the notary's duplicate seal record."
+      },
+      {
+        "source_id": "artifact_almanac_leaf",
+        "target_id": "artifact_bell_invoice",
+        "relation": "points_to",
+        "public_summary": "The almanac bell note points toward an unlisted noon service."
+      },
+      {
+        "source_id": "artifact_notary_counterbook",
+        "target_id": "artifact_bell_invoice",
+        "relation": "supports",
+        "public_summary": "The counterbook and bell invoice connect the seal date to chapel funds."
+      }
+    ],
+    "unlock_rules": [
+      {
+        "rule_id": "unlock-notary-counterbook",
+        "artifact_id": "artifact_notary_counterbook",
+        "contract_id": "contract_wax_eclipse_bond",
+        "phase": "Bond Preview",
+        "trigger": "action_mentions_tag",
+        "required_terms": ["notary"],
+        "award_scope": "crew",
+        "award_reason": "Pulled the notary counterbook behind the filed bond."
+      },
+      {
+        "rule_id": "unlock-bell-invoice",
+        "artifact_id": "artifact_bell_invoice",
+        "contract_id": "contract_wax_eclipse_bond",
+        "phase": "Bond Preview",
+        "trigger": "action_mentions_tag",
+        "required_terms": ["bell"],
+        "award_scope": "crew",
+        "award_reason": "Followed the almanac bell note to a private service invoice."
+      }
+    ]
+  },
+  "public_artifact_ids": ["artifact_eclipse_bond", "artifact_almanac_leaf"],
+  "scoring_hints": {
+    "rubric_hooks": ["seal chronology", "notary chain", "auction leverage"],
+    "allowed_reveal_strings": [
+      "The seal date does not survive contact with the almanac.",
+      "The repair fund reaches a private noon service."
+    ]
+  }
+}
