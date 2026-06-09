@@ -1450,6 +1450,7 @@ def deal_propose(
         "--expires-phase",
         help="Phase after which the deal expires.",
     ),
+    confirm: bool = typer.Option(False, "--confirm", help="Propose the escrowed artifact deal on the server."),
     config: Path = typer.Option(DEFAULT_CONFIG_PATH, "--config", help="Local config path."),
 ) -> None:
     """Propose an escrowed artifact deal."""
@@ -1457,6 +1458,22 @@ def deal_propose(
     proposer_crew_id = from_crew or current.active_crew_id
     if proposer_crew_id is None:
         raise typer.BadParameter("from crew required when no active crew is configured")
+    if not confirm:
+        packet = build_mutation_result_packet(
+            operation="propose_deal",
+            confirmed=False,
+            preview_fields={
+                "contract_id": contract_id,
+                "proposer_crew_id": proposer_crew_id,
+                "recipient_crew_id": to_crew,
+                "offered_artifact_ids": offer,
+                "requested_artifact_ids": request,
+                "soft_terms": soft_term or [],
+                "expires_phase": expires_phase,
+            },
+        )
+        _echo_packet(packet, as_json=False)
+        return
     response = _api_from_config(current).propose_deal(
         contract_id=contract_id,
         proposer_crew_id=proposer_crew_id,

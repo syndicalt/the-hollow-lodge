@@ -4003,6 +4003,26 @@ Expected verification:
 - `pytest tests/client/test_dossier_cli.py tests/client/test_cli_commands.py tests/client/test_codex_session.py tests/client/test_render_packets.py tests/test_mcp_server.py tests/server/test_proof_routes.py tests/server/test_packet_lead.py -q`
 - `pytest -q`
 
+### Slice 165: CLI Deal Proposal Confirmation Guard
+
+Status: completed.
+
+Bring `hollow-lodge deal propose` under the same preview/confirm contract as
+Codex session deal proposal. The command now renders a no-mutation
+`propose_deal` preview by default, showing the contract id, proposer crew,
+recipient crew, offered artifacts, requested artifacts, soft terms, and expiry.
+It only creates the escrowed deal when rerun with `--confirm`.
+
+This protects cross-crew negotiation state from accidental shell submission
+while preserving existing confirmed payload shaping, active-crew fallback,
+soft-term handling, and idempotency behavior.
+
+Expected verification:
+
+- `pytest tests/client/test_deal_cli.py::test_deal_propose_uses_active_crew_and_passes_payload -q`
+- `pytest tests/client/test_deal_cli.py tests/client/test_cli_commands.py tests/client/test_codex_session.py tests/client/test_render_packets.py tests/client/test_deal_render.py tests/client/test_deal_mcp_render.py tests/test_mcp_server.py tests/server/test_deal_routes.py tests/server/test_deal_service.py -q`
+- `pytest -q`
+
 ## Completion Standard
 
 Each slice must:

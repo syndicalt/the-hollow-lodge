@@ -186,6 +186,38 @@ def test_deal_propose_uses_active_crew_and_passes_payload(tmp_path, monkeypatch)
     monkeypatch.setattr(cli, "HollowLodgeApi", _fake_client_factory(created_clients))
     monkeypatch.setattr(cli, "new_command_key", lambda prefix: f"{prefix}-key")
 
+    preview = runner.invoke(
+        app,
+        [
+            "deal",
+            "propose",
+            "--to-crew",
+            "crew_0002",
+            "--offer",
+            "artifact_ledger_rubric",
+            "--offer",
+            "artifact_archive_photo",
+            "--request",
+            "artifact_chapel_debt_mark",
+            "--soft-term",
+            "Do not cite us.",
+            "--config",
+            str(config),
+        ],
+    )
+
+    assert preview.exit_code == 0
+    assert "Preview: propose_deal" in preview.output
+    assert "No server mutation was submitted." in preview.output
+    assert "- contract_id: contract_false_finger" in preview.output
+    assert "- proposer_crew_id: crew_0001" in preview.output
+    assert "- recipient_crew_id: crew_0002" in preview.output
+    assert "- offered_artifact_ids: ['artifact_ledger_rubric', 'artifact_archive_photo']" in preview.output
+    assert "- requested_artifact_ids: ['artifact_chapel_debt_mark']" in preview.output
+    assert "- soft_terms: ['Do not cite us.']" in preview.output
+    assert "- expires_phase: None" in preview.output
+    assert created_clients == []
+
     result = runner.invoke(
         app,
         [
@@ -201,6 +233,7 @@ def test_deal_propose_uses_active_crew_and_passes_payload(tmp_path, monkeypatch)
             "artifact_chapel_debt_mark",
             "--soft-term",
             "Do not cite us.",
+            "--confirm",
             "--config",
             str(config),
         ],
