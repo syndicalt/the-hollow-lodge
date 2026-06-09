@@ -882,6 +882,37 @@ def test_phase_lock_mutation_result_shapes_safe_resolution_fields_only():
     assert "accepted_output" not in str(packet.agent_context)
 
 
+def test_send_message_mutation_result_shapes_safe_message_fields_only():
+    packet = build_mutation_result_packet(
+        operation="send_message",
+        confirmed=True,
+        result={
+            "message_id": "msg_000001",
+            "conversation_id": "crew_0001:crew_0002",
+            "scope": "crew_to_crew",
+            "body": "Trade the ledger?",
+            "artifact_ids": ["artifact_ledger_rubric"],
+            "server_notes": "hidden",
+        },
+    )
+
+    assert "Submitted: send_message" in packet.player_markdown
+    assert "Result: msg_000001" in packet.player_markdown
+    assert packet.agent_context == {
+        "operation": "send_message",
+        "mutation": True,
+        "confirmed": True,
+        "result": {
+            "message_id": "msg_000001",
+            "conversation_id": "crew_0001:crew_0002",
+            "scope": "crew_to_crew",
+        },
+    }
+    assert "Trade the ledger" not in str(packet.agent_context)
+    assert "artifact_ledger_rubric" not in str(packet.agent_context)
+    assert "server_notes" not in str(packet.agent_context)
+
+
 def test_accept_deal_mutation_packet_renders_received_artifacts():
     packet = build_mutation_result_packet(
         operation="accept_deal",

@@ -305,6 +305,56 @@ def test_render_conversations_mcp_call_returns_text_and_structured_packet(monkey
     assert result.structuredContent["agent_context"]["mutation"] is False
 
 
+def test_send_message_mcp_call_passes_preview_parameters_to_session(monkeypatch):
+    packet = RenderPacket(
+        surface="mutation",
+        player_markdown="Preview: send_message\nNo server mutation was submitted.",
+        agent_context={"operation": "send_message", "mutation": False},
+    )
+
+    class StubSession:
+        def send_message(
+            self,
+            *,
+            scope: str,
+            body: str,
+            confirm: bool,
+            recipient_player_id: str | None = None,
+            crew_id: str | None = None,
+            recipient_crew_id: str | None = None,
+            sender_crew_id: str | None = None,
+            artifact_ids: list[str] | None = None,
+        ) -> RenderPacket:
+            assert scope == "crew_to_crew"
+            assert body == "Trade the ledger?"
+            assert confirm is False
+            assert recipient_player_id is None
+            assert crew_id is None
+            assert recipient_crew_id == "crew_0002"
+            assert sender_crew_id == "crew_0001"
+            assert artifact_ids == ["artifact_ledger_rubric"]
+            return packet
+
+    monkeypatch.setattr(mcp_server, "_session", lambda: StubSession())
+
+    result = asyncio.run(
+        mcp_server.mcp.call_tool(
+            "send_message",
+            {
+                "scope": "crew_to_crew",
+                "body": "Trade the ledger?",
+                "confirm": False,
+                "recipient_crew_id": "crew_0002",
+                "sender_crew_id": "crew_0001",
+                "artifact_ids": ["artifact_ledger_rubric"],
+            },
+        )
+    )
+
+    assert result.content[0].text == packet.player_markdown
+    assert result.structuredContent["agent_context"]["mutation"] is False
+
+
 def test_preview_deal_acceptance_mcp_call_is_read_only(monkeypatch):
     packet = RenderPacket(
         surface="deal_preview",
@@ -471,6 +521,7 @@ def test_public_mcp_tools_do_not_expose_local_path_overrides():
         "render_crew_activity_delta",
         "render_conversations",
         "render_thread",
+        "send_message",
         "render_deals",
         "preview_deal_acceptance",
         "submit_action",
@@ -485,8 +536,6 @@ def test_public_mcp_tools_do_not_expose_local_path_overrides():
         properties = tools[tool_name].inputSchema["properties"]
         assert "config_path" not in properties
         assert "local_log_path" not in properties
-
-    assert "send_message" not in tools
 
 
 def test_mutating_mcp_tools_require_confirm_argument():

@@ -77,6 +77,74 @@ class FakeApi:
             }
         ]
 
+    def send_direct_message(
+        self,
+        *,
+        recipient_player_id: str,
+        body: str,
+        idempotency_key: str,
+        artifact_ids=None,
+    ):
+        self.calls.append(
+            (
+                "send_direct_message",
+                {
+                    "recipient_player_id": recipient_player_id,
+                    "body": body,
+                    "artifact_ids": list(artifact_ids or []),
+                    "idempotency_key": idempotency_key,
+                },
+            )
+        )
+        return {"message_id": "msg_direct_000001", "conversation_id": "msg_direct_000001"}
+
+    def send_crew_message(
+        self,
+        *,
+        crew_id: str,
+        body: str,
+        idempotency_key: str,
+        artifact_ids=None,
+    ):
+        self.calls.append(
+            (
+                "send_crew_message",
+                {
+                    "crew_id": crew_id,
+                    "body": body,
+                    "artifact_ids": list(artifact_ids or []),
+                    "idempotency_key": idempotency_key,
+                },
+            )
+        )
+        return {"message_id": "msg_crew_000001", "conversation_id": crew_id}
+
+    def send_crew_to_crew_message(
+        self,
+        *,
+        sender_crew_id: str,
+        recipient_crew_id: str,
+        body: str,
+        idempotency_key: str,
+        artifact_ids=None,
+    ):
+        self.calls.append(
+            (
+                "send_crew_to_crew_message",
+                {
+                    "sender_crew_id": sender_crew_id,
+                    "recipient_crew_id": recipient_crew_id,
+                    "body": body,
+                    "artifact_ids": list(artifact_ids or []),
+                    "idempotency_key": idempotency_key,
+                },
+            )
+        )
+        return {
+            "message_id": "msg_crew_to_crew_000001",
+            "conversation_id": f"{sender_crew_id}:{recipient_crew_id}",
+        }
+
     def inbox(self):
         self.calls.append("inbox")
         return {
@@ -1052,6 +1120,154 @@ def test_codex_session_accept_deal_preview_shows_consequences_without_accepting(
     assert "Your crew receives: artifact_ledger_rubric" in packet.player_markdown
     assert packet.agent_context["mutation"] is False
     assert fake_api.calls == ["visible_events", "deals"]
+
+
+def test_codex_session_send_message_preview_does_not_mutate(tmp_path):
+    config_path = tmp_path / "config.json"
+    log_path = tmp_path / "local.jsonl"
+    fake_api = FakeApi()
+    save_config(
+        config_path,
+        ClientConfig(
+            server_url="http://testserver",
+            player_id="player_0001",
+            token="token",
+            active_crew_id="crew_0001",
+        ),
+    )
+    session = CodexGameSession(config_path=config_path, local_log_path=log_path, api=fake_api)
+
+    packet = session.send_message(
+        scope="crew_to_crew",
+        recipient_crew_id="crew_0002",
+        body="  Trade the ledger?  ",
+        artifact_ids=["artifact_ledger_rubric"],
+        confirm=False,
+    )
+
+    assert packet.surface == "mutation"
+    assert "Preview: send_message" in packet.player_markdown
+    assert packet.agent_context["mutation"] is False
+    assert packet.agent_context["preview"] == {
+        "scope": "crew_to_crew",
+        "sender_crew_id": "crew_0001",
+        "recipient_crew_id": "crew_0002",
+        "body": "Trade the ledger?",
+        "artifact_ids": ["artifact_ledger_rubric"],
+    }
+    assert fake_api.calls == []
+
+
+def test_codex_session_send_message_confirm_dispatches_and_syncs(tmp_path, monkeypatch):
+    config_path = tmp_path / "config.json"
+    log_path = tmp_path / "local.jsonl"
+    fake_api = FakeApi()
+    save_config(
+        config_path,
+        ClientConfig(
+            server_url="http://testserver",
+            player_id="player_0001",
+            token="token",
+            active_crew_id="crew_0001",
+        ),
+    )
+    monkeypatch.setattr(
+        "hollow_lodge.client.codex_session.new_command_key",
+        lambda prefix: f"{prefix}.fixed",
+    )
+    session = CodexGameSession(config_path=config_path, local_log_path=log_path, api=fake_api)
+
+    direct = session.send_message(
+        scope="direct",
+        recipient_player_id="player_0002",
+        body="Trade the ledger?",
+        artifact_ids=["artifact_ledger_rubric"],
+        confirm=True,
+    )
+    crew = session.send_message(
+        scope="crew",
+        body="Meet by the archive.",
+        confirm=True,
+    )
+    crew_to_crew = session.send_message(
+        scope="crew_to_crew",
+        recipient_crew_id="crew_0002",
+        body="Trade the ledger?",
+        confirm=True,
+    )
+
+    assert direct.agent_context["result"] == {
+        "message_id": "msg_direct_000001",
+        "conversation_id": "msg_direct_000001",
+        "scope": "direct",
+    }
+    assert crew.agent_context["result"]["conversation_id"] == "crew_0001"
+    assert crew_to_crew.agent_context["result"]["conversation_id"] == "crew_0001:crew_0002"
+    assert fake_api.calls == [
+        (
+            "send_direct_message",
+            {
+                "recipient_player_id": "player_0002",
+                "body": "Trade the ledger?",
+                "artifact_ids": ["artifact_ledger_rubric"],
+                "idempotency_key": "chat-direct.fixed",
+            },
+        ),
+        "visible_events",
+        (
+            "send_crew_message",
+            {
+                "crew_id": "crew_0001",
+                "body": "Meet by the archive.",
+                "artifact_ids": [],
+                "idempotency_key": "chat-crew.fixed",
+            },
+        ),
+        "visible_events",
+        (
+            "send_crew_to_crew_message",
+            {
+                "sender_crew_id": "crew_0001",
+                "recipient_crew_id": "crew_0002",
+                "body": "Trade the ledger?",
+                "artifact_ids": [],
+                "idempotency_key": "chat-crew-to-crew.fixed",
+            },
+        ),
+        "visible_events",
+    ]
+
+
+def test_codex_session_send_message_validates_required_fields_before_mutation(tmp_path):
+    config_path = tmp_path / "config.json"
+    log_path = tmp_path / "local.jsonl"
+    fake_api = FakeApi()
+    save_config(
+        config_path,
+        ClientConfig(
+            server_url="http://testserver",
+            player_id="player_0001",
+            token="token",
+            active_crew_id="crew_0001",
+        ),
+    )
+    session = CodexGameSession(config_path=config_path, local_log_path=log_path, api=fake_api)
+
+    try:
+        session.send_message(scope="direct", body="Hello.", confirm=True)
+    except ValueError as exc:
+        assert "recipient_player_id is required" in str(exc)
+    else:
+        raise AssertionError("missing direct recipient should fail")
+
+    try:
+        session.send_message(scope="crew_to_crew", body="Hello.", confirm=True)
+    except ValueError as exc:
+        assert "recipient_crew_id is required" in str(exc)
+    else:
+        raise AssertionError("missing recipient crew should fail")
+
+    assert fake_api.calls == []
 
 
 def test_codex_session_confirmed_mutations_use_expected_api_calls(tmp_path, monkeypatch):

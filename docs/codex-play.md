@@ -93,6 +93,23 @@ the lock. After a confirmed lock, render `render_contract_board` and
 `render_crew_board` so the player can see standings, phase result text, rewards,
 heat/legacy changes, and the next available work.
 
+## Brokered Messages
+
+Use `send_message` when a player wants to coordinate from inside Codex. Start
+with `confirm=false`; the tool returns a preview packet and does not mutate the
+server. Supported scopes are `direct`, `crew`, and `crew_to_crew`.
+
+For direct messages, include `recipient_player_id`. For crew messages, omit
+`crew_id` to use the configured active crew, or pass a specific `crew_id`. For
+crew-to-crew messages, include `recipient_crew_id`; omit `sender_crew_id` to use
+the active crew. `artifact_ids` can attach visible artifacts to the brokered
+message.
+
+Only send with `confirm=true` after the player approves the exact body,
+recipient scope, and attachments. After a confirmed message, render
+`render_thread` or `render_conversations` so the player and agent can see the
+visible conversation state.
+
 ## Visibility
 
 Treat private conversations and crew boards as visibility-scoped game state.

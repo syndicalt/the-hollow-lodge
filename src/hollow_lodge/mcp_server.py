@@ -126,6 +126,31 @@ def render_thread(conversation_id: str) -> CallToolResult:
 
 
 @mcp.tool()
+def send_message(
+    scope: str,
+    body: str,
+    confirm: bool,
+    recipient_player_id: str | None = None,
+    crew_id: str | None = None,
+    recipient_crew_id: str | None = None,
+    sender_crew_id: str | None = None,
+    artifact_ids: list[str] | None = None,
+) -> CallToolResult:
+    return packet_response(
+        _session().send_message(
+            scope=scope,
+            body=body,
+            confirm=confirm,
+            recipient_player_id=recipient_player_id,
+            crew_id=crew_id,
+            recipient_crew_id=recipient_crew_id,
+            sender_crew_id=sender_crew_id,
+            artifact_ids=artifact_ids,
+        )
+    )
+
+
+@mcp.tool()
 def preview_deal_acceptance(deal_id: str) -> CallToolResult:
     return packet_response(_session().preview_deal_acceptance(deal_id))
 

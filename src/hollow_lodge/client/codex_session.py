@@ -148,6 +148,41 @@ class CodexGameSession:
         self.sync()
         return build_conversations_packet(self.api.visible_chat_events())
 
+    def send_message(
+        self,
+        *,
+        scope: str,
+        body: str,
+        confirm: bool,
+        recipient_player_id: str | None = None,
+        crew_id: str | None = None,
+        recipient_crew_id: str | None = None,
+        sender_crew_id: str | None = None,
+        artifact_ids: list[str] | tuple[str, ...] | None = None,
+    ) -> RenderPacket:
+        dispatch = self._message_dispatch(
+            scope=scope,
+            body=body,
+            recipient_player_id=recipient_player_id,
+            crew_id=crew_id,
+            recipient_crew_id=recipient_crew_id,
+            sender_crew_id=sender_crew_id,
+            artifact_ids=artifact_ids,
+        )
+        if not confirm:
+            return build_mutation_result_packet(
+                operation="send_message",
+                confirmed=False,
+                preview_fields=dispatch["preview"],
+            )
+        result = dispatch["send"]()
+        self.sync()
+        return build_mutation_result_packet(
+            operation="send_message",
+            confirmed=True,
+            result={**result, "scope": dispatch["preview"]["scope"]},
+        )
+
     def preview_deal_acceptance(self, deal_id: str) -> RenderPacket:
         self.sync()
         deals = self.api.deals()["deals"]
@@ -442,6 +477,79 @@ class CodexGameSession:
         if target_crew_id is None:
             raise ValueError("crew id required when no active crew is configured")
         return target_crew_id
+
+    def _message_dispatch(
+        self,
+        *,
+        scope: str,
+        body: str,
+        recipient_player_id: str | None,
+        crew_id: str | None,
+        recipient_crew_id: str | None,
+        sender_crew_id: str | None,
+        artifact_ids: list[str] | tuple[str, ...] | None,
+    ) -> dict[str, Any]:
+        message_body = body.strip()
+        if not message_body:
+            raise ValueError("message body is required")
+        attachments = list(artifact_ids or [])
+        if scope == "direct":
+            if not recipient_player_id:
+                raise ValueError("recipient_player_id is required for direct messages")
+            preview = {
+                "scope": "direct",
+                "recipient_player_id": recipient_player_id,
+                "body": message_body,
+                "artifact_ids": attachments,
+            }
+            return {
+                "preview": preview,
+                "send": lambda: self.api.send_direct_message(
+                    recipient_player_id=recipient_player_id,
+                    body=message_body,
+                    artifact_ids=attachments,
+                    idempotency_key=new_command_key("chat-direct"),
+                ),
+            }
+        if scope == "crew":
+            target_crew_id = self._target_crew_id(crew_id)
+            preview = {
+                "scope": "crew",
+                "crew_id": target_crew_id,
+                "body": message_body,
+                "artifact_ids": attachments,
+            }
+            return {
+                "preview": preview,
+                "send": lambda: self.api.send_crew_message(
+                    crew_id=target_crew_id,
+                    body=message_body,
+                    artifact_ids=attachments,
+                    idempotency_key=new_command_key("chat-crew"),
+                ),
+            }
+        if scope == "crew_to_crew":
+            if not recipient_crew_id:
+                raise ValueError("recipient_crew_id is required for crew_to_crew messages")
+            target_sender_crew_id = self._target_crew_id(sender_crew_id)
+            preview = {
+                "scope": "crew_to_crew",
+                "sender_crew_id": target_sender_crew_id,
+                "recipient_crew_id": recipient_crew_id,
+                "body": message_body,
+                "artifact_ids": attachments,
+            }
+            return {
+                "preview": preview,
+                "send": lambda: self.api.send_crew_to_crew_message(
+                    sender_crew_id=target_sender_crew_id,
+                    recipient_crew_id=recipient_crew_id,
+                    body=message_body,
+                    artifact_ids=attachments,
+                    idempotency_key=new_command_key("chat-crew-to-crew"),
+                ),
+            }
+        raise ValueError("scope must be one of direct, crew, or crew_to_crew")
 
     def _visible_server_events(self) -> list[dict[str, Any]]:
         return [

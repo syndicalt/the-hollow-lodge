@@ -2997,6 +2997,29 @@ Expected verification:
 - `pytest tests/test_mcp_server.py::test_phase_lock_mcp_call_passes_confirmation_to_session tests/test_mcp_server.py::test_public_mcp_tools_do_not_expose_local_path_overrides tests/test_mcp_server.py::test_mutating_mcp_tools_require_confirm_argument -q`
 - `pytest tests/client/test_codex_session.py tests/client/test_render_packets.py tests/test_mcp_server.py -q`
 
+### Slice 119: Codex Brokered Message Tool
+
+Status: completed.
+
+Expose brokered chat sending through the Codex-native MCP surface. The server
+and CLI already supported direct, crew, and crew-to-crew messages; this slice
+makes those social-deal workflows playable from inside Codex without dropping
+to shell commands.
+
+`CodexGameSession.send_message` follows the preview/confirm mutation policy.
+With `confirm=false`, it validates the requested scope and returns a
+non-mutating preview containing scope, recipients, body, and artifact
+attachments. With `confirm=true`, it dispatches to the existing direct, crew,
+or crew-to-crew API endpoint, syncs visible events, and returns a safe shaped
+result containing message id, conversation id, and scope only. The MCP
+`send_message` tool exposes game parameters only and requires `confirm`.
+
+Expected verification:
+
+- `pytest tests/client/test_codex_session.py::test_codex_session_send_message_preview_does_not_mutate tests/client/test_codex_session.py::test_codex_session_send_message_confirm_dispatches_and_syncs tests/client/test_codex_session.py::test_codex_session_send_message_validates_required_fields_before_mutation tests/client/test_render_packets.py::test_send_message_mutation_result_shapes_safe_message_fields_only -q`
+- `pytest tests/test_mcp_server.py::test_send_message_mcp_call_passes_preview_parameters_to_session tests/test_mcp_server.py::test_public_mcp_tools_do_not_expose_local_path_overrides tests/test_mcp_server.py::test_mutating_mcp_tools_require_confirm_argument -q`
+- `pytest tests/client/test_codex_session.py tests/client/test_render_packets.py tests/test_mcp_server.py -q`
+
 ## Completion Standard
 
 Each slice must:

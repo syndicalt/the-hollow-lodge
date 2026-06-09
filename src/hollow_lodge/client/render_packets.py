@@ -619,12 +619,20 @@ def _shape_mutation_result(operation: str, result: dict[str, Any]) -> dict[str, 
             for key in ("status", "contract_id", "phase", "standings", "contract_state")
             if key in result
         }
+    if operation == "send_message":
+        return {
+            key: result[key]
+            for key in ("message_id", "conversation_id", "scope")
+            if key in result
+        }
     return {}
 
 
 def _mutation_result_label(operation: str, result: dict[str, Any]) -> str:
     if operation == "phase_lock" and "status" in result:
         return str(result["status"])
+    if operation == "send_message" and "message_id" in result:
+        return str(result["message_id"])
     for key in ("action_id", "deal_id", "artifact_id", "dossier_id"):
         if key in result:
             return str(result[key])
