@@ -82,6 +82,33 @@ class FakeApi:
         )
         return {"crew_id": crew_id, "artifact_id": artifact_id}
 
+    def add_typed_dossier_claim(
+        self,
+        *,
+        crew_id: str,
+        subject_id: str,
+        predicate: str,
+        object_id: str | None,
+        value: str | None,
+        citation_artifact_ids: list[str],
+        idempotency_key: str,
+    ):
+        self.calls.append(
+            (
+                "add_typed_dossier_claim",
+                {
+                    "crew_id": crew_id,
+                    "subject_id": subject_id,
+                    "predicate": predicate,
+                    "object_id": object_id,
+                    "value": value,
+                    "citation_artifact_ids": citation_artifact_ids,
+                    "idempotency_key": idempotency_key,
+                },
+            )
+        )
+        return {"crew_id": crew_id, "subject_id": subject_id, "predicate": predicate}
+
     def vote_packet_lead(self, *, crew_id: str, player_id: str, idempotency_key: str):
         self.calls.append(
             (
@@ -304,3 +331,103 @@ def test_dossier_citation_and_frame_commands_send_only_requested_fields(tmp_path
             },
         )
     ]
+
+
+def test_dossier_typed_claim_command_previews_and_confirms(tmp_path, monkeypatch):
+    runner = CliRunner()
+    clients: list[FakeApi] = []
+
+    def fake_client(**kwargs):
+        client = FakeApi(**kwargs)
+        clients.append(client)
+        return client
+
+    monkeypatch.setattr(cli, "HollowLodgeApi", fake_client)
+    monkeypatch.setattr(cli, "new_command_key", lambda prefix: f"{prefix}-key")
+    config_path = tmp_path / "config.json"
+    write_config(config_path)
+
+    preview = runner.invoke(
+        cli.app,
+        [
+            "dossier",
+            "typed-claim",
+            "artifact_ledger_rubric",
+            "contradicts_clean_provenance",
+            "--object-id",
+            "artifact_lot_card",
+            "--citation",
+            "artifact_ledger_rubric",
+            "--citation",
+            "artifact_lot_card",
+            "--config",
+            str(config_path),
+        ],
+    )
+
+    assert preview.exit_code == 0
+    assert "Preview: dossier_add_typed_claim" in preview.output
+    assert "- crew_id: crew_0001" in preview.output
+    assert "- subject_id: artifact_ledger_rubric" in preview.output
+    assert "- predicate: contradicts_clean_provenance" in preview.output
+    assert "- object_id: artifact_lot_card" in preview.output
+    assert "- citation_artifact_ids: ['artifact_ledger_rubric', 'artifact_lot_card']" in (
+        preview.output
+    )
+    assert clients == []
+
+    confirmed = runner.invoke(
+        cli.app,
+        [
+            "dossier",
+            "typed-claim",
+            "artifact_ledger_rubric",
+            "contradicts_clean_provenance",
+            "--object-id",
+            "artifact_lot_card",
+            "--citation",
+            "artifact_ledger_rubric",
+            "--crew-id",
+            "crew_0002",
+            "--confirm",
+            "--config",
+            str(config_path),
+        ],
+    )
+
+    assert confirmed.exit_code == 0
+    assert clients[0].calls == [
+        (
+            "add_typed_dossier_claim",
+            {
+                "crew_id": "crew_0002",
+                "subject_id": "artifact_ledger_rubric",
+                "predicate": "contradicts_clean_provenance",
+                "object_id": "artifact_lot_card",
+                "value": None,
+                "citation_artifact_ids": ["artifact_ledger_rubric"],
+                "idempotency_key": "dossier-typed-claim-key",
+            },
+        )
+    ]
+
+
+def test_dossier_typed_claim_requires_object_or_value(tmp_path):
+    runner = CliRunner()
+    config_path = tmp_path / "config.json"
+    write_config(config_path)
+
+    result = runner.invoke(
+        cli.app,
+        [
+            "dossier",
+            "typed-claim",
+            "artifact_ledger_rubric",
+            "contradicts_clean_provenance",
+            "--config",
+            str(config_path),
+        ],
+    )
+
+    assert result.exit_code != 0
+    assert "typed claim requires --object-id or --value" in result.output

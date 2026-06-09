@@ -4776,6 +4776,36 @@ Expected verification:
 - `pytest tests/e2e/test_shipped_contract_smokes.py tests/e2e/test_contract_content_pipeline.py tests/e2e/test_codex_render_surfaces.py tests/server/test_contract_seed.py tests/server/test_contract_seed_pipeline.py -q`
 - `pytest -q`
 
+### Slice 197: CLI Typed Claim Proof Gate
+
+Status: completed.
+
+Close the shell CLI parity gap for the scored proof-packet path. Players can
+now add structured dossier claims from the CLI with
+`hollow-lodge dossier typed-claim SUBJECT_ID PREDICATE --object-id OBJECT_ID
+--citation ARTIFACT_ID --confirm`, matching the API, Codex session, and MCP
+typed-claim workflow.
+
+The command follows the existing confirmation-first mutation pattern: without
+`--confirm`, it renders a no-mutation `dossier_add_typed_claim` preview showing
+the target crew, subject, predicate, optional object/value, and cited artifact
+ids. Confirmed submissions call the production typed-claim API with a
+`dossier-typed-claim` idempotency key. The CLI rejects ambiguous claims that
+provide neither `--object-id` nor `--value`.
+
+The disposable alpha rehearsal in `/tmp/hollow-lodge-alpha-sim` was updated and
+rerun so the full local-server alpha loop now uses real shell CLI commands for
+typed claims instead of a direct HTTP workaround. The only remaining shell
+parity gap from that rehearsal is a dedicated activity render command; the
+rehearsal uses `sync` plus `replay` for now.
+
+Expected verification:
+
+- `pytest tests/client/test_dossier_cli.py -q`
+- `pytest tests/client/test_dossier_cli.py tests/e2e/test_full_game_loop_with_escrow.py tests/client/test_cli_commands.py::test_dossier_artifact_citation_and_frame_commands_use_active_crew tests/client/test_cli_commands.py::test_dossier_commands_use_active_or_explicit_crew -q`
+- `/tmp/hollow-lodge-alpha-sim/run_alpha_rehearsal.py`
+- `pytest -q`
+
 ## Completion Standard
 
 Each slice must:

@@ -1737,6 +1737,65 @@ def dossier_cite_artifact(
     typer.echo(response)
 
 
+@dossier_app.command("typed-claim")
+def dossier_typed_claim(
+    subject_id: str = typer.Argument(..., help="Subject artifact or entity id."),
+    predicate: str = typer.Argument(..., help="Bounded predicate for the claim."),
+    object_id: str | None = typer.Option(
+        None,
+        "--object-id",
+        help="Object artifact or entity id for relational claims.",
+    ),
+    value: str | None = typer.Option(
+        None,
+        "--value",
+        help="Literal value for attribute claims.",
+    ),
+    citation_artifact_id: list[str] | None = typer.Option(
+        None,
+        "--citation",
+        help="Visible artifact id cited by this typed claim. Repeatable.",
+    ),
+    crew_id: str | None = typer.Option(None, "--crew-id", help="Crew id; defaults to active crew."),
+    confirm: bool = typer.Option(False, "--confirm", help="Add the typed claim on the server."),
+    config: Path = typer.Option(DEFAULT_CONFIG_PATH, "--config", help="Local config path."),
+) -> None:
+    """Add a structured scored claim to the crew proof dossier."""
+    if object_id is None and value is None:
+        raise typer.BadParameter("typed claim requires --object-id or --value")
+    current = load_config(config)
+    target_crew_id = _target_crew_id(current, crew_id)
+    citations = citation_artifact_id or []
+    preview: dict[str, object] = {
+        "crew_id": target_crew_id,
+        "subject_id": subject_id,
+        "predicate": predicate,
+        "citation_artifact_ids": citations,
+    }
+    if object_id is not None:
+        preview["object_id"] = object_id
+    if value is not None:
+        preview["value"] = value
+    if not confirm:
+        packet = build_mutation_result_packet(
+            operation="dossier_add_typed_claim",
+            confirmed=False,
+            preview_fields=preview,
+        )
+        _echo_packet(packet, as_json=False)
+        return
+    response = _api_from_config(current).add_typed_dossier_claim(
+        crew_id=target_crew_id,
+        subject_id=subject_id,
+        predicate=predicate,
+        object_id=object_id,
+        value=value,
+        citation_artifact_ids=citations,
+        idempotency_key=new_command_key("dossier-typed-claim"),
+    )
+    typer.echo(response)
+
+
 @dossier_app.command("frame")
 def dossier_frame(
     claim: str | None = typer.Option(None, "--claim", help="Dossier claim."),
