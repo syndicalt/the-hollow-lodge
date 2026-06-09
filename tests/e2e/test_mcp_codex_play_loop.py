@@ -260,6 +260,100 @@ def test_player_can_render_persistent_profile_through_actual_mcp_tools(
         assert forbidden not in serialized_profile
 
 
+def test_player_can_render_backend_status_and_readiness_through_actual_mcp_tools(
+    tmp_path,
+    monkeypatch,
+):
+    app = create_app(data_dir=tmp_path / "server", invite_codes=["ada"])
+    client = TestClient(app)
+    ada = _register(client, "ada", "Ada Corelumen")
+
+    config_path = tmp_path / "config.json"
+    local_log_path = tmp_path / "local.jsonl"
+    _write_config(
+        config_path,
+        player=ada,
+        active_crew_id="",
+        display_name="Ada Corelumen",
+    )
+    monkeypatch.setattr(mcp_server, "DEFAULT_CONFIG_PATH", config_path)
+    monkeypatch.setattr(mcp_server, "DEFAULT_LOCAL_LOG_PATH", local_log_path)
+    _install_httpx_test_bridge(monkeypatch, client)
+
+    status = _assert_packet(_call_tool("render_backend_status"), surface="backend_status")
+
+    assert status["agent_context"]["mutation"] is False
+    backend_status = status["agent_context"]["backend_status"]
+    assert backend_status["event_log"]["backend"] == "jsonl"
+    assert backend_status["event_log"]["status"] == "available"
+    assert backend_status["event_log"]["event_count"] == 6
+    assert backend_status["event_log"]["last_sequence"] == 6
+    assert len(backend_status["event_log"]["event_hash_chain_sha256"]) == 64
+    assert backend_status["projection_db"]["backend"] == "sqlite"
+    assert backend_status["projection_db"]["status"] == "available"
+    assert backend_status["projection_db"]["lag"] == 0
+    assert backend_status["identity_replay_store"] == {"backend": "jsonl-sidecar"}
+    assert "Backend Status" in status["player_markdown"]
+    assert "- event log: jsonl (available)" in status["player_markdown"]
+    assert "- projection: sqlite (available; lag 0)" in status["player_markdown"]
+    assert "- operational replay: jsonl-sidecar" in status["player_markdown"]
+
+    readiness = _assert_packet(
+        _call_tool(
+            "check_backend_readiness",
+            {
+                "production_postgres": False,
+                "expected_backend": "sqlite",
+                "expected_event_backend": "jsonl",
+                "expected_operational_backend": "jsonl-sidecar",
+            },
+        ),
+        surface="backend_readiness",
+    )
+    assert readiness["agent_context"]["mutation"] is False
+    backend_readiness = readiness["agent_context"]["backend_readiness"]
+    assert backend_readiness["ok"] is True
+    assert backend_readiness["mode"] == "custom"
+    assert backend_readiness["errors"] == []
+    assert backend_readiness["result"]["event_log"]["backend"] == "jsonl"
+    assert backend_readiness["result"]["event_log"]["status"] == "available"
+    assert backend_readiness["result"]["event_log"]["event_count"] == 6
+    assert backend_readiness["result"]["event_log"]["last_sequence"] == 6
+    assert (
+        len(backend_readiness["result"]["event_log"]["event_hash_chain_sha256"])
+        == 64
+    )
+    assert backend_readiness["result"]["projection"]["backend"] == "sqlite"
+    assert backend_readiness["result"]["projection"]["lag"] == 0
+    assert backend_readiness["result"]["identity_replay_store"] == {
+        "backend": "jsonl-sidecar"
+    }
+    assert "Backend Readiness: pass (custom)" in readiness["player_markdown"]
+    assert "- event log: jsonl (available; events 6)" in readiness["player_markdown"]
+    assert "- projection: sqlite (available; lag 0)" in readiness["player_markdown"]
+
+    serialized_packets = f"{status}\n{readiness}"
+    for forbidden in (
+        str(tmp_path),
+        "server-events",
+        "server-projections",
+        "registration_replay_path",
+        "invite_replay_path",
+        "last_event_hash",
+        "database_url",
+        "postgresql://",
+        "secret",
+        "token",
+        "invite_code",
+        "join_code",
+        "idempotency_key",
+        "path",
+        "origin",
+        "payload",
+    ):
+        assert forbidden not in serialized_packets
+
+
 def test_player_can_transfer_and_check_proof_fragment_through_actual_mcp_tools(
     tmp_path,
     monkeypatch,

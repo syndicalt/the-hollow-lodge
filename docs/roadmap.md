@@ -4702,6 +4702,31 @@ Expected verification:
 - `pytest tests/server/test_identity_routes.py::test_player_profile_returns_safe_crew_memberships_without_auth_material tests/server/test_identity_routes.py::test_player_profile_includes_safe_crew_legacy_without_hidden_sources tests/server/test_identity_routes.py::test_player_profile_reads_fresh_projected_crew_legacy_when_enabled tests/client/test_api.py::test_api_gets_player_profile tests/client/test_render_packets.py::test_profile_packet_renders_persistent_identity_and_crew_memberships_without_hidden_fields tests/client/test_codex_session.py::test_codex_session_renders_profile tests/test_mcp_server.py::test_render_profile_mcp_call_returns_text_and_structured_packet -q`
 - `pytest -q`
 
+### Slice 194: Actual MCP Backend Readiness Proof Gate
+
+Status: completed.
+
+Close the actual-MCP boundary gap around operational visibility from inside
+Codex. The MCP e2e now calls `render_backend_status` and
+`check_backend_readiness` through real `mcp.call_tool` calls against a local
+server, proving that the player and local agent can inspect safe storage and
+readiness posture without leaving the Codex session.
+
+The proof uses custom local readiness expectations instead of the hosted
+production Postgres preset: event log `jsonl`, projection backend `sqlite`, and
+operational replay `jsonl-sidecar`. It verifies status/readiness packets are
+non-mutating, report available storage, zero projection lag, custom readiness
+success, and exclude raw filesystem paths, replay sidecar paths, database URLs,
+credentials, tokens, invite/join codes, idempotency keys, raw origins, and raw
+payload envelopes while preserving the safe aggregate event-chain digest.
+
+Expected verification:
+
+- `pytest tests/e2e/test_mcp_codex_play_loop.py::test_player_can_render_backend_status_and_readiness_through_actual_mcp_tools -q`
+- `pytest tests/e2e/test_mcp_codex_play_loop.py -q`
+- `pytest tests/test_mcp_server.py::test_render_backend_status_mcp_call_returns_text_and_structured_packet tests/test_mcp_server.py::test_check_backend_readiness_mcp_call_returns_text_and_structured_packet tests/client/test_codex_session.py::test_codex_session_renders_backend_status_without_event_sync tests/client/test_codex_session.py::test_codex_session_checks_backend_readiness_with_production_preset tests/client/test_render_packets.py::test_backend_status_packet_renders_safe_database_and_oracle_posture tests/client/test_render_packets.py::test_backend_readiness_packet_renders_safe_pass_summary -q`
+- `pytest -q`
+
 ## Completion Standard
 
 Each slice must:
