@@ -5,8 +5,15 @@ from typing import Any
 
 import httpx
 
+from hollow_lodge.server.projection_store import (
+    PROJECTION_SCHEMA_MIGRATIONS,
+    SCHEMA_VERSION,
+)
+
 
 PASSWORD_IN_URL_PATTERN = re.compile(r"://[^/\s:]+:([^*@/\s]+)@")
+CURRENT_PROJECTION_SCHEMA_VERSION = int(SCHEMA_VERSION)
+CURRENT_PROJECTION_SCHEMA_MIGRATION_COUNT = len(PROJECTION_SCHEMA_MIGRATIONS)
 
 
 def run_backend_smoke(
@@ -15,6 +22,7 @@ def run_backend_smoke(
     expected_backend: str,
     expected_event_backend: str | None = None,
     require_projection_reads: bool = False,
+    require_current_projection_schema: bool = False,
 ) -> dict[str, Any]:
     base_url = server_url.rstrip("/")
     with httpx.Client(base_url=base_url, timeout=10.0) as client:
@@ -30,6 +38,7 @@ def run_backend_smoke(
             expected_backend=expected_backend,
             expected_event_backend=expected_event_backend,
             require_projection_reads=require_projection_reads,
+            require_current_projection_schema=require_current_projection_schema,
         )
 
 
@@ -39,6 +48,7 @@ def validate_backend_diagnostics(
     expected_backend: str,
     expected_event_backend: str | None = None,
     require_projection_reads: bool = False,
+    require_current_projection_schema: bool = False,
 ) -> dict[str, Any]:
     data = diagnostics.get("data", {})
     if not isinstance(data, dict):
@@ -81,6 +91,27 @@ def validate_backend_diagnostics(
     if database_url_exposes_password(database_url):
         errors.append("projection diagnostics expose an unredacted database URL password")
 
+    schema_version = _optional_int(projection.get("schema_version"))
+    schema_migration_count = _optional_int(projection.get("schema_migration_count"))
+    latest_schema_migration = _optional_int(projection.get("latest_schema_migration"))
+    if require_current_projection_schema:
+        if schema_version != CURRENT_PROJECTION_SCHEMA_VERSION:
+            errors.append(
+                "projection schema_version is "
+                f"{schema_version}; expected {CURRENT_PROJECTION_SCHEMA_VERSION}"
+            )
+        if schema_migration_count != CURRENT_PROJECTION_SCHEMA_MIGRATION_COUNT:
+            errors.append(
+                "projection schema_migration_count is "
+                f"{schema_migration_count}; expected "
+                f"{CURRENT_PROJECTION_SCHEMA_MIGRATION_COUNT}"
+            )
+        if latest_schema_migration != CURRENT_PROJECTION_SCHEMA_VERSION:
+            errors.append(
+                "projection latest_schema_migration is "
+                f"{latest_schema_migration}; expected {CURRENT_PROJECTION_SCHEMA_VERSION}"
+            )
+
     projection_reads = data.get("projection_reads")
     if require_projection_reads:
         if not isinstance(projection_reads, dict):
@@ -114,6 +145,9 @@ def validate_backend_diagnostics(
             "authoritative_last_sequence": int(
                 projection.get("authoritative_last_sequence", 0)
             ),
+            "schema_version": schema_version,
+            "schema_migration_count": schema_migration_count,
+            "latest_schema_migration": latest_schema_migration,
         },
         "projection_reads": projection_reads,
     }
@@ -124,6 +158,7 @@ def validate_projection_diagnostics(
     *,
     expected_backend: str,
     require_projection_reads: bool = False,
+    require_current_projection_schema: bool = False,
 ) -> dict[str, Any]:
     if not isinstance(diagnostics.get("data"), dict):
         diagnostics = {"data": {"event_log": {"backend": None, "status": "not_created"}}}
@@ -139,6 +174,7 @@ def validate_projection_diagnostics(
         diagnostics,
         expected_backend=expected_backend,
         require_projection_reads=require_projection_reads,
+        require_current_projection_schema=require_current_projection_schema,
     )
     projection = result["projection"]
     return {
@@ -147,6 +183,9 @@ def validate_projection_diagnostics(
         "lag": projection["lag"],
         "last_sequence": projection["last_sequence"],
         "authoritative_last_sequence": projection["authoritative_last_sequence"],
+        "schema_version": projection["schema_version"],
+        "schema_migration_count": projection["schema_migration_count"],
+        "latest_schema_migration": projection["latest_schema_migration"],
         "projection_reads": result["projection_reads"],
     }
 
@@ -158,3 +197,12 @@ def database_url_exposes_password(database_url: str) -> bool:
     if match is None:
         return False
     return match.group(1) != "***"
+
+
+def _optional_int(value: Any) -> int | None:
+    if value is None:
+        return None
+    try:
+        return int(value)
+    except (TypeError, ValueError):
+        return None

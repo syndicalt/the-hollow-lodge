@@ -36,6 +36,11 @@ def main() -> None:
         action="store_true",
         help="Require all implemented projection read surfaces to be enabled.",
     )
+    parser.add_argument(
+        "--require-current-projection-schema",
+        action="store_true",
+        help="Require projection diagnostics to match this package's schema version.",
+    )
     args = parser.parse_args()
 
     result = run_smoke(
@@ -43,6 +48,7 @@ def main() -> None:
         expected_backend=args.expected_backend,
         expected_event_backend=args.expected_event_backend,
         require_projection_reads=args.require_projection_reads,
+        require_current_projection_schema=args.require_current_projection_schema,
     )
     print(
         "backend readiness ok: "
@@ -51,7 +57,9 @@ def main() -> None:
         f"projection={result['projection']['backend']} "
         f"projection_status={result['projection']['status']} "
         f"projection_lag={result['projection']['lag']} "
-        f"sequence={result['projection']['last_sequence']}"
+        f"sequence={result['projection']['last_sequence']} "
+        f"schema={result['projection']['schema_version']} "
+        f"migrations={result['projection']['schema_migration_count']}"
     )
 
 
@@ -61,12 +69,14 @@ def run_smoke(
     expected_backend: str,
     expected_event_backend: str | None = None,
     require_projection_reads: bool = False,
+    require_current_projection_schema: bool = False,
 ) -> dict[str, Any]:
     return run_backend_smoke(
         server_url=server_url,
         expected_backend=expected_backend,
         expected_event_backend=expected_event_backend,
         require_projection_reads=require_projection_reads,
+        require_current_projection_schema=require_current_projection_schema,
     )
 
 

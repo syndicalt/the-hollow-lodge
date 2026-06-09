@@ -454,6 +454,11 @@ def admin_backend_smoke(
         "--require-projection-reads",
         help="Require all implemented projection read surfaces to be enabled.",
     ),
+    require_current_projection_schema: bool = typer.Option(
+        False,
+        "--require-current-projection-schema",
+        help="Require projection diagnostics to match this package's schema version.",
+    ),
 ) -> None:
     """Verify hosted event-log and projection backend readiness."""
     if expected_backend not in {"sqlite", "postgres"}:
@@ -472,6 +477,7 @@ def admin_backend_smoke(
             expected_backend=expected_backend,
             expected_event_backend=expected_event_backend,
             require_projection_reads=require_projection_reads,
+            require_current_projection_schema=require_current_projection_schema,
         )
     except RuntimeError as exc:
         typer.echo(f"Error: {exc}", err=True)
@@ -483,7 +489,9 @@ def admin_backend_smoke(
         f"projection={result['projection']['backend']} "
         f"projection_status={result['projection']['status']} "
         f"projection_lag={result['projection']['lag']} "
-        f"sequence={result['projection']['last_sequence']}"
+        f"sequence={result['projection']['last_sequence']} "
+        f"schema={result['projection']['schema_version']} "
+        f"migrations={result['projection']['schema_migration_count']}"
     )
 
 

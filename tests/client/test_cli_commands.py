@@ -2,6 +2,10 @@ from __future__ import annotations
 
 from typer.testing import CliRunner
 
+from hollow_lodge.client.backend_smoke import (
+    CURRENT_PROJECTION_SCHEMA_MIGRATION_COUNT,
+    CURRENT_PROJECTION_SCHEMA_VERSION,
+)
 from hollow_lodge.client import cli
 from hollow_lodge.client.config import (
     ClientConfig,
@@ -74,6 +78,9 @@ class FakeApi:
                     "lag": 0,
                     "last_sequence": 12,
                     "authoritative_last_sequence": 12,
+                    "schema_version": CURRENT_PROJECTION_SCHEMA_VERSION,
+                    "schema_migration_count": CURRENT_PROJECTION_SCHEMA_MIGRATION_COUNT,
+                    "latest_schema_migration": CURRENT_PROJECTION_SCHEMA_VERSION,
                     "database_url": "postgresql://user:***@host:5432/hollow_lodge",
                 },
                 "projection_reads": {
@@ -1337,13 +1344,16 @@ def test_admin_backend_smoke_command_reports_safe_backend_status(monkeypatch):
             "--expected-event-backend",
             "jsonl",
             "--require-projection-reads",
+            "--require-current-projection-schema",
         ],
     )
 
     assert result.exit_code == 0
     assert (
         "backend readiness ok: event=jsonl event_status=available "
-        "projection=postgres projection_status=available projection_lag=0 sequence=12"
+        "projection=postgres projection_status=available projection_lag=0 "
+        f"sequence=12 schema={CURRENT_PROJECTION_SCHEMA_VERSION} "
+        f"migrations={CURRENT_PROJECTION_SCHEMA_MIGRATION_COUNT}"
     ) in result.output
     assert "secret" not in result.output
     assert created_clients[0].calls == [("health", {}), ("diagnostics", {})]
@@ -1376,6 +1386,55 @@ def test_admin_backend_smoke_command_rejects_unredacted_database_url(monkeypatch
     assert result.exit_code != 0
     assert "projection diagnostics expose an unredacted database URL password" in result.output
     assert "postgresql://user:secret" not in result.output
+
+
+def test_admin_backend_smoke_command_rejects_stale_projection_schema(monkeypatch):
+    class StaleSchemaApi(FakeApi):
+        def diagnostics(self):
+            payload = super().diagnostics()
+            payload["data"]["projection_db"][
+                "schema_version"
+            ] = CURRENT_PROJECTION_SCHEMA_VERSION - 1
+            payload["data"]["projection_db"][
+                "schema_migration_count"
+            ] = CURRENT_PROJECTION_SCHEMA_MIGRATION_COUNT - 1
+            payload["data"]["projection_db"][
+                "latest_schema_migration"
+            ] = CURRENT_PROJECTION_SCHEMA_VERSION - 1
+            return payload
+
+    monkeypatch.setattr(cli, "HollowLodgeApi", StaleSchemaApi)
+    runner = CliRunner()
+
+    result = runner.invoke(
+        cli.app,
+        [
+            "admin",
+            "backend-smoke",
+            "--server",
+            "http://testserver",
+            "--expected-backend",
+            "postgres",
+            "--require-current-projection-schema",
+        ],
+    )
+
+    assert result.exit_code != 0
+    assert (
+        "projection schema_version is "
+        f"{CURRENT_PROJECTION_SCHEMA_VERSION - 1}; "
+        f"expected {CURRENT_PROJECTION_SCHEMA_VERSION}"
+    ) in result.output
+    assert (
+        "projection schema_migration_count is "
+        f"{CURRENT_PROJECTION_SCHEMA_MIGRATION_COUNT - 1}; "
+        f"expected {CURRENT_PROJECTION_SCHEMA_MIGRATION_COUNT}"
+    ) in result.output
+    assert (
+        "projection latest_schema_migration is "
+        f"{CURRENT_PROJECTION_SCHEMA_VERSION - 1}; "
+        f"expected {CURRENT_PROJECTION_SCHEMA_VERSION}"
+    ) in result.output
 
 
 def test_admin_backend_smoke_command_rejects_unhealthy_server(monkeypatch):

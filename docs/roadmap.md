@@ -1973,6 +1973,25 @@ Expected verification:
 - `pytest tests/client/test_cli_commands.py tests/e2e/test_event_log_migration.py tests/eventlog/test_postgres_store.py -q`
 - `pytest -q`
 
+### Slice 79: Projection Schema Readiness Gate
+
+Status: completed.
+
+Harden the hosted database readiness smoke against projection schema drift.
+`scripts/smoke_projection_backend.py` and `hollow-lodge admin backend-smoke`
+now accept `--require-current-projection-schema`, which requires
+`/diagnostics` projection metadata to match the installed package's current
+projection schema version, latest applied migration, and migration count.
+Successful readiness output includes the observed schema and migration count,
+and stale hosted projection databases fail before operators enable global
+projection reads or enforce Postgres projection storage.
+
+Expected verification:
+
+- `pytest tests/e2e/test_projection_backend_smoke.py tests/client/test_cli_commands.py::test_admin_backend_smoke_command_reports_safe_backend_status tests/client/test_cli_commands.py::test_admin_backend_smoke_command_rejects_stale_projection_schema -q`
+- `pytest tests/e2e/test_projection_backend_smoke.py tests/client/test_cli_commands.py tests/server/test_projection_store.py::test_projection_store_records_schema_migration_ledger -q`
+- `pytest -q`
+
 ## Completion Standard
 
 Each slice must:

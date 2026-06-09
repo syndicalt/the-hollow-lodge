@@ -1,6 +1,11 @@
 import importlib.util
 from pathlib import Path
 
+from hollow_lodge.client.backend_smoke import (
+    CURRENT_PROJECTION_SCHEMA_MIGRATION_COUNT,
+    CURRENT_PROJECTION_SCHEMA_VERSION,
+)
+
 
 def _load_smoke_module():
     script_path = (
@@ -30,6 +35,9 @@ def test_projection_backend_smoke_accepts_available_zero_lag_backend():
                     "lag": 0,
                     "last_sequence": 23,
                     "authoritative_last_sequence": 23,
+                    "schema_version": CURRENT_PROJECTION_SCHEMA_VERSION,
+                    "schema_migration_count": CURRENT_PROJECTION_SCHEMA_MIGRATION_COUNT,
+                    "latest_schema_migration": CURRENT_PROJECTION_SCHEMA_VERSION,
                 },
                 "projection_reads": {
                     "global_enabled": True,
@@ -39,10 +47,13 @@ def test_projection_backend_smoke_accepts_available_zero_lag_backend():
         },
         expected_backend="postgres",
         require_projection_reads=True,
+        require_current_projection_schema=True,
     )
 
     assert result["backend"] == "postgres"
     assert result["lag"] == 0
+    assert result["schema_version"] == CURRENT_PROJECTION_SCHEMA_VERSION
+    assert result["schema_migration_count"] == CURRENT_PROJECTION_SCHEMA_MIGRATION_COUNT
     assert result["last_sequence"] == 23
     assert result["projection_reads"]["surfaces"]["contract_board"] is True
 
@@ -67,6 +78,9 @@ def test_backend_smoke_accepts_event_and_projection_backends():
                     "lag": 0,
                     "last_sequence": 23,
                     "authoritative_last_sequence": 23,
+                    "schema_version": CURRENT_PROJECTION_SCHEMA_VERSION,
+                    "schema_migration_count": CURRENT_PROJECTION_SCHEMA_MIGRATION_COUNT,
+                    "latest_schema_migration": CURRENT_PROJECTION_SCHEMA_VERSION,
                 },
                 "projection_reads": {
                     "global_enabled": True,
@@ -77,11 +91,13 @@ def test_backend_smoke_accepts_event_and_projection_backends():
         expected_backend="postgres",
         expected_event_backend="postgres",
         require_projection_reads=True,
+        require_current_projection_schema=True,
     )
 
     assert result["event_log"] == {"backend": "postgres", "status": "available"}
     assert result["projection"]["backend"] == "postgres"
     assert result["projection"]["lag"] == 0
+    assert result["projection"]["schema_version"] == CURRENT_PROJECTION_SCHEMA_VERSION
 
 
 def test_backend_smoke_rejects_event_backend_mismatch():
@@ -251,3 +267,53 @@ def test_projection_backend_smoke_rejects_disabled_projection_read_surfaces():
         raise AssertionError("disabled projection read surfaces should fail the smoke")
 
     assert "projection read surfaces disabled: crew_summary" in message
+
+
+def test_projection_backend_smoke_rejects_stale_projection_schema():
+    smoke = _load_smoke_module()
+
+    try:
+        smoke.validate_backend_diagnostics(
+            {
+                "data": {
+                    "event_log": {
+                        "backend": "jsonl",
+                        "status": "available",
+                    },
+                    "projection_db": {
+                        "backend": "postgres",
+                        "database_url": "postgresql://user:***@host:5432/db",
+                        "status": "available",
+                        "lag": 0,
+                        "schema_version": CURRENT_PROJECTION_SCHEMA_VERSION - 1,
+                        "schema_migration_count": (
+                            CURRENT_PROJECTION_SCHEMA_MIGRATION_COUNT - 1
+                        ),
+                        "latest_schema_migration": CURRENT_PROJECTION_SCHEMA_VERSION - 1,
+                    },
+                }
+            },
+            expected_backend="postgres",
+            expected_event_backend="jsonl",
+            require_current_projection_schema=True,
+        )
+    except RuntimeError as exc:
+        message = str(exc)
+    else:
+        raise AssertionError("stale projection schema should fail the smoke")
+
+    assert (
+        "projection schema_version is "
+        f"{CURRENT_PROJECTION_SCHEMA_VERSION - 1}; "
+        f"expected {CURRENT_PROJECTION_SCHEMA_VERSION}"
+    ) in message
+    assert (
+        "projection schema_migration_count is "
+        f"{CURRENT_PROJECTION_SCHEMA_MIGRATION_COUNT - 1}; "
+        f"expected {CURRENT_PROJECTION_SCHEMA_MIGRATION_COUNT}"
+    ) in message
+    assert (
+        "projection latest_schema_migration is "
+        f"{CURRENT_PROJECTION_SCHEMA_VERSION - 1}; "
+        f"expected {CURRENT_PROJECTION_SCHEMA_VERSION}"
+    ) in message
