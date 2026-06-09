@@ -31,6 +31,29 @@ curl -fsSIL https://www.thehollowlodge.com/install.sh
 directory without returning API keys, admin tokens, invite codes, or player
 tokens.
 
+## Projection Database
+
+The authoritative game record is still the append-only Eventloom JSONL file.
+The projection database is a read-side cache for contract boards, crew
+summaries, artifacts, deals, visible events, and legacy blocks.
+
+By default, the server stores projections at:
+
+```sh
+$HOLLOW_LODGE_DATA_DIR/server-projections.sqlite3
+```
+
+An explicit SQLite projection path can be configured with:
+
+```sh
+HOLLOW_LODGE_PROJECTION_DATABASE_URL=sqlite:////data/server-projections.sqlite3
+```
+
+Postgres URLs are intentionally rejected until the Postgres projection store is
+implemented. This prevents a Railway `DATABASE_URL` migration from silently
+serving local SQLite projections while operators believe Postgres is active.
+`/diagnostics` reports the active projection backend and path.
+
 ## Access Requests
 
 Players without an invite request access during onboarding:

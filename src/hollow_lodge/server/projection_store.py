@@ -22,6 +22,8 @@ SCHEMA_VERSION = "1"
 
 
 class SqliteProjectionStore:
+    backend = "sqlite"
+
     def __init__(self, path: str | Path):
         self.path = Path(path)
 
@@ -255,6 +257,7 @@ class SqliteProjectionStore:
         if not exists:
             authoritative = authoritative_last_sequence or 0
             return {
+                "backend": self.backend,
                 "path": str(self.path),
                 "exists": False,
                 "status": "not_created",
@@ -300,6 +303,7 @@ class SqliteProjectionStore:
         except sqlite3.DatabaseError:
             authoritative = authoritative_last_sequence or 0
             return {
+                "backend": self.backend,
                 "path": str(self.path),
                 "exists": True,
                 "status": "unavailable",
@@ -323,6 +327,7 @@ class SqliteProjectionStore:
         )
         lag = max(0, authoritative - last_sequence)
         return {
+            "backend": self.backend,
             "path": str(self.path),
             "exists": True,
             "status": "stale" if lag else "available",

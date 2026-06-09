@@ -1410,6 +1410,25 @@ Expected verification:
 - `pytest tests/server/test_identity_routes.py tests/server/test_crew_routes.py tests/client/test_api.py tests/client/test_codex_session.py tests/client/test_render_packets.py tests/test_mcp_server.py tests/e2e/test_codex_render_surfaces.py -q`
 - `pytest -q`
 
+### Slice 54: Projection Database Backend Configuration
+
+Status: completed.
+
+Prepare the server for a real database-backed projection layer without moving
+authority out of the Eventloom JSONL log. App startup now creates the projection
+store through a configuration boundary instead of constructing SQLite directly.
+SQLite remains the default backend, `HOLLOW_LODGE_PROJECTION_DATABASE_URL` can
+point at an explicit local `sqlite:///` projection path, and Postgres URLs fail
+fast with secrets redacted until the Postgres projection store is implemented.
+Projection diagnostics now report the active backend so hosted operators can
+verify whether reads are coming from SQLite or a future database backend.
+
+Expected verification:
+
+- `pytest tests/server/test_app_config.py -q`
+- `pytest tests/server/test_projection_store.py tests/server/test_app_config.py -q`
+- `pytest -q`
+
 ## Completion Standard
 
 Each slice must:

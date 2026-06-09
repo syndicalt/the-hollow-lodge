@@ -10,7 +10,7 @@ from hollow_lodge import __version__
 from hollow_lodge.eventlog.jsonl_store import JsonlEventStore
 from hollow_lodge.server.artifact_service import ArtifactService
 from hollow_lodge.server.deal_service import DealService
-from hollow_lodge.server.projection_store import SqliteProjectionStore
+from hollow_lodge.server.projection_config import projection_store_from_env
 from hollow_lodge.server.routes_actions import router as actions_router
 from hollow_lodge.server.routes_artifacts import router as artifacts_router
 from hollow_lodge.server.routes_chat import router as chat_router
@@ -50,7 +50,7 @@ def create_app(
     storage_configured = data_dir is not None or configured_data_dir is not None
     root = Path(data_dir) if data_dir is not None else Path(configured_data_dir or ".hollow-lodge")
     event_store = JsonlEventStore(root / "server-events.jsonl")
-    projection_store = SqliteProjectionStore(root / "server-projections.sqlite3")
+    projection_store = projection_store_from_env(root)
     resolved_oracle = resolution_oracle if resolution_oracle is not None else resolution_oracle_from_env()
     app.state.event_store = event_store
     app.state.projection_store = projection_store

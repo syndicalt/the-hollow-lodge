@@ -76,6 +76,48 @@ def test_diagnostics_reports_existing_event_log(tmp_path):
     }
 
 
+def test_projection_store_defaults_to_sqlite_backend(tmp_path):
+    client = TestClient(create_app(data_dir=tmp_path))
+
+    projection = client.get("/diagnostics").json()["data"]["projection_db"]
+
+    assert client.app.state.projection_store.backend == "sqlite"
+    assert projection["backend"] == "sqlite"
+    assert projection["path"] == str(tmp_path / "server-projections.sqlite3")
+
+
+def test_sqlite_projection_database_url_selects_explicit_path(tmp_path, monkeypatch):
+    projection_path = tmp_path / "configured" / "projection.sqlite3"
+    monkeypatch.setenv(
+        "HOLLOW_LODGE_PROJECTION_DATABASE_URL",
+        f"sqlite:///{projection_path}",
+    )
+
+    client = TestClient(create_app(data_dir=tmp_path))
+
+    projection = client.get("/diagnostics").json()["data"]["projection_db"]
+    assert client.app.state.projection_store.backend == "sqlite"
+    assert client.app.state.projection_store.path == projection_path
+    assert projection["path"] == str(projection_path)
+
+
+def test_postgres_projection_database_url_fails_fast(tmp_path, monkeypatch):
+    monkeypatch.setenv(
+        "HOLLOW_LODGE_PROJECTION_DATABASE_URL",
+        "postgresql://user:secret@example.com:5432/hollow_lodge",
+    )
+
+    try:
+        create_app(data_dir=tmp_path)
+    except RuntimeError as exc:
+        message = str(exc)
+    else:
+        raise AssertionError("postgres projection backend should fail fast")
+
+    assert "Postgres projection backend is not implemented yet" in message
+    assert "secret" not in message
+
+
 def test_server_docker_image_installs_openai_client_for_openai_oracle():
     dockerfile = Path("Dockerfile").read_text(encoding="utf-8")
 
