@@ -21,7 +21,7 @@ from hollow_lodge.server.pending_decisions import pending_decisions_for_player
 from hollow_lodge.server.rumors import SAFE_RUMOR_FIELDS
 
 
-SCHEMA_VERSION = "7"
+SCHEMA_VERSION = "8"
 PROJECTION_SCHEMA_MIGRATIONS: tuple[tuple[str, str], ...] = (
     ("1", "initial projection read models"),
     ("2", "proof dossier projection read model"),
@@ -30,6 +30,7 @@ PROJECTION_SCHEMA_MIGRATIONS: tuple[tuple[str, str], ...] = (
     ("5", "current action projection read model"),
     ("6", "visible rumor projection read model"),
     ("7", "contract unlock projection read model"),
+    ("8", "oracle audit projection read model"),
 )
 
 
@@ -53,6 +54,7 @@ class SqliteProjectionStore:
         pending_decisions = snapshot["pending_decisions"]
         visible_rumors_by_crew = snapshot["visible_rumors_by_crew"]
         contract_unlock_statuses = snapshot["contract_unlock_statuses"]
+        oracle_audits = snapshot["oracle_audits"]
         visible_events = snapshot["visible_events"]
         last_sequence = snapshot["last_sequence"]
         with sqlite3.connect(self.path) as connection:
@@ -71,6 +73,7 @@ class SqliteProjectionStore:
             connection.execute("delete from pending_decision_surface")
             connection.execute("delete from visible_rumor_surface")
             connection.execute("delete from contract_unlock_surface")
+            connection.execute("delete from oracle_audit_surface")
             for contract in board["contracts"]:
                 connection.execute(
                     """
@@ -361,6 +364,27 @@ class SqliteProjectionStore:
                         last_sequence,
                     ),
                 )
+            for audit in oracle_audits:
+                connection.execute(
+                    """
+                    insert into oracle_audit_surface (
+                        event_id,
+                        sequence,
+                        event_type,
+                        contract_id,
+                        payload_json,
+                        updated_sequence
+                    ) values (?, ?, ?, ?, ?, ?)
+                    """,
+                    (
+                        audit["event_id"],
+                        audit["sequence"],
+                        audit["event_type"],
+                        audit["contract_id"],
+                        json.dumps(audit, sort_keys=True, separators=(",", ":")),
+                        last_sequence,
+                    ),
+                )
             rumor_count = 0
             for crew_id, rumors in visible_rumors_by_crew.items():
                 for rumor_index, rumor in enumerate(rumors):
@@ -407,6 +431,7 @@ class SqliteProjectionStore:
                 "contract_unlock_count",
                 str(len(contract_unlock_statuses)),
             )
+            self._set_meta(connection, "oracle_audit_count", str(len(oracle_audits)))
             self._set_meta(connection, "visible_event_count", str(len(visible_events)))
             self._set_meta(
                 connection,
@@ -453,6 +478,7 @@ class SqliteProjectionStore:
                 "pending_decision_count": 0,
                 "visible_rumor_count": 0,
                 "contract_unlock_count": 0,
+                "oracle_audit_count": 0,
                 "schema_migration_count": 0,
                 "latest_schema_migration": None,
                 "visible_event_count": 0,
@@ -495,6 +521,9 @@ class SqliteProjectionStore:
                 contract_unlock_count = connection.execute(
                     "select count(*) from contract_unlock_surface"
                 ).fetchone()[0]
+                oracle_audit_count = connection.execute(
+                    "select count(*) from oracle_audit_surface"
+                ).fetchone()[0]
                 visible_event_count = connection.execute(
                     "select count(*) from visible_event_surface"
                 ).fetchone()[0]
@@ -536,6 +565,7 @@ class SqliteProjectionStore:
                 "pending_decision_count": 0,
                 "visible_rumor_count": 0,
                 "contract_unlock_count": 0,
+                "oracle_audit_count": 0,
                 "schema_migration_count": 0,
                 "latest_schema_migration": None,
                 "visible_event_count": 0,
@@ -579,6 +609,9 @@ class SqliteProjectionStore:
             ),
             "contract_unlock_count": int(
                 meta.get("contract_unlock_count", str(contract_unlock_count))
+            ),
+            "oracle_audit_count": int(
+                meta.get("oracle_audit_count", str(oracle_audit_count))
             ),
             "schema_migration_count": int(schema_migration_count),
             "latest_schema_migration": (
@@ -847,6 +880,18 @@ class SqliteProjectionStore:
             for row in rows
         )
 
+    def read_oracle_audits(self) -> list[dict[str, Any]]:
+        with sqlite3.connect(self.path) as connection:
+            self._ensure_schema(connection)
+            rows = connection.execute(
+                """
+                select payload_json
+                from oracle_audit_surface
+                order by sequence, event_id
+                """
+            ).fetchall()
+        return [json.loads(row[0]) for row in rows]
+
     def read_current_actions_for_crew(self, crew_id: str) -> list[dict[str, Any]]:
         with sqlite3.connect(self.path) as connection:
             self._ensure_schema(connection)
@@ -1104,6 +1149,24 @@ class SqliteProjectionStore:
             on contract_unlock_surface (contract_id, crew_id)
             """
         )
+        connection.execute(
+            """
+            create table if not exists oracle_audit_surface (
+                event_id text primary key,
+                sequence integer not null,
+                event_type text not null,
+                contract_id text not null,
+                payload_json text not null,
+                updated_sequence integer not null
+            )
+            """
+        )
+        connection.execute(
+            """
+            create index if not exists idx_oracle_audit_surface_sequence
+            on oracle_audit_surface (sequence, event_type)
+            """
+        )
 
     def _ensure_artifact_scoped_surface_schema(self, connection: sqlite3.Connection) -> None:
         existing_columns = {
@@ -1169,6 +1232,7 @@ def build_projection_snapshot(events: list[GameEvent]) -> dict[str, Any]:
         deals=deals,
         events=events,
     )
+    oracle_audits = _oracle_audits_from_events(events)
     proof_dossiers = proof_dossiers_from_events(events)
     actions_by_crew = _current_actions_by_crew_from_events(events)
     pending_decisions = _pending_decisions_from_projection_inputs(
@@ -1198,6 +1262,7 @@ def build_projection_snapshot(events: list[GameEvent]) -> dict[str, Any]:
         "deals": deals,
         "crew_legacies": crew_legacies,
         "contract_unlock_statuses": contract_unlock_statuses,
+        "oracle_audits": oracle_audits,
         "proof_dossiers": proof_dossiers,
         "actions_by_crew": actions_by_crew,
         "pending_decisions": pending_decisions,
@@ -1346,6 +1411,46 @@ def _contract_unlock_statuses_from_projection_inputs(
                 }
             )
     return rows
+
+
+def _oracle_audits_from_events(events: list[GameEvent]) -> list[dict[str, Any]]:
+    return [
+        _oracle_audit_surface(event)
+        for event in events
+        if event.type.startswith("oracle.resolution.")
+    ]
+
+
+def _oracle_audit_surface(event: GameEvent) -> dict[str, Any]:
+    payload = event.payload
+    audit = {
+        "sequence": event.sequence,
+        "event_id": event.event_id,
+        "event_type": event.type,
+        "contract_id": str(payload.get("contract_id", "")),
+        "phase": str(payload.get("phase", "")),
+    }
+    for key in (
+        "audit_schema_version",
+        "provider",
+        "provider_attempted",
+        "model",
+        "prompt_version",
+        "validation_status",
+        "failure_stage",
+        "failure_type",
+        "fallback",
+        "fallback_provider",
+        "fallback_reason",
+        "crew_count",
+        "standing_count",
+        "warning_count",
+        "input_packet_hash",
+        "accepted_output_hash",
+    ):
+        if key in payload:
+            audit[key] = payload[key]
+    return audit
 
 
 def merge_contract_unlock_status_rows(

@@ -126,8 +126,8 @@ override the global switch during a targeted rollback. `/diagnostics` reports
 the effective projection read configuration in `data.projection_reads`.
 Implemented surfaces include contract board, crew-scoped contract unlock
 status, crew summary, visible artifacts, visible deals, proof dossiers, chat,
-visible events, pending decisions, current actions, and crew-board visible
-rumors.
+visible events, pending decisions, current actions, crew-board visible rumors,
+and redacted oracle audit records.
 
 Projection storage and authoritative event storage are separate cutovers.
 Projection storage can use `DATABASE_URL` for Railway convenience; the
@@ -165,6 +165,16 @@ safe `unlock_status` payloads keyed by crew and contract; raw seed
 private event payloads remain outside the read model. `/diagnostics` reports
 `contract_unlock_count` so operators can confirm the surface is materialized
 before enabling the read flag.
+
+Admin oracle audit reads can be enabled independently with
+`HOLLOW_LODGE_ORACLE_AUDIT_PROJECTION_READS=1`. The projection stores one
+server-only, redacted row for each `oracle.resolution.*` audit event: sequence,
+event id, event type, contract, phase, provider/model/prompt metadata,
+validation and fallback fields, safe count fields, input packet hash, and
+accepted output hash. It does not store raw oracle inputs, hidden truth, prompt
+packets, raw provider output, accepted model output, or provider exception
+messages. `/diagnostics` reports `oracle_audit_count` so operators can confirm
+the surface is materialized before enabling the read flag.
 
 Before any projection backend cutover, verify the current backend:
 

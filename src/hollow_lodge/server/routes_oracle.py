@@ -7,6 +7,8 @@ from typing import Any
 from fastapi import APIRouter, Header, HTTPException, Request, status
 from pydantic import BaseModel
 
+from hollow_lodge.server.projected_oracle_audits import projected_oracle_audits
+
 
 router = APIRouter(prefix="/admin/oracle", tags=["admin"])
 
@@ -49,6 +51,11 @@ def list_oracle_audits(
     admin_token: str | None = Header(None, alias="X-Hollow-Lodge-Admin-Token"),
 ) -> OracleAuditListResponse:
     _require_admin_token(admin_token)
+    projected = projected_oracle_audits(request)
+    if projected is not None:
+        return OracleAuditListResponse(
+            audits=[OracleAuditRecord.model_validate(audit) for audit in projected]
+        )
     return OracleAuditListResponse(
         audits=[
             _shape_oracle_audit_event(event)

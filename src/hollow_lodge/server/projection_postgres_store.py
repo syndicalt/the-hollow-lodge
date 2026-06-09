@@ -44,6 +44,7 @@ class PostgresProjectionStore:
         pending_decisions = snapshot["pending_decisions"]
         visible_rumors_by_crew = snapshot["visible_rumors_by_crew"]
         contract_unlock_statuses = snapshot["contract_unlock_statuses"]
+        oracle_audits = snapshot["oracle_audits"]
         visible_events = snapshot["visible_events"]
         last_sequence = snapshot["last_sequence"]
 
@@ -64,6 +65,7 @@ class PostgresProjectionStore:
                 "pending_decision_surface",
                 "visible_rumor_surface",
                 "contract_unlock_surface",
+                "oracle_audit_surface",
             ):
                 connection.execute(f"delete from {table}")
 
@@ -331,6 +333,27 @@ class PostgresProjectionStore:
                         last_sequence,
                     ),
                 )
+            for audit in oracle_audits:
+                connection.execute(
+                    """
+                    insert into oracle_audit_surface (
+                        event_id,
+                        sequence,
+                        event_type,
+                        contract_id,
+                        payload_json,
+                        updated_sequence
+                    ) values (%s, %s, %s, %s, %s::jsonb, %s)
+                    """,
+                    (
+                        audit["event_id"],
+                        audit["sequence"],
+                        audit["event_type"],
+                        audit["contract_id"],
+                        _json_dumps(audit),
+                        last_sequence,
+                    ),
+                )
             rumor_count = 0
             for crew_id, rumors in visible_rumors_by_crew.items():
                 for rumor_index, rumor in enumerate(rumors):
@@ -374,6 +397,7 @@ class PostgresProjectionStore:
                 "contract_unlock_count",
                 str(len(contract_unlock_statuses)),
             )
+            self._set_meta(connection, "oracle_audit_count", str(len(oracle_audits)))
             self._set_meta(connection, "visible_event_count", str(len(visible_events)))
             self._set_meta(
                 connection,
@@ -426,6 +450,9 @@ class PostgresProjectionStore:
                 contract_unlock_count = connection.execute(
                     "select count(*) from contract_unlock_surface"
                 ).fetchone()[0]
+                oracle_audit_count = connection.execute(
+                    "select count(*) from oracle_audit_surface"
+                ).fetchone()[0]
                 visible_event_count = connection.execute(
                     "select count(*) from visible_event_surface"
                 ).fetchone()[0]
@@ -468,6 +495,7 @@ class PostgresProjectionStore:
                 "pending_decision_count": 0,
                 "visible_rumor_count": 0,
                 "contract_unlock_count": 0,
+                "oracle_audit_count": 0,
                 "schema_migration_count": 0,
                 "latest_schema_migration": None,
                 "visible_event_count": 0,
@@ -512,6 +540,9 @@ class PostgresProjectionStore:
             ),
             "contract_unlock_count": int(
                 meta.get("contract_unlock_count", str(contract_unlock_count))
+            ),
+            "oracle_audit_count": int(
+                meta.get("oracle_audit_count", str(oracle_audit_count))
             ),
             "schema_migration_count": int(schema_migration_count),
             "latest_schema_migration": (
@@ -765,6 +796,18 @@ class PostgresProjectionStore:
             }
             for row in rows
         )
+
+    def read_oracle_audits(self) -> list[dict[str, Any]]:
+        with self._connect() as connection:
+            self._ensure_schema(connection)
+            rows = connection.execute(
+                """
+                select payload_json
+                from oracle_audit_surface
+                order by sequence, event_id
+                """
+            ).fetchall()
+        return [_load_json(row[0]) for row in rows]
 
     def read_current_actions_for_crew(self, crew_id: str) -> list[dict[str, Any]]:
         with self._connect() as connection:
@@ -1041,6 +1084,24 @@ class PostgresProjectionStore:
             """
             create index if not exists idx_contract_unlock_surface_contract
             on contract_unlock_surface (contract_id, crew_id)
+            """
+        )
+        connection.execute(
+            """
+            create table if not exists oracle_audit_surface (
+                event_id text primary key,
+                sequence bigint not null,
+                event_type text not null,
+                contract_id text not null,
+                payload_json jsonb not null,
+                updated_sequence bigint not null
+            )
+            """
+        )
+        connection.execute(
+            """
+            create index if not exists idx_oracle_audit_surface_sequence
+            on oracle_audit_surface (sequence, event_type)
             """
         )
 

@@ -491,6 +491,10 @@ Status:
   provider, validation, fallback, count, and hash evidence for server-only
   oracle audit events without exposing raw oracle inputs, hidden truth, or
   accepted model output.
+- Admin oracle audit projection reads completed: the admin audit endpoint can
+  read redacted oracle audit rows from the projection database when fresh,
+  falling back to Eventloom replay when the projection is stale, disabled, or
+  unavailable.
 - Deferred: deeper death/legacy inheritance, additional long-term unlock paths,
   and migrating heavier campaign reads onto the projection database.
 
@@ -2526,6 +2530,33 @@ Expected verification:
 
 - `pytest tests/server/test_app_config.py::test_diagnostics_uses_event_log_diagnostics_for_projection_lag tests/server/test_app_config.py::test_diagnostics_marks_projection_unavailable_when_event_log_head_unavailable -q`
 - `pytest tests/server/test_app_config.py tests/server/test_projection_store.py tests/e2e/test_projection_backend_smoke.py tests/client/test_cli_commands.py -q`
+- `pytest -q`
+
+### Slice 100: Admin Oracle Audit Projection Reads
+
+Status: completed.
+
+Move the admin oracle audit surface onto the projection database read side
+without widening player visibility or moving oracle authority out of the
+Eventloom log. SQLite and Postgres projection stores now materialize one
+redacted `oracle_audit_surface` row for each `oracle.resolution.*` audit event.
+Rows include only operator-safe fields already exposed by the admin audit API:
+sequence, event id, event type, contract, phase, provider/model/prompt
+metadata, validation and fallback fields, safe count fields, input packet hash,
+and accepted output hash.
+
+`GET /admin/oracle/audits` can read this surface with
+`HOLLOW_LODGE_ORACLE_AUDIT_PROJECTION_READS=1` when projection diagnostics show
+zero lag. If the projection is stale, unavailable, disabled, or raises during
+the projected read, the route keeps the existing Eventloom replay fallback. The
+projection intentionally omits raw oracle input packets, hidden truth, prompt
+packets, raw provider output, accepted model output, and provider exception
+messages. This slice advances the projection schema to version `8`.
+
+Expected verification:
+
+- `pytest tests/server/test_resolution_oracle.py::test_projection_store_materializes_redacted_oracle_audits tests/server/test_resolution_oracle.py::test_admin_oracle_audits_read_fresh_projection_when_enabled tests/server/test_resolution_oracle.py::test_admin_oracle_audits_fall_back_when_projection_is_stale -q`
+- `pytest tests/server/test_resolution_oracle.py tests/server/test_phase_resolution.py tests/server/test_projection_store.py tests/server/test_app_config.py tests/e2e/test_projection_backend_smoke.py tests/client/test_cli_commands.py tests/client/test_api.py -q`
 - `pytest -q`
 
 ## Completion Standard

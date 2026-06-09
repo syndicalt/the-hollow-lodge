@@ -1,11 +1,14 @@
 from __future__ import annotations
 
+import sqlite3
+
 import pytest
 from fastapi.testclient import TestClient
 
 from hollow_lodge.domain.events import EventVisibility
 from hollow_lodge.eventlog.jsonl_store import JsonlEventStore
 from hollow_lodge.server.app import create_app
+import hollow_lodge.server.routes_oracle as routes_oracle
 from hollow_lodge.server.services import ContractService
 from hollow_lodge.workflows.deterministic_oracle import DeterministicResolutionOracle
 from hollow_lodge.workflows.oracle_boundary import (
@@ -229,6 +232,166 @@ def test_admin_oracle_audits_require_admin_token_and_omit_raw_outputs(
     assert "hidden_truth_summary" not in response_text
     assert "saint bone forgery" not in response_text
     assert "truth false finger forgery" not in response_text
+
+
+def test_projection_store_materializes_redacted_oracle_audits(
+    tmp_path,
+    monkeypatch,
+):
+    monkeypatch.setenv("HOLLOW_LODGE_ADMIN_TOKEN", "admin-secret")
+    oracle = UnknownCrewOracle()
+    client = TestClient(
+        create_app(data_dir=tmp_path, invite_codes=["a"], resolution_oracle=oracle)
+    )
+    ada = register(client, "a", "Ada")
+    crew = create_crew(client, ada["token"], "crew-create-ada", "The Gilt Knives")
+    submit_action(client, ada, crew)
+    resolved = client.post(
+        "/contracts/contract_false_finger/phases/auction-preview/lock",
+        headers=command_auth(ada["token"], "phase-lock-1"),
+        json={"hours_elapsed": 6},
+    )
+
+    client.app.state.projection_store.rebuild(client.app.state.event_store.read())
+    audits = client.app.state.projection_store.read_oracle_audits()
+    diagnostics = client.app.state.projection_store.diagnostics()
+    with sqlite3.connect(tmp_path / "server-projections.sqlite3") as connection:
+        rows = connection.execute(
+            """
+            select event_type, payload_json
+            from oracle_audit_surface
+            order by sequence
+            """
+        ).fetchall()
+
+    assert resolved.status_code == 200
+    assert diagnostics["oracle_audit_count"] == 3
+    assert [audit["event_type"] for audit in audits] == [
+        "oracle.resolution.requested",
+        "oracle.resolution.failed",
+        "oracle.resolution.completed",
+    ]
+    assert [row[0] for row in rows] == [
+        "oracle.resolution.requested",
+        "oracle.resolution.failed",
+        "oracle.resolution.completed",
+    ]
+    completed = audits[2]
+    assert completed["accepted_output_hash"]
+    serialized = str(rows)
+    assert '"accepted_output":' not in serialized
+    assert "hidden_truth_summary" not in serialized
+    assert "saint bone forgery" not in serialized
+    assert "truth false finger forgery" not in serialized
+
+
+def test_admin_oracle_audits_read_fresh_projection_when_enabled(
+    tmp_path,
+    monkeypatch,
+):
+    monkeypatch.setenv("HOLLOW_LODGE_ADMIN_TOKEN", "admin-secret")
+    monkeypatch.setenv("HOLLOW_LODGE_ORACLE_AUDIT_PROJECTION_READS", "1")
+    oracle = UnknownCrewOracle()
+    client = TestClient(
+        create_app(data_dir=tmp_path, invite_codes=["a"], resolution_oracle=oracle)
+    )
+    ada = register(client, "a", "Ada")
+    crew = create_crew(client, ada["token"], "crew-create-ada", "The Gilt Knives")
+    submit_action(client, ada, crew)
+    resolved = client.post(
+        "/contracts/contract_false_finger/phases/auction-preview/lock",
+        headers=command_auth(ada["token"], "phase-lock-1"),
+        json={"hours_elapsed": 6},
+    )
+    event_log_diagnostics = client.app.state.event_store.diagnostics()
+    original_read = client.app.state.projection_store.read_oracle_audits
+    calls = {"count": 0}
+
+    def tracked_read_oracle_audits():
+        calls["count"] += 1
+        return original_read()
+
+    monkeypatch.setattr(
+        client.app.state.event_store,
+        "diagnostics",
+        lambda: event_log_diagnostics,
+    )
+    monkeypatch.setattr(
+        client.app.state.event_store,
+        "read",
+        lambda **_: (_ for _ in ()).throw(
+            AssertionError("fresh oracle audit projection should be used")
+        ),
+    )
+    monkeypatch.setattr(
+        client.app.state.projection_store,
+        "read_oracle_audits",
+        tracked_read_oracle_audits,
+    )
+
+    response = client.get(
+        "/admin/oracle/audits",
+        headers={"X-Hollow-Lodge-Admin-Token": "admin-secret"},
+    )
+
+    assert resolved.status_code == 200
+    assert response.status_code == 200
+    assert calls["count"] == 1
+    assert [audit["event_type"] for audit in response.json()["audits"]] == [
+        "oracle.resolution.requested",
+        "oracle.resolution.failed",
+        "oracle.resolution.completed",
+    ]
+    assert '"accepted_output":' not in response.text
+
+
+def test_admin_oracle_audits_fall_back_when_projection_is_stale(
+    tmp_path,
+    monkeypatch,
+):
+    monkeypatch.setenv("HOLLOW_LODGE_ADMIN_TOKEN", "admin-secret")
+    monkeypatch.setenv("HOLLOW_LODGE_ORACLE_AUDIT_PROJECTION_READS", "1")
+    oracle = UnknownCrewOracle()
+    client = TestClient(
+        create_app(data_dir=tmp_path, invite_codes=["a"], resolution_oracle=oracle)
+    )
+    ada = register(client, "a", "Ada")
+    crew = create_crew(client, ada["token"], "crew-create-ada", "The Gilt Knives")
+    submit_action(client, ada, crew)
+    resolved = client.post(
+        "/contracts/contract_false_finger/phases/auction-preview/lock",
+        headers=command_auth(ada["token"], "phase-lock-1"),
+        json={"hours_elapsed": 6},
+    )
+    client.app.state.projection_store.rebuild(client.app.state.event_store.read())
+    client.app.state.event_store.append_command(
+        event_type="contract.note.published",
+        actor_id="server",
+        visibility=EventVisibility.public(),
+        payload={"note": "projection stale marker"},
+        idempotency_key="projection-stale-marker",
+    )
+
+    monkeypatch.setattr(
+        client.app.state.projection_store,
+        "read_oracle_audits",
+        lambda: (_ for _ in ()).throw(
+            AssertionError("stale oracle audit projection should not be used")
+        ),
+    )
+
+    response = client.get(
+        "/admin/oracle/audits",
+        headers={"X-Hollow-Lodge-Admin-Token": "admin-secret"},
+    )
+
+    assert resolved.status_code == 200
+    assert response.status_code == 200
+    assert [audit["event_type"] for audit in response.json()["audits"]] == [
+        "oracle.resolution.requested",
+        "oracle.resolution.failed",
+        "oracle.resolution.completed",
+    ]
 
 
 def test_duplicate_phase_lock_does_not_call_oracle_twice(tmp_path):
