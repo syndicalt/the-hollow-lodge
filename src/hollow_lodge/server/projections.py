@@ -107,6 +107,10 @@ def crew_legacy_from_contracts(
         crew_id=crew_id,
         events=events or [],
     )
+    rumor_escalation = rumor_escalation_from_events(
+        crew_id=crew_id,
+        events=events or [],
+    )
     explicit_completed_keys: set[tuple[str, str, str]] = set()
 
     for event in events or []:
@@ -179,6 +183,7 @@ def crew_legacy_from_contracts(
             heat=heat,
             scars=scars,
             deal_conduct=deal_conduct,
+            rumor_escalation=rumor_escalation,
         )
         if modifiers:
             future_opportunities.append(
@@ -199,6 +204,7 @@ def crew_legacy_from_contracts(
         "deal_conduct": deal_conduct,
         "counterintelligence": counterintelligence,
         "rumor_memory": rumor_memory,
+        "rumor_escalation": rumor_escalation,
         "completed_contracts": completed_contracts,
         "future_opportunities": future_opportunities,
     }
@@ -435,6 +441,35 @@ def rumor_memory_from_events(
     }
 
 
+def rumor_escalation_from_events(
+    *,
+    crew_id: str,
+    events: list[GameEvent],
+) -> dict[str, int]:
+    counts = {
+        "contain_count": 0,
+        "exploit_count": 0,
+        "integrate_count": 0,
+        "credible_count_total": 0,
+    }
+
+    for event in events:
+        if event.type != "contract.rumor.escalated":
+            continue
+        payload = event.payload
+        if payload.get("crew_id") != crew_id:
+            continue
+        mode = str(payload.get("mode", ""))
+        if mode in {"contain", "exploit", "integrate"}:
+            counts[f"{mode}_count"] += 1
+        counts["credible_count_total"] += max(
+            0,
+            int(payload.get("credible_count", 0)),
+        )
+
+    return counts
+
+
 def deal_conduct_from_deals(*, crew_id: str, deals: list[dict[str, Any]]) -> dict[str, Any]:
     fulfilled_count = 0
     canceled_count = 0
@@ -508,6 +543,7 @@ def _future_modifiers(
     heat: int,
     scars: list[str] | None = None,
     deal_conduct: dict[str, Any] | None = None,
+    rumor_escalation: dict[str, int] | None = None,
 ) -> list[dict[str, Any]]:
     modifiers: list[dict[str, Any]] = []
     title = contract["title"]
@@ -550,6 +586,20 @@ def _future_modifiers(
                     f"arrangements for {title}."
                 ),
                 "value": deal_score,
+            }
+        )
+    escalation = rumor_escalation or {}
+    exploit_count = min(3, int(escalation.get("exploit_count", 0)))
+    if exploit_count > 0:
+        modifiers.append(
+            {
+                "kind": "rumor_exploitation",
+                "label": "Rumor exploitation",
+                "description": (
+                    "Recent rumor exploitation gives this crew leverage on "
+                    f"{title}."
+                ),
+                "value": exploit_count,
             }
         )
     return modifiers

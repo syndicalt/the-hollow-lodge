@@ -357,9 +357,15 @@ Status:
   aggregate signal, records only safe action fields, appends a sanitized
   `contract.rumor.escalated` event, and clears or reopens the pending decision
   based on submitted/canceled action state.
+- Eleventh social-pressure slice completed: rumor escalation follow-through
+  now feeds crew legacy and future contract modifiers. Crew boards show only
+  bounded contain, exploit, integrate, and credible-signal counts, while
+  exploit follow-through creates a capped `rumor_exploitation` modifier for
+  active unresolved contracts without exposing source IDs, private message
+  bodies, artifact IDs, deal terms, or suspected crews.
 - Escrowed deal acceptance remains participant-scoped and server-enforced.
-- Deferred: richer rumor verification sources and longer-term consequences
-  from repeated credible signal follow-through.
+- Deferred: richer rumor verification sources and deeper long-term
+  consequences from repeated credible signal follow-through.
 
 Likely files:
 
@@ -918,6 +924,26 @@ Expected verification:
 
 - `pytest tests/server/test_action_routes.py::test_rumor_escalation_action_records_safe_outcome_and_reopens_after_cancel tests/server/test_action_routes.py::test_rumor_escalation_action_requires_current_credible_escalation tests/server/test_pending_decisions.py::test_submitted_rumor_escalation_action_clears_escalation_decision tests/client/test_render_packets.py::test_submit_action_mutation_result_includes_safe_rumor_response_mode tests/client/test_render_packets.py::test_activity_summary_packet_shapes_visible_events_without_server_only_fields tests/client/test_api.py::test_api_submits_action_with_rumor_reference tests/client/test_codex_session.py::test_codex_session_preview_submit_action_does_not_call_mutating_api tests/client/test_codex_session.py::test_codex_session_confirm_submit_action_calls_api_with_active_crew tests/test_mcp_server.py::test_submit_action_mcp_call_passes_confirmation_to_session tests/client/test_action_cli.py::test_act_command_confirms_and_submits -q`
 - `pytest tests/server/test_action_routes.py tests/server/test_pending_decisions.py tests/server/test_crew_routes.py tests/client/test_api.py tests/client/test_codex_session.py tests/client/test_action_cli.py tests/test_mcp_server.py tests/client/test_render_packets.py -q`
+- `pytest -q`
+
+### Slice 34: Rumor Escalation Legacy Consequences
+
+Status: completed.
+
+Make repeated credible rumor follow-through matter after the immediate
+decision clears. The crew legacy projection now derives a bounded
+`rumor_escalation` aggregate from crew-scoped `contract.rumor.escalated`
+events, counting contain, exploit, integrate, and total credible signal weight
+without carrying raw source fields. Exploit follow-through creates a capped
+`rumor_exploitation` future modifier for active unresolved contracts, and
+Codex crew boards render the aggregate beside rumor memory so players and
+local agents can understand the strategic footprint without seeing private
+message bodies, artifact IDs, deal terms, source IDs, or suspected crew IDs.
+
+Expected verification:
+
+- `pytest tests/server/test_crew_legacy_projection.py tests/client/test_render_packets.py::test_crew_board_packet_renders_legacy_and_future_modifiers_without_hidden_fields tests/server/test_crew_routes.py::test_crew_board_projects_rumor_escalation_legacy_and_future_modifier -q`
+- `pytest tests/server/test_crew_legacy_projection.py tests/server/test_crew_routes.py tests/server/test_action_routes.py tests/client/test_render_packets.py -q`
 - `pytest -q`
 
 ## Completion Standard

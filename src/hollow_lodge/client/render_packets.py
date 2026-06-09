@@ -262,6 +262,9 @@ def _shape_crew_legacy(legacy: dict[str, Any]) -> dict[str, Any]:
             legacy.get("counterintelligence", {})
         ),
         "rumor_memory": _shape_rumor_memory(legacy.get("rumor_memory", {})),
+        "rumor_escalation": _shape_rumor_escalation_legacy(
+            legacy.get("rumor_escalation", {})
+        ),
         "completed_contracts": [
             {
                 key: contract[key]
@@ -333,6 +336,15 @@ def _shape_rumor_memory(memory: dict[str, Any]) -> dict[str, Any]:
             }
             for item in memory.get("recent", [])
         ][:5],
+    }
+
+
+def _shape_rumor_escalation_legacy(escalation: dict[str, Any]) -> dict[str, int]:
+    return {
+        "contain_count": int(escalation.get("contain_count", 0)),
+        "exploit_count": int(escalation.get("exploit_count", 0)),
+        "integrate_count": int(escalation.get("integrate_count", 0)),
+        "credible_count_total": int(escalation.get("credible_count_total", 0)),
     }
 
 
@@ -1111,6 +1123,14 @@ def build_crew_board_packet(board: dict[str, Any]) -> RenderPacket:
         "Rumor memory:",
         f"Verified rumors: {legacy['rumor_memory']['verified_count']}",
         f"Assessments: {_render_assessment_counts(legacy['rumor_memory']['assessment_counts'])}",
+        "Rumor escalation:",
+        (
+            f"Contain: {legacy['rumor_escalation']['contain_count']}; "
+            f"Exploit: {legacy['rumor_escalation']['exploit_count']}; "
+            f"Integrate: {legacy['rumor_escalation']['integrate_count']}; "
+            "Credible signal weight: "
+            f"{legacy['rumor_escalation']['credible_count_total']}"
+        ),
         "Recent rumor checks:",
         *(
             [_render_rumor_memory_item(item) for item in legacy["rumor_memory"]["recent"]]

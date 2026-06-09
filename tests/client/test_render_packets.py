@@ -900,6 +900,15 @@ def test_crew_board_packet_renders_legacy_and_future_modifiers_without_hidden_fi
                         }
                     ],
                 },
+                "rumor_escalation": {
+                    "contain_count": 0,
+                    "exploit_count": 1,
+                    "integrate_count": 0,
+                    "credible_count_total": 2,
+                    "source_id": "message_private_000001",
+                    "artifact_ids": ["artifact_private_ledger"],
+                    "private_body": "The ledger proves the forgery.",
+                },
                 "completed_contracts": [
                     {
                         "contract_id": "contract_false_finger",
@@ -949,6 +958,16 @@ def test_crew_board_packet_renders_legacy_and_future_modifiers_without_hidden_fi
                                 "value": 1,
                                 "server_notes": "hidden",
                             },
+                            {
+                                "kind": "rumor_exploitation",
+                                "label": "Rumor exploitation",
+                                "description": (
+                                    "Recent rumor exploitation gives this crew leverage "
+                                    "on The Ash Window."
+                                ),
+                                "value": 1,
+                                "source_id": "message_private_000001",
+                            },
                         ],
                     }
                 ],
@@ -986,6 +1005,15 @@ def test_crew_board_packet_renders_legacy_and_future_modifiers_without_hidden_fi
                             ),
                             "value": 1,
                         },
+                        {
+                            "kind": "rumor_exploitation",
+                            "label": "Rumor exploitation",
+                            "description": (
+                                "Recent rumor exploitation gives this crew leverage "
+                                "on The Ash Window."
+                            ),
+                            "value": 1,
+                        },
                     ],
                 }
             ],
@@ -1018,6 +1046,8 @@ def test_crew_board_packet_renders_legacy_and_future_modifiers_without_hidden_fi
     assert "Rumor memory:" in packet.player_markdown
     assert "Verified rumors: 1" in packet.player_markdown
     assert "Assessments: credible_artifact_signal 1" in packet.player_markdown
+    assert "Rumor escalation:" in packet.player_markdown
+    assert "Contain: 0; Exploit: 1; Integrate: 0; Credible signal weight: 2" in packet.player_markdown
     assert (
         "- rumor_msg_000001: credible_artifact_signal (medium) - The investigation found a credible artifact signal, but not enough to expose the private source."
         in packet.player_markdown
@@ -1025,7 +1055,7 @@ def test_crew_board_packet_renders_legacy_and_future_modifiers_without_hidden_fi
     assert "- The Saint's False Finger: Strong lead (82)" in packet.player_markdown
     assert "Future modifiers:" in packet.player_markdown
     assert (
-        "- The Ash Window: Reputation leverage +2; Heat attention +1; Deal reliability +2; Scar burden +1"
+        "- The Ash Window: Reputation leverage +2; Heat attention +1; Deal reliability +2; Scar burden +1; Rumor exploitation +1"
         in packet.player_markdown
     )
     assert "hidden" not in packet.player_markdown
@@ -1069,6 +1099,12 @@ def test_crew_board_packet_renders_legacy_and_future_modifiers_without_hidden_fi
                 }
             ],
         },
+        "rumor_escalation": {
+            "contain_count": 0,
+            "exploit_count": 1,
+            "integrate_count": 0,
+            "credible_count_total": 2,
+        },
         "completed_contracts": [
             {
                 "contract_id": "contract_false_finger",
@@ -1111,6 +1147,15 @@ def test_crew_board_packet_renders_legacy_and_future_modifiers_without_hidden_fi
                         "description": (
                             "A prior scar makes The Ash Window more dangerous "
                             "for this crew."
+                        ),
+                        "value": 1,
+                    },
+                    {
+                        "kind": "rumor_exploitation",
+                        "label": "Rumor exploitation",
+                        "description": (
+                            "Recent rumor exploitation gives this crew leverage "
+                            "on The Ash Window."
                         ),
                         "value": 1,
                     },
