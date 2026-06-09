@@ -61,81 +61,101 @@ def run_mock(data_dir: str) -> dict[str, Any]:
         reason="mock side action unlock",
         idempotency_key="grant-chapel-to-moth",
     )
-    opening_message = _post(
-        client,
-        "/chat/crew-to-crew",
-        headers=_command_auth(ada["token"], "chat-gilt-to-moth"),
-        json={
-            "sender_crew_id": gilt["crew_id"],
-            "recipient_crew_id": moth["crew_id"],
-            "body": "We can trade ledger leverage for chapel access before lock.",
-        },
-        expected_status=201,
+    opening_message_preview = ada_session.send_message(
+        scope="crew_to_crew",
+        sender_crew_id=gilt["crew_id"],
+        recipient_crew_id=moth["crew_id"],
+        body="We can trade ledger leverage for chapel access before lock.",
+        confirm=False,
     )
-    reply_message = _post(
-        client,
-        "/chat/crew-to-crew",
-        headers=_command_auth(bela["token"], "chat-moth-to-gilt"),
-        json={
-            "sender_crew_id": moth["crew_id"],
-            "recipient_crew_id": gilt["crew_id"],
-            "body": "Send the ledger copy first; no public source claims until lock.",
-        },
-        expected_status=201,
+    opening_message = ada_session.send_message(
+        scope="crew_to_crew",
+        sender_crew_id=gilt["crew_id"],
+        recipient_crew_id=moth["crew_id"],
+        body="We can trade ledger leverage for chapel access before lock.",
+        confirm=True,
+    )
+    reply_message_preview = bela_session.send_message(
+        scope="crew_to_crew",
+        sender_crew_id=moth["crew_id"],
+        recipient_crew_id=gilt["crew_id"],
+        body="Send the ledger copy first; no public source claims until lock.",
+        confirm=False,
+    )
+    reply_message = bela_session.send_message(
+        scope="crew_to_crew",
+        sender_crew_id=moth["crew_id"],
+        recipient_crew_id=gilt["crew_id"],
+        body="Send the ledger copy first; no public source claims until lock.",
+        confirm=True,
     )
     conversations_packet = ada_session.render_conversations()
 
-    proposed = _post(
-        client,
-        "/deals",
-        headers=_command_auth(ada["token"], "deal-propose-ledger-for-chapel"),
-        json={
-            "contract_id": "contract_false_finger",
-            "proposer_crew_id": gilt["crew_id"],
-            "recipient_crew_id": moth["crew_id"],
-            "offered_artifact_ids": ["artifact_ledger_rubric"],
-            "requested_artifact_ids": ["artifact_chapel_debt_mark"],
-            "soft_terms": ["Do not cite our crew as source until Auction Lock."],
-            "expires_phase": "Auction Preview",
-        },
-        expected_status=201,
+    deal_preview = ada_session.propose_deal(
+        recipient_crew_id=moth["crew_id"],
+        offered_artifact_ids=["artifact_ledger_rubric"],
+        requested_artifact_ids=["artifact_chapel_debt_mark"],
+        confirm=False,
+        proposer_crew_id=gilt["crew_id"],
+        contract_id="contract_false_finger",
+        soft_terms=["Do not cite our crew as source until Auction Lock."],
+        expires_phase="Auction Preview",
     )
+    proposed_packet = ada_session.propose_deal(
+        recipient_crew_id=moth["crew_id"],
+        offered_artifact_ids=["artifact_ledger_rubric"],
+        requested_artifact_ids=["artifact_chapel_debt_mark"],
+        confirm=True,
+        proposer_crew_id=gilt["crew_id"],
+        contract_id="contract_false_finger",
+        soft_terms=["Do not cite our crew as source until Auction Lock."],
+        expires_phase="Auction Preview",
+    )
+    proposed = proposed_packet.agent_context["result"]
     deals_packet = ada_session.render_deals()
     deal_preview_packet = ada_session.preview_deal_acceptance(proposed["deal_id"])
     moth_inbox_packet = bela_session.render_inbox()
-    fulfilled = _post(
-        client,
-        f"/deals/{proposed['deal_id']}/accept",
-        headers=_command_auth(bela["token"], "deal-accept-ledger-for-chapel"),
-        json={},
-        expected_status=200,
+    deal_accept_preview = bela_session.accept_deal(
+        deal_id=proposed["deal_id"],
+        confirm=False,
     )
+    fulfilled_packet = bela_session.accept_deal(
+        deal_id=proposed["deal_id"],
+        confirm=True,
+    )
+    fulfilled = fulfilled_packet.agent_context["result"]
     gilt_received = fulfilled["proposer_received_artifact_ids"][0]
     moth_received = fulfilled["recipient_received_artifact_ids"][0]
     _get(client, f"/artifacts/{gilt_received}", headers=ada_headers)
     _get(client, f"/artifacts/{moth_received}", headers=bela_headers)
 
-    _post(
-        client,
-        f"/proofs/dossiers/{gilt['crew_id']}/artifact-citations",
-        headers=_command_auth(ada["token"], "cite-gilt-received-chapel"),
-        json={
-            "artifact_id": gilt_received,
-            "claim": "The chapel debt mark exposes leverage against the lot story.",
-            "quote": "Debt mark",
-        },
-        expected_status=201,
+    gilt_citation_preview = ada_session.dossier_cite_artifact(
+        artifact_id=gilt_received,
+        claim="The chapel debt mark exposes leverage against the lot story.",
+        quote="Debt mark",
+        confirm=False,
+        crew_id=gilt["crew_id"],
     )
-    _post(
-        client,
-        f"/proofs/dossiers/{moth['crew_id']}/artifact-citations",
-        headers=_command_auth(bela["token"], "cite-moth-received-ledger"),
-        json={
-            "artifact_id": moth_received,
-            "claim": "The red ledger rubric contradicts the clean provenance chain.",
-            "quote": "redder and later",
-        },
-        expected_status=201,
+    gilt_citation_packet = ada_session.dossier_cite_artifact(
+        artifact_id=gilt_received,
+        claim="The chapel debt mark exposes leverage against the lot story.",
+        quote="Debt mark",
+        confirm=True,
+        crew_id=gilt["crew_id"],
+    )
+    moth_citation_preview = bela_session.dossier_cite_artifact(
+        artifact_id=moth_received,
+        claim="The red ledger rubric contradicts the clean provenance chain.",
+        quote="redder and later",
+        confirm=False,
+        crew_id=moth["crew_id"],
+    )
+    moth_citation_packet = bela_session.dossier_cite_artifact(
+        artifact_id=moth_received,
+        claim="The red ledger rubric contradicts the clean provenance chain.",
+        quote="redder and later",
+        confirm=True,
+        crew_id=moth["crew_id"],
     )
     _patch(
         client,
@@ -159,55 +179,71 @@ def run_mock(data_dir: str) -> dict[str, Any]:
             "provenance_concerns": "Received copy requires independent verification.",
         },
     )
-    _post(
+    grace_session = _codex_session(
         client,
-        f"/proofs/dossiers/{gilt['crew_id']}/packet-lead/votes",
-        headers=_command_auth(grace["token"], "vote-grace-grace-lead"),
-        json={"candidate_player_id": grace["player_id"]},
-        expected_status=200,
+        data_dir=Path(data_dir),
+        player=grace,
+        active_crew_id=gilt["crew_id"],
     )
-    _post(
-        client,
-        f"/proofs/dossiers/{gilt['crew_id']}/packet-lead/votes",
-        headers=_command_auth(ada["token"], "vote-ada-grace-lead"),
-        json={"candidate_player_id": grace["player_id"]},
-        expected_status=200,
+    grace_vote_preview = grace_session.vote_packet_lead(
+        player_id=grace["player_id"],
+        confirm=False,
+        crew_id=gilt["crew_id"],
+    )
+    grace_vote_packet = grace_session.vote_packet_lead(
+        player_id=grace["player_id"],
+        confirm=True,
+        crew_id=gilt["crew_id"],
+    )
+    ada_vote_preview = ada_session.vote_packet_lead(
+        player_id=grace["player_id"],
+        confirm=False,
+        crew_id=gilt["crew_id"],
+    )
+    ada_vote_packet = ada_session.vote_packet_lead(
+        player_id=grace["player_id"],
+        confirm=True,
+        crew_id=gilt["crew_id"],
     )
 
-    gilt_action = _post(
-        client,
-        "/actions",
-        headers=_command_auth(ada["token"], "gilt-action-after-trade"),
-        json={
-            "crew_id": gilt["crew_id"],
-            "intent": "Use the chapel debt mark to pressure the auction clerk for the corrected lot note.",
-            "confirmed": True,
-        },
-        expected_status=201,
+    gilt_action_preview = ada_session.submit_action(
+        crew_id=gilt["crew_id"],
+        intent="Use the chapel debt mark to pressure the auction clerk for the corrected lot note.",
+        confirm=False,
     )
-    moth_action = _post(
-        client,
-        "/actions",
-        headers=_command_auth(bela["token"], "moth-action-after-trade"),
-        json={
-            "crew_id": moth["crew_id"],
-            "intent": "Compare the red ledger rubric against the moth jar omen without revealing the Gilt source.",
-            "confirmed": True,
-        },
-        expected_status=201,
+    gilt_action_packet = ada_session.submit_action(
+        crew_id=gilt["crew_id"],
+        intent="Use the chapel debt mark to pressure the auction clerk for the corrected lot note.",
+        confirm=True,
     )
+    moth_action_preview = bela_session.submit_action(
+        crew_id=moth["crew_id"],
+        intent="Compare the red ledger rubric against the moth jar omen without revealing the Gilt source.",
+        confirm=False,
+    )
+    moth_action_packet = bela_session.submit_action(
+        crew_id=moth["crew_id"],
+        intent="Compare the red ledger rubric against the moth jar omen without revealing the Gilt source.",
+        confirm=True,
+    )
+    gilt_action = gilt_action_packet.agent_context["result"]
+    moth_action = moth_action_packet.agent_context["result"]
     gilt_board = _get(client, f"/crews/{gilt['crew_id']}/board", headers=ada_headers)
     moth_board = _get(client, f"/crews/{moth['crew_id']}/board", headers=bela_headers)
     gilt_board_packet = ada_session.render_crew_board()
     final_dossier_packet = ada_session.render_dossier()
-    reveal = _post(
-        client,
-        "/contracts/contract_false_finger/phases/auction-preview/lock",
-        headers=_command_auth(ada["token"], "phase-lock-after-escrow"),
-        json={"hours_elapsed": 6},
-        expected_status=200,
+    phase_lock_preview = ada_session.phase_lock(
+        contract_id="contract_false_finger",
+        hours_elapsed=6,
+        confirm=False,
     )
-    final_activity_delta_packet = ada_session.render_activity_delta()
+    phase_lock_packet = ada_session.phase_lock(
+        contract_id="contract_false_finger",
+        hours_elapsed=6,
+        confirm=True,
+    )
+    reveal = phase_lock_packet.agent_context["result"]
+    final_activity_delta_packet = bela_session.render_activity_delta()
     final_what_now_packet = ada_session.render_what_now()
     final_contract_packet = ada_session.render_contract_board()
     final_crew_activity_packet = ada_session.render_crew_activity()
@@ -215,12 +251,34 @@ def run_mock(data_dir: str) -> dict[str, Any]:
     codex_packets = [
         initial_contract_packet,
         initial_artifact_packet,
+        opening_message_preview,
+        opening_message,
+        reply_message_preview,
+        reply_message,
         conversations_packet,
+        deal_preview,
+        proposed_packet,
         deals_packet,
         deal_preview_packet,
         moth_inbox_packet,
+        deal_accept_preview,
+        fulfilled_packet,
+        gilt_citation_preview,
+        gilt_citation_packet,
+        moth_citation_preview,
+        moth_citation_packet,
+        grace_vote_preview,
+        grace_vote_packet,
+        ada_vote_preview,
+        ada_vote_packet,
+        gilt_action_preview,
+        gilt_action_packet,
+        moth_action_preview,
+        moth_action_packet,
         gilt_board_packet,
         final_dossier_packet,
+        phase_lock_preview,
+        phase_lock_packet,
         final_activity_delta_packet,
         final_what_now_packet,
         final_contract_packet,
@@ -233,13 +291,38 @@ def run_mock(data_dir: str) -> dict[str, Any]:
         for event in client.app.state.event_store.read()
         if event.type.startswith("deal.") or event.type.startswith("artifact.deal_copied")
     ]
+    opening_message_result = opening_message.agent_context["result"]
+    reply_message_result = reply_message.agent_context["result"]
+    codex_mutation_packets = [
+        packet
+        for packet in codex_packets
+        if packet.surface == "mutation"
+    ]
+    codex_mutations = [
+        {
+            "operation": packet.agent_context["operation"],
+            "confirmed": packet.agent_context["confirmed"],
+        }
+        for packet in codex_mutation_packets
+    ]
     lines = [
         f"contract: {contract_board['contracts'][0]['title']} / {contract_board['contracts'][0]['phase']['name']}",
         "initial contract board:",
         initial_contract_packet.player_markdown,
         "initial artifact graph:",
         initial_artifact_packet.player_markdown,
-        f"messages exchanged: {opening_message['conversation_id']} / {reply_message['conversation_id']}",
+        (
+            "messages exchanged: "
+            f"{opening_message_result['conversation_id']} / "
+            f"{reply_message_result['conversation_id']}"
+        ),
+        (
+            "codex mutation previews/confirms: "
+            + ", ".join(
+                f"{mutation['operation']}:{'confirm' if mutation['confirmed'] else 'preview'}"
+                for mutation in codex_mutations
+            )
+        ),
         "visible conversations:",
         conversations_packet.player_markdown,
         f"deal proposed: {proposed['deal_id']} {proposed['status']}",
@@ -284,6 +367,7 @@ def run_mock(data_dir: str) -> dict[str, Any]:
         "conversations": conversations_packet.model_dump(mode="json"),
         "timeline": timeline,
         "codex_packets": [packet.surface for packet in codex_packets],
+        "codex_mutations": codex_mutations,
         "final_dossier": final_dossier_packet.model_dump(mode="json"),
         "final_activity_delta": final_activity_delta_packet.model_dump(mode="json"),
         "final_what_now": final_what_now_packet.model_dump(mode="json"),
@@ -340,6 +424,188 @@ class _TestClientCodexApi:
 
     def deals(self) -> dict[str, Any]:
         return self._get("/deals")
+
+    def send_direct_message(
+        self,
+        *,
+        recipient_player_id: str,
+        body: str,
+        idempotency_key: str,
+        artifact_ids: list[str] | tuple[str, ...] | None = None,
+    ) -> dict[str, Any]:
+        return self._post(
+            "/chat/direct",
+            json={
+                "recipient_player_id": recipient_player_id,
+                "body": body,
+                "artifact_ids": list(artifact_ids or []),
+            },
+            idempotency_key=idempotency_key,
+        )
+
+    def send_crew_message(
+        self,
+        *,
+        crew_id: str,
+        body: str,
+        idempotency_key: str,
+        artifact_ids: list[str] | tuple[str, ...] | None = None,
+    ) -> dict[str, Any]:
+        return self._post(
+            "/chat/crew",
+            json={
+                "crew_id": crew_id,
+                "body": body,
+                "artifact_ids": list(artifact_ids or []),
+            },
+            idempotency_key=idempotency_key,
+        )
+
+    def send_crew_to_crew_message(
+        self,
+        *,
+        sender_crew_id: str,
+        recipient_crew_id: str,
+        body: str,
+        idempotency_key: str,
+        artifact_ids: list[str] | tuple[str, ...] | None = None,
+    ) -> dict[str, Any]:
+        return self._post(
+            "/chat/crew-to-crew",
+            json={
+                "sender_crew_id": sender_crew_id,
+                "recipient_crew_id": recipient_crew_id,
+                "body": body,
+                "artifact_ids": list(artifact_ids or []),
+            },
+            idempotency_key=idempotency_key,
+        )
+
+    def propose_deal(
+        self,
+        *,
+        contract_id: str,
+        proposer_crew_id: str,
+        recipient_crew_id: str,
+        offered_artifact_ids: list[str] | tuple[str, ...],
+        requested_artifact_ids: list[str] | tuple[str, ...],
+        soft_terms: list[str] | tuple[str, ...],
+        expires_phase: str | None,
+        idempotency_key: str,
+    ) -> dict[str, Any]:
+        return self._post(
+            "/deals",
+            json={
+                "contract_id": contract_id,
+                "proposer_crew_id": proposer_crew_id,
+                "recipient_crew_id": recipient_crew_id,
+                "offered_artifact_ids": list(offered_artifact_ids),
+                "requested_artifact_ids": list(requested_artifact_ids),
+                "soft_terms": list(soft_terms),
+                "expires_phase": expires_phase,
+            },
+            idempotency_key=idempotency_key,
+        )
+
+    def accept_deal(self, *, deal_id: str, idempotency_key: str) -> dict[str, Any]:
+        return self._post(
+            f"/deals/{deal_id}/accept",
+            json={},
+            idempotency_key=idempotency_key,
+        )
+
+    def submit_action(
+        self,
+        *,
+        crew_id: str,
+        intent: str,
+        idempotency_key: str,
+        rumor_id: str | None = None,
+        rumor_response_mode: str | None = None,
+        responds_to_rumor_escalation: bool = False,
+        rumor_escalation_mode: str | None = None,
+    ) -> dict[str, Any]:
+        payload: dict[str, Any] = {
+            "crew_id": crew_id,
+            "intent": intent,
+            "confirmed": True,
+        }
+        if rumor_id is not None:
+            payload["rumor_id"] = rumor_id
+        if rumor_response_mode is not None:
+            payload["rumor_response_mode"] = rumor_response_mode
+        if responds_to_rumor_escalation:
+            payload["responds_to_rumor_escalation"] = True
+        if rumor_escalation_mode is not None:
+            payload["rumor_escalation_mode"] = rumor_escalation_mode
+        return self._post(
+            "/actions",
+            json=payload,
+            idempotency_key=idempotency_key,
+        )
+
+    def cite_artifact_in_dossier(
+        self,
+        *,
+        crew_id: str,
+        artifact_id: str,
+        claim: str,
+        quote: str,
+        idempotency_key: str,
+    ) -> dict[str, Any]:
+        return self._post(
+            f"/proofs/dossiers/{crew_id}/artifact-citations",
+            json={
+                "artifact_id": artifact_id,
+                "claim": claim,
+                "quote": quote,
+            },
+            idempotency_key=idempotency_key,
+        )
+
+    def vote_packet_lead(
+        self,
+        *,
+        crew_id: str,
+        player_id: str,
+        idempotency_key: str,
+    ) -> dict[str, Any]:
+        return self._post(
+            f"/proofs/dossiers/{crew_id}/packet-lead/votes",
+            json={"candidate_player_id": player_id},
+            idempotency_key=idempotency_key,
+        )
+
+    def lock_auction_preview_phase(
+        self,
+        *,
+        contract_id: str,
+        hours_elapsed: int,
+        idempotency_key: str,
+    ) -> dict[str, Any]:
+        return self._post(
+            f"/contracts/{contract_id}/phases/auction-preview/lock",
+            json={"hours_elapsed": hours_elapsed},
+            idempotency_key=idempotency_key,
+        )
+
+    def _post(
+        self,
+        path: str,
+        *,
+        json: dict[str, Any],
+        idempotency_key: str,
+    ) -> dict[str, Any]:
+        response = self.client.post(
+            path,
+            json=json,
+            headers=_command_auth(self.token, idempotency_key),
+        )
+        if response.status_code not in {200, 201}:
+            raise RuntimeError(
+                f"POST {path} returned {response.status_code}: {response.text}"
+            )
+        return response.json()
 
     def _get(self, path: str) -> dict[str, Any]:
         return _get(self.client, path, headers=_auth(self.token))

@@ -3203,6 +3203,31 @@ Expected verification:
 - `pytest tests/client/test_codex_session.py tests/client/test_render_packets.py tests/test_mcp_server.py -q`
 - `pytest -q`
 
+### Slice 128: Codex-Native Full Loop Mutations
+
+Status: completed.
+
+Tighten the Milestone 1 proof gate so the mock two-crew playthrough exercises
+the Codex-native mutation flow, not only direct REST setup calls. The
+`scripts/mock_full_game_loop.py` TestClient adapter now implements the same
+mutation methods used by `CodexGameSession`, and the playthrough previews and
+confirms brokered crew chat, escrowed deal proposal and acceptance, artifact
+dossier citations, Packet Lead votes, freeform actions, and phase lock through
+Codex render packets.
+
+The E2E assertion now verifies the exact preview/confirm operation sequence and
+still renders final contract, dossier, crew activity, activity delta, and
+what-now packets. Post-lock activity delta is rendered from the other crew's
+session, proving the asynchronous "what changed while I was away" view after a
+Codex-confirmed phase resolution.
+
+Expected verification:
+
+- `pytest tests/e2e/test_full_game_loop_with_escrow.py::test_full_game_loop_with_escrow_trade -q`
+- `python scripts/mock_full_game_loop.py`
+- `pytest tests/e2e/test_full_game_loop_with_escrow.py tests/client/test_codex_session.py tests/test_mcp_server.py -q`
+- `pytest -q`
+
 ## Completion Standard
 
 Each slice must:
