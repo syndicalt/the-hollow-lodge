@@ -35,8 +35,8 @@ tokens.
 
 The authoritative game record is still the append-only Eventloom JSONL file.
 The projection database is a read-side cache for contract boards, crew
-summaries, artifacts, deals, visible events, chat messages, legacy blocks,
-current proof dossiers, and pending decision surfaces.
+summaries, artifacts, deals, visible events, chat messages, current actions,
+legacy blocks, current proof dossiers, and pending decision surfaces.
 
 By default, the server stores projections at:
 

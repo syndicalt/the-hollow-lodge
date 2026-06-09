@@ -533,6 +533,182 @@ def test_pending_decision_projection_reads_fall_back_when_stale(tmp_path, monkey
     )
 
 
+def test_projection_store_materializes_current_actions_without_command_metadata(
+    tmp_path,
+):
+    client = TestClient(create_app(data_dir=tmp_path, invite_codes=["a"]))
+    ada = register(client, "a", "Ada")
+    crew = create_crew(client, ada["token"], "crew-create-gilt", "The Gilt Knives")
+    submitted = client.post(
+        "/actions",
+        headers=command_auth(ada["token"], "action-submit-ledger"),
+        json={
+            "crew_id": crew["crew_id"],
+            "intent": "Inspect the ledger quietly.",
+            "confirmed": True,
+        },
+    )
+    edited = client.patch(
+        f"/actions/{submitted.json()['action_id']}",
+        headers=command_auth(ada["token"], "action-edit-ledger"),
+        json={"intent": "Inspect the ledger and auction margin quietly."},
+    )
+    canceled = client.post(
+        "/actions",
+        headers=command_auth(ada["token"], "action-submit-cancel"),
+        json={
+            "crew_id": crew["crew_id"],
+            "intent": "Ask the auction clerk directly.",
+            "confirmed": True,
+        },
+    )
+    canceled_response = client.delete(
+        f"/actions/{canceled.json()['action_id']}",
+        headers=command_auth(ada["token"], "action-cancel"),
+    )
+
+    assert submitted.status_code == 201
+    assert edited.status_code == 200
+    assert canceled.status_code == 201
+    assert canceled_response.status_code == 200
+
+    client.app.state.projection_store.rebuild(client.app.state.event_store.read())
+    actions = client.app.state.projection_store.read_current_actions_for_crew(
+        crew["crew_id"]
+    )
+    diagnostics = client.app.state.projection_store.diagnostics()
+    with sqlite3.connect(tmp_path / "server-projections.sqlite3") as connection:
+        rows = connection.execute(
+            "select action_id, crew_id, status, payload_json from action_surface"
+        ).fetchall()
+
+    assert actions == [edited.json()]
+    assert diagnostics["action_count"] == 1
+    assert rows == [
+        (
+            edited.json()["action_id"],
+            crew["crew_id"],
+            "submitted",
+            json.dumps(edited.json(), sort_keys=True, separators=(",", ":")),
+        )
+    ]
+    serialized_rows = str(rows)
+    assert "action-submit-ledger" not in serialized_rows
+    assert "action-edit-ledger" not in serialized_rows
+    assert canceled.json()["action_id"] not in serialized_rows
+
+
+def test_inbox_and_crew_board_read_fresh_action_projection_when_enabled(
+    tmp_path,
+    monkeypatch,
+):
+    monkeypatch.setenv("HOLLOW_LODGE_ACTION_PROJECTION_READS", "1")
+    client = TestClient(create_app(data_dir=tmp_path, invite_codes=["a"]))
+    ada = register(client, "a", "Ada")
+    crew = create_crew(client, ada["token"], "crew-create-gilt", "The Gilt Knives")
+    submitted = client.post(
+        "/actions",
+        headers=command_auth(ada["token"], "action-submit-ledger"),
+        json={
+            "crew_id": crew["crew_id"],
+            "intent": "Inspect the ledger quietly.",
+            "confirmed": True,
+        },
+    )
+    original_read = client.app.state.projection_store.read_current_actions_for_crew
+    calls = {"count": 0}
+
+    def tracked_read_current_actions_for_crew(crew_id: str):
+        calls["count"] += 1
+        return original_read(crew_id)
+
+    client.app.state.projection_store.read_current_actions_for_crew = (
+        tracked_read_current_actions_for_crew
+    )
+    client.app.state.action_service.current_actions_for_crew = (
+        lambda crew_id: (_ for _ in ()).throw(
+            AssertionError("fresh action projection should be used")
+        )
+    )
+
+    inbox = client.get("/inbox", headers=auth(ada["token"]))
+    crew_board = client.get(
+        f"/crews/{crew['crew_id']}/board",
+        headers=auth(ada["token"]),
+    )
+
+    assert submitted.status_code == 201
+    assert inbox.status_code == 200
+    assert crew_board.status_code == 200
+    assert calls["count"] == 2
+    assert any(
+        decision["kind"] == "contract_action"
+        and decision["action"] == "review_submitted_action"
+        and decision["action_ids"] == [submitted.json()["action_id"]]
+        for decision in inbox.json()["pending_decisions"]
+    )
+    assert any(
+        decision["kind"] == "contract_action"
+        and decision["action"] == "review_submitted_action"
+        and decision["action_ids"] == [submitted.json()["action_id"]]
+        for decision in crew_board.json()["pending_decisions"]
+    )
+
+
+def test_action_projection_reads_fall_back_when_stale(tmp_path, monkeypatch):
+    monkeypatch.setenv("HOLLOW_LODGE_ACTION_PROJECTION_READS", "1")
+    client = TestClient(create_app(data_dir=tmp_path, invite_codes=["a"]))
+    ada = register(client, "a", "Ada")
+    crew = create_crew(client, ada["token"], "crew-create-gilt", "The Gilt Knives")
+    client.app.state.projection_store.rebuild(client.app.state.event_store.read())
+    action = {
+        "action_id": "action_out_of_band",
+        "status": "submitted",
+        "actor_player_id": ada["player_id"],
+        "crew_id": crew["crew_id"],
+        "intent": "Inspect the ledger after the projection checkpoint.",
+        "approach": "quiet",
+        "risk_posture": "careful",
+        "target": "ledger",
+        "crew_noise_impact": 0,
+    }
+    client.app.state.event_store.append_command(
+        event_type="action.submitted",
+        actor_id=ada["player_id"],
+        visibility=EventVisibility.crews([crew["crew_id"]]),
+        payload={"confirmed": True, "action": action},
+        idempotency_key="out-of-band-action",
+    )
+
+    def fail_if_projection_read(crew_id: str):
+        raise AssertionError("stale action projection should not be used")
+
+    client.app.state.projection_store.read_current_actions_for_crew = (
+        fail_if_projection_read
+    )
+
+    inbox = client.get("/inbox", headers=auth(ada["token"]))
+    crew_board = client.get(
+        f"/crews/{crew['crew_id']}/board",
+        headers=auth(ada["token"]),
+    )
+
+    assert inbox.status_code == 200
+    assert crew_board.status_code == 200
+    assert any(
+        decision["kind"] == "contract_action"
+        and decision["action"] == "review_submitted_action"
+        and decision["action_ids"] == ["action_out_of_band"]
+        for decision in inbox.json()["pending_decisions"]
+    )
+    assert any(
+        decision["kind"] == "contract_action"
+        and decision["action"] == "review_submitted_action"
+        and decision["action_ids"] == ["action_out_of_band"]
+        for decision in crew_board.json()["pending_decisions"]
+    )
+
+
 def test_contract_board_route_reads_fresh_projection_when_enabled(tmp_path, monkeypatch):
     monkeypatch.setenv("HOLLOW_LODGE_CONTRACT_BOARD_PROJECTION_READS", "1")
     client = TestClient(create_app(data_dir=tmp_path, invite_codes=["a"]))

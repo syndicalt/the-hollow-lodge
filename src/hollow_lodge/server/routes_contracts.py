@@ -13,6 +13,7 @@ from hollow_lodge.server.artifact_service import ArtifactService
 from hollow_lodge.server.auth import current_player
 from hollow_lodge.server.contract_seed import ContractSeed, load_contract_seed_file
 from hollow_lodge.server.pending_decisions import pending_decisions_for_player
+from hollow_lodge.server.projected_actions import projected_current_actions_for_crew
 from hollow_lodge.server.projected_artifacts import projected_visible_artifacts
 from hollow_lodge.server.projected_deals import projected_visible_deals
 from hollow_lodge.server.projected_dossiers import projected_proof_dossier
@@ -162,7 +163,7 @@ def inbox(
                 for crew_id in crew_ids
             },
             actions_by_crew={
-                crew_id: _action_service(request).current_actions_for_crew(crew_id)
+                crew_id: _current_actions_for_crew(request, crew_id)
                 for crew_id in crew_ids
             },
             rumors_by_crew=rumors_by_crew,
@@ -296,6 +297,13 @@ def _dossier_for_crew(request: Request, *, player_id: str, crew_id: str) -> dict
         crew_id=crew_id,
         player_id=player_id,
     )
+
+
+def _current_actions_for_crew(request: Request, crew_id: str) -> list[dict]:
+    projected = projected_current_actions_for_crew(request, crew_id)
+    if projected is not None:
+        return projected
+    return _action_service(request).current_actions_for_crew(crew_id)
 
 
 def _parse_contract_seed(seed: Any) -> ContractSeed:

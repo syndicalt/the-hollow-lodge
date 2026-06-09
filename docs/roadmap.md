@@ -339,6 +339,10 @@ Status:
   board `pending_decisions` can read per-player, per-crew action prompts from
   SQLite when fresh, while stale state falls back to the existing event-log
   projection path.
+- Feature-flagged action projection reads completed: inbox and crew-board
+  pending-decision fallback paths can read current submitted actions from
+  SQLite when fresh, while action submission, editing, cancellation,
+  authorization, and artifact unlocks remain authoritative event-log writes.
 - Deferred: deeper death/legacy inheritance, additional long-term unlock paths,
   and migrating heavier campaign reads onto the projection database.
 
@@ -1699,6 +1703,29 @@ Expected verification:
 
 - `pytest tests/server/test_projection_store.py::test_projection_store_materializes_pending_decisions_without_private_deal_terms tests/server/test_projection_store.py::test_inbox_and_crew_board_read_fresh_pending_decision_projection_when_enabled tests/server/test_projection_store.py::test_pending_decision_projection_reads_fall_back_when_stale -q`
 - `pytest tests/server/test_projection_store.py tests/server/test_app_config.py tests/server/test_pending_decisions.py tests/server/test_crew_routes.py tests/server/test_contract_seed.py tests/server/test_deal_routes.py tests/server/test_chat_routes.py tests/server/test_action_routes.py tests/client/test_render_packets.py tests/client/test_codex_session.py tests/test_mcp_server.py -q`
+- `pytest -q`
+
+### Slice 68: Current Action Projection Reads
+
+Status: completed.
+
+Move current submitted freeform-action reads onto the projection database
+without moving action authority out of the Eventloom event log. SQLite and
+Postgres projection stores now materialize safe `action_surface` rows for the
+latest non-canceled action state per crew, preserving the shaped action payload
+needed by pending-decision prompts while excluding idempotency keys and command
+metadata. When `HOLLOW_LODGE_ACTION_PROJECTION_READS=1`, inbox and crew-board
+pending-decision fallback paths read current actions from the projection only
+if it is available and has zero lag. Stale or unavailable projection state
+falls back to the existing `ActionService` event replay path. Action
+submission, editing, cancellation, crew authorization, phase-lock checks, rumor
+outcome events, and artifact unlocks remain authoritative service writes. This
+slice advances the projection schema to version `5`.
+
+Expected verification:
+
+- `pytest tests/server/test_projection_store.py::test_projection_store_materializes_current_actions_without_command_metadata tests/server/test_projection_store.py::test_inbox_and_crew_board_read_fresh_action_projection_when_enabled tests/server/test_projection_store.py::test_action_projection_reads_fall_back_when_stale -q`
+- `pytest tests/server/test_projection_store.py tests/server/test_app_config.py tests/server/test_action_routes.py tests/server/test_crew_routes.py tests/server/test_pending_decisions.py tests/server/test_contract_seed.py tests/client/test_render_packets.py tests/client/test_codex_session.py tests/test_mcp_server.py -q`
 - `pytest -q`
 
 ## Completion Standard

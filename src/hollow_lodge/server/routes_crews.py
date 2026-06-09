@@ -10,6 +10,7 @@ from hollow_lodge.domain.identity import Player
 from hollow_lodge.server.artifact_service import ArtifactService
 from hollow_lodge.server.auth import current_player
 from hollow_lodge.server.pending_decisions import pending_decisions_for_player
+from hollow_lodge.server.projected_actions import projected_current_actions_for_crew
 from hollow_lodge.server.projected_artifacts import projected_visible_artifacts
 from hollow_lodge.server.projected_deals import projected_visible_deals
 from hollow_lodge.server.projected_dossiers import projected_proof_dossier
@@ -148,7 +149,7 @@ def crew_board(
             crew_summaries={crew_id: crew},
             dossiers={crew_id: _crew_board_dossier(dossier)},
             actions_by_crew={
-                crew_id: _action_service(request).current_actions_for_crew(crew_id),
+                crew_id: _current_actions_for_crew(request, crew_id),
             },
             rumors_by_crew={crew_id: rumors},
             crew_legacies={crew_id: legacy},
@@ -329,6 +330,13 @@ def _crew_legacy_for_board(
         deals=deals,
         events=request.app.state.event_store.read(),
     )
+
+
+def _current_actions_for_crew(request: Request, crew_id: str) -> list[dict]:
+    projected = projected_current_actions_for_crew(request, crew_id)
+    if projected is not None:
+        return projected
+    return _action_service(request).current_actions_for_crew(crew_id)
 
 
 def _contract_service(request: Request) -> ContractService:
