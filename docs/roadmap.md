@@ -3440,6 +3440,27 @@ Expected verification:
 - `pytest tests/client/test_cli_commands.py tests/client/test_installer_script.py tests/client/test_codex_mcp_config.py -q`
 - `pytest -q`
 
+### Slice 139: Doctor Saved Auth Validation
+
+Status: completed.
+
+Harden the clean-machine onboarding proof gate by making `hollow-lodge doctor`
+validate saved registered-player credentials against `/identity/me`. A saved
+config now reports `auth: ok <player_id>` only when the bearer token resolves
+to the configured player. Failed token validation and player-id mismatches are
+reported as bounded status strings without echoing bearer tokens, server error
+text, or unexpected player ids.
+
+Pending onboarding and unconfigured installs still skip authenticated checks,
+so `doctor` remains useful before registration while proving more of the
+installed-client path once a player has registered.
+
+Expected verification:
+
+- `pytest tests/client/test_cli_commands.py::test_doctor_reports_registered_player_and_mcp_without_secret_material tests/client/test_cli_commands.py::test_doctor_reports_pending_onboarding_without_contact tests/client/test_cli_commands.py::test_doctor_reports_unconfigured_install_and_unreachable_server tests/client/test_cli_commands.py::test_doctor_reports_failed_saved_auth_without_leaking_error tests/client/test_cli_commands.py::test_doctor_reports_saved_auth_player_mismatch_without_leaking_token -q`
+- `pytest tests/client/test_cli_commands.py tests/client/test_installer_script.py tests/client/test_codex_mcp_config.py -q`
+- `pytest -q`
+
 ## Completion Standard
 
 Each slice must:

@@ -70,6 +70,10 @@ class FakeApi:
         self.calls.append(("health", {}))
         return {"status": "ok"}
 
+    def me(self):
+        self.calls.append(("me", {}))
+        return {"player_id": "player_0001"}
+
     def diagnostics(self):
         self.calls.append(("diagnostics", {}))
         return {
@@ -869,11 +873,14 @@ def test_doctor_reports_registered_player_and_mcp_without_secret_material(
     assert "cli: The Hollow Lodge" in result.output
     assert "server: ok http://testserver" in result.output
     assert "player: registered player_0001 display=Ada active_crew=crew_0001" in result.output
+    assert "auth: ok player_0001" in result.output
     assert f"mcp: registered {codex_config}" in result.output
     assert "mcp config command: ok hollow-lodge-mcp" in result.output
     assert "mcp command: available hollow-lodge-mcp" in result.output
     assert "secret-token" not in result.output
     assert created_clients[0].calls == [("health", {})]
+    assert created_clients[1].token == "secret-token"
+    assert created_clients[1].calls == [("me", {})]
 
 
 def test_doctor_reports_pending_onboarding_without_contact(tmp_path, monkeypatch):
@@ -915,6 +922,7 @@ def test_doctor_reports_pending_onboarding_without_contact(tmp_path, monkeypatch
     assert result.exit_code == 0
     assert "server: ok http://pending-server" in result.output
     assert "player: pending key_request_0001 status=pending display=Ada" in result.output
+    assert "auth:" not in result.output
     assert f"mcp: missing {codex_config}" in result.output
     assert "mcp config command: missing" in result.output
     assert "mcp command: missing hollow-lodge-mcp" in result.output
@@ -951,6 +959,7 @@ def test_doctor_reports_unconfigured_install_and_unreachable_server(tmp_path, mo
     assert result.exit_code == 0
     assert "server: unreachable http://downstream" in result.output
     assert "player: not configured" in result.output
+    assert "auth:" not in result.output
     assert "mcp: missing" in result.output
     assert "mcp config command: missing" in result.output
     assert "mcp command: missing hollow-lodge-mcp" in result.output
@@ -992,6 +1001,90 @@ def test_doctor_reports_mcp_config_command_mismatch_without_leaking_command(
     assert "mcp config command: mismatch expected hollow-lodge-mcp" in result.output
     assert "mcp command: available hollow-lodge-mcp" in result.output
     assert "old-hollow-lodge-mcp" not in result.output
+    assert "secret-token" not in result.output
+
+
+def test_doctor_reports_failed_saved_auth_without_leaking_error(tmp_path, monkeypatch):
+    runner = CliRunner()
+
+    class FailingAuthApi(FakeApi):
+        def me(self):
+            self.calls.append(("me", {}))
+            raise RuntimeError("auth failed for secret-token")
+
+    monkeypatch.setattr(cli, "HollowLodgeApi", FailingAuthApi)
+    monkeypatch.setattr(cli.shutil, "which", lambda command: f"/bin/{command}")
+    config_path = tmp_path / "config.json"
+    save_config(
+        config_path,
+        ClientConfig(
+            server_url="http://testserver",
+            player_id="player_0001",
+            token="secret-token",
+            display_name="Ada",
+            active_crew_id=None,
+        ),
+    )
+
+    result = runner.invoke(
+        cli.app,
+        [
+            "doctor",
+            "--config",
+            str(config_path),
+            "--onboarding-state",
+            str(tmp_path / "missing-onboarding.json"),
+            "--codex-config",
+            str(tmp_path / "missing-codex.toml"),
+        ],
+    )
+
+    assert result.exit_code == 0
+    assert "server: ok http://testserver" in result.output
+    assert "player: registered player_0001 display=Ada active_crew=-" in result.output
+    assert "auth: failed" in result.output
+    assert "secret-token" not in result.output
+
+
+def test_doctor_reports_saved_auth_player_mismatch_without_leaking_token(tmp_path, monkeypatch):
+    runner = CliRunner()
+
+    class MismatchAuthApi(FakeApi):
+        def me(self):
+            self.calls.append(("me", {}))
+            return {"player_id": "player_9999"}
+
+    monkeypatch.setattr(cli, "HollowLodgeApi", MismatchAuthApi)
+    monkeypatch.setattr(cli.shutil, "which", lambda command: f"/bin/{command}")
+    config_path = tmp_path / "config.json"
+    save_config(
+        config_path,
+        ClientConfig(
+            server_url="http://testserver",
+            player_id="player_0001",
+            token="secret-token",
+            display_name="Ada",
+            active_crew_id=None,
+        ),
+    )
+
+    result = runner.invoke(
+        cli.app,
+        [
+            "doctor",
+            "--config",
+            str(config_path),
+            "--onboarding-state",
+            str(tmp_path / "missing-onboarding.json"),
+            "--codex-config",
+            str(tmp_path / "missing-codex.toml"),
+        ],
+    )
+
+    assert result.exit_code == 0
+    assert "server: ok http://testserver" in result.output
+    assert "auth: mismatch" in result.output
+    assert "player_9999" not in result.output
     assert "secret-token" not in result.output
 
 

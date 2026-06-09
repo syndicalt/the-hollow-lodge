@@ -227,6 +227,7 @@ def doctor(
             f"player: registered {registered_config.player_id} "
             f"display={display_name} active_crew={active_crew}"
         )
+        typer.echo(f"auth: {_player_auth_status(registered_config)}")
     elif pending_config is not None:
         typer.echo(
             f"player: pending {pending_config.request_id} "
@@ -1479,6 +1480,18 @@ def _server_health_status(server_url: str) -> str:
     if response == {"status": "ok"}:
         return "ok"
     return "unexpected"
+
+
+def _player_auth_status(config: ClientConfig) -> str:
+    try:
+        response = _api_from_config(config).me()
+    except Exception:
+        return "failed"
+
+    player_id = response.get("player_id")
+    if player_id != config.player_id:
+        return "mismatch"
+    return f"ok {config.player_id}"
 
 
 def _command_status(command: str) -> str:
