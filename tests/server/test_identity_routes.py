@@ -737,6 +737,129 @@ def test_admin_can_list_access_key_requests(tmp_path, monkeypatch):
     }
 
 
+def test_admin_identity_lists_read_fresh_projection_when_enabled(
+    tmp_path,
+    monkeypatch,
+):
+    monkeypatch.setenv("HOLLOW_LODGE_ADMIN_TOKEN", "admin-secret")
+    monkeypatch.setenv("HOLLOW_LODGE_IDENTITY_ADMIN_PROJECTION_READS", "1")
+    client = TestClient(create_app(data_dir=tmp_path, invite_codes=["alpha-code"]))
+    key_request = client.post(
+        "/identity/key-requests",
+        json={"display_name": "Grace", "contact": "grace@example.com"},
+        headers={"Idempotency-Key": "key-request-grace"},
+    ).json()
+    client.post(
+        "/identity/admin/invites",
+        headers={
+            "Idempotency-Key": "admin-invite-extra",
+            "X-Hollow-Lodge-Admin-Token": "admin-secret",
+        },
+    )
+    registered = client.post(
+        "/identity/register",
+        json={"invite_code": "alpha-code", "display_name": "Ada"},
+        headers={"Idempotency-Key": "register-ada"},
+    ).json()
+
+    client.app.state.identity_service.list_players = (
+        lambda: (_ for _ in ()).throw(
+            AssertionError("fresh identity player projection should be used")
+        )
+    )
+    client.app.state.identity_service.list_invites = (
+        lambda: (_ for _ in ()).throw(
+            AssertionError("fresh identity invite projection should be used")
+        )
+    )
+    client.app.state.identity_service.list_access_key_requests = (
+        lambda: (_ for _ in ()).throw(
+            AssertionError("fresh identity key request projection should be used")
+        )
+    )
+
+    players = client.get(
+        "/identity/admin/players",
+        headers={"X-Hollow-Lodge-Admin-Token": "admin-secret"},
+    )
+    invites = client.get(
+        "/identity/admin/invites",
+        headers={"X-Hollow-Lodge-Admin-Token": "admin-secret"},
+    )
+    key_requests = client.get(
+        "/identity/admin/key-requests",
+        headers={"X-Hollow-Lodge-Admin-Token": "admin-secret"},
+    )
+
+    assert players.status_code == 200
+    assert players.json() == {
+        "players": [
+            {
+                "player_id": registered["player_id"],
+                "display_name": "Ada",
+                "token_revoked": False,
+            }
+        ]
+    }
+    assert invites.status_code == 200
+    assert [invite["invite_id"] for invite in invites.json()["invites"]] == [
+        "invite_0001"
+    ]
+    assert key_requests.status_code == 200
+    assert key_requests.json()["key_requests"] == [
+        {
+            "request_id": key_request["request_id"],
+            "display_name": "Grace",
+            "contact": "grace@example.com",
+            "status": "pending",
+        }
+    ]
+    assert registered["token"] not in players.text
+
+
+def test_admin_identity_lists_fall_back_when_projection_is_stale(
+    tmp_path,
+    monkeypatch,
+):
+    monkeypatch.setenv("HOLLOW_LODGE_ADMIN_TOKEN", "admin-secret")
+    monkeypatch.setenv("HOLLOW_LODGE_IDENTITY_ADMIN_PROJECTION_READS", "1")
+    client = TestClient(create_app(data_dir=tmp_path, invite_codes=["alpha-code"]))
+    registered = client.post(
+        "/identity/register",
+        json={"invite_code": "alpha-code", "display_name": "Ada"},
+        headers={"Idempotency-Key": "register-ada"},
+    ).json()
+    client.app.state.projection_store.rebuild(client.app.state.event_store.read())
+    client.app.state.event_store.append_command(
+        event_type="contract.note.published",
+        actor_id="server",
+        visibility=EventVisibility.public(),
+        payload={"note": "identity projection stale marker"},
+        idempotency_key="identity-projection-stale-marker",
+    )
+
+    def fail_if_projection_read():
+        raise AssertionError("stale identity admin projection should not be used")
+
+    client.app.state.projection_store.read_admin_players = fail_if_projection_read
+
+    response = client.get(
+        "/identity/admin/players",
+        headers={"X-Hollow-Lodge-Admin-Token": "admin-secret"},
+    )
+
+    assert response.status_code == 200
+    assert response.json() == {
+        "players": [
+            {
+                "player_id": registered["player_id"],
+                "display_name": "Ada",
+                "token_revoked": False,
+            }
+        ]
+    }
+
+
 def test_admin_approves_access_key_request_into_redeemable_invite(tmp_path, monkeypatch):
     monkeypatch.setenv("HOLLOW_LODGE_ADMIN_TOKEN", "admin-secret")
     client = TestClient(create_app(data_dir=tmp_path, invite_codes=[]))

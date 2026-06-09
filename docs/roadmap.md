@@ -3344,6 +3344,28 @@ Expected verification:
 - `pytest tests/e2e/test_projection_backend_smoke.py tests/client/test_cli_commands.py tests/client/test_codex_session.py tests/test_mcp_server.py -q`
 - `pytest -q`
 
+### Slice 134: Identity Admin Projection Read Model
+
+Status: completed.
+
+Add a durable identity/admin projection read model for production database
+operation. The projection schema now includes admin-safe surfaces for players,
+invites, and access-key requests, with no token hashes, bearer tokens, or raw
+invite codes stored in the projection payloads.
+
+`HOLLOW_LODGE_IDENTITY_ADMIN_PROJECTION_READS=1` enables admin list routes to
+read from the fresh projection when sequence-aligned, while stale or
+unavailable projections fall back to the authoritative `IdentityService`
+rebuilt from Eventloom. The production Postgres preset includes the new
+`identity_admin` surface through the existing all-surfaces projection-read
+policy.
+
+Expected verification:
+
+- `pytest tests/server/test_projection_store.py::test_projection_store_materializes_identity_admin_surfaces_without_secrets tests/server/test_identity_routes.py::test_admin_identity_lists_read_fresh_projection_when_enabled tests/server/test_identity_routes.py::test_admin_identity_lists_fall_back_when_projection_is_stale -q`
+- `pytest tests/server/test_projection_store.py tests/server/test_identity_routes.py tests/server/test_app_config.py tests/e2e/test_projection_backend_smoke.py -q`
+- `pytest -q`
+
 ## Completion Standard
 
 Each slice must:

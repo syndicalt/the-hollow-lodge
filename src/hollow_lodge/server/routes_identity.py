@@ -16,6 +16,11 @@ from hollow_lodge.server.projections import (
     crew_legacy_from_contracts,
 )
 from hollow_lodge.server.projected_legacy import projected_crew_legacy
+from hollow_lodge.server.projected_identity import (
+    projected_admin_invites,
+    projected_admin_key_requests,
+    projected_admin_players,
+)
 from hollow_lodge.server.runtime_services import (
     read_authoritative_events,
     refresh_projection_store,
@@ -173,6 +178,7 @@ def request_access_key(
         if str(exc) == "idempotency key conflict":
             raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail=str(exc)) from exc
         raise
+    _refresh_projection_store(request)
     return AccessKeyRequestResponse(
         request_id=key_request.request_id,
         display_name=key_request.display_name,
@@ -200,6 +206,7 @@ def create_invite(
         if message in {"idempotency key conflict", "invite replay code unavailable"}:
             raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail=message) from exc
         raise
+    _refresh_projection_store(request)
     return InviteResponse(invite_code=invite_code)
 
 
@@ -212,6 +219,14 @@ def list_invites(
     admin_token: str | None = Header(None, alias="X-Hollow-Lodge-Admin-Token"),
 ) -> AdminInviteListResponse:
     _require_admin_token(admin_token)
+    projected = projected_admin_invites(request)
+    if projected is not None:
+        return AdminInviteListResponse(
+            invites=[
+                AdminInviteResponse(invite_id=invite["invite_id"], used=invite["used"])
+                for invite in projected
+            ]
+        )
     return AdminInviteListResponse(
         invites=[
             AdminInviteResponse(invite_id=invite.invite_id, used=invite.used)
@@ -229,6 +244,18 @@ def list_players(
     admin_token: str | None = Header(None, alias="X-Hollow-Lodge-Admin-Token"),
 ) -> AdminPlayerListResponse:
     _require_admin_token(admin_token)
+    projected = projected_admin_players(request)
+    if projected is not None:
+        return AdminPlayerListResponse(
+            players=[
+                AdminPlayerResponse(
+                    player_id=player["player_id"],
+                    display_name=player["display_name"],
+                    token_revoked=player["token_revoked"],
+                )
+                for player in projected
+            ]
+        )
     return AdminPlayerListResponse(
         players=[
             AdminPlayerResponse(
@@ -274,6 +301,19 @@ def list_key_requests(
     admin_token: str | None = Header(None, alias="X-Hollow-Lodge-Admin-Token"),
 ) -> AdminAccessKeyRequestListResponse:
     _require_admin_token(admin_token)
+    projected = projected_admin_key_requests(request)
+    if projected is not None:
+        return AdminAccessKeyRequestListResponse(
+            key_requests=[
+                AdminAccessKeyRequestResponse(
+                    request_id=key_request["request_id"],
+                    display_name=key_request["display_name"],
+                    contact=key_request["contact"],
+                    status=key_request["status"],
+                )
+                for key_request in projected
+            ]
+        )
     return AdminAccessKeyRequestListResponse(
         key_requests=[
             AdminAccessKeyRequestResponse(
@@ -353,6 +393,7 @@ def approve_key_request(
         }:
             raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail=message) from exc
         raise
+    _refresh_projection_store(request)
     return AccessKeyApprovalResponse(
         request_id=key_request.request_id,
         status=key_request.status,

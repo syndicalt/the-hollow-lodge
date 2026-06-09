@@ -16,6 +16,7 @@ from hollow_lodge.server.projections import (
     contract_board_from_events,
     crew_legacy_from_contracts,
     crew_summaries_from_events,
+    identity_admin_surfaces_from_events,
     unlocked_actionable_contracts,
 )
 from hollow_lodge.server.pending_decisions import pending_decisions_for_player
@@ -23,7 +24,7 @@ from hollow_lodge.server.proof_seed import STARTER_FRAGMENT
 from hollow_lodge.server.rumors import SAFE_RUMOR_FIELDS
 
 
-SCHEMA_VERSION = "10"
+SCHEMA_VERSION = "11"
 PROJECTION_SCHEMA_MIGRATIONS: tuple[tuple[str, str], ...] = (
     ("1", "initial projection read models"),
     ("2", "proof dossier projection read model"),
@@ -35,6 +36,7 @@ PROJECTION_SCHEMA_MIGRATIONS: tuple[tuple[str, str], ...] = (
     ("8", "oracle audit projection read model"),
     ("9", "artifact inspection projection read model"),
     ("10", "proof fragment projection read model"),
+    ("11", "identity admin projection read model"),
 )
 
 
@@ -58,6 +60,7 @@ class SqliteProjectionStore:
         chat_messages = snapshot["chat_messages"]
         actions_by_crew = snapshot["actions_by_crew"]
         pending_decisions = snapshot["pending_decisions"]
+        identity_admin_surfaces = snapshot["identity_admin_surfaces"]
         visible_rumors_by_crew = snapshot["visible_rumors_by_crew"]
         contract_unlock_statuses = snapshot["contract_unlock_statuses"]
         oracle_audits = snapshot["oracle_audits"]
@@ -77,6 +80,9 @@ class SqliteProjectionStore:
             connection.execute("delete from crew_legacy")
             connection.execute("delete from proof_dossier")
             connection.execute("delete from proof_fragment_surface")
+            connection.execute("delete from identity_player_surface")
+            connection.execute("delete from identity_invite_surface")
+            connection.execute("delete from identity_key_request_surface")
             connection.execute("delete from chat_message_surface")
             connection.execute("delete from action_surface")
             connection.execute("delete from pending_decision_surface")
@@ -314,6 +320,63 @@ class SqliteProjectionStore:
                         last_sequence,
                     ),
                 )
+            for player in identity_admin_surfaces["players"]:
+                connection.execute(
+                    """
+                    insert into identity_player_surface (
+                        player_id,
+                        display_name,
+                        token_revoked,
+                        payload_json,
+                        updated_sequence
+                    ) values (?, ?, ?, ?, ?)
+                    """,
+                    (
+                        player["player_id"],
+                        player["display_name"],
+                        int(bool(player["token_revoked"])),
+                        json.dumps(player, sort_keys=True, separators=(",", ":")),
+                        last_sequence,
+                    ),
+                )
+            for invite in identity_admin_surfaces["invites"]:
+                connection.execute(
+                    """
+                    insert into identity_invite_surface (
+                        invite_id,
+                        used,
+                        payload_json,
+                        updated_sequence
+                    ) values (?, ?, ?, ?)
+                    """,
+                    (
+                        invite["invite_id"],
+                        int(bool(invite["used"])),
+                        json.dumps(invite, sort_keys=True, separators=(",", ":")),
+                        last_sequence,
+                    ),
+                )
+            for key_request in identity_admin_surfaces["key_requests"]:
+                connection.execute(
+                    """
+                    insert into identity_key_request_surface (
+                        request_id,
+                        status,
+                        payload_json,
+                        updated_sequence
+                    ) values (?, ?, ?, ?)
+                    """,
+                    (
+                        key_request["request_id"],
+                        key_request["status"],
+                        json.dumps(
+                            key_request,
+                            sort_keys=True,
+                            separators=(",", ":"),
+                        ),
+                        last_sequence,
+                    ),
+                )
             for event in visible_events:
                 payload = event.model_dump(mode="json")
                 connection.execute(
@@ -500,6 +563,21 @@ class SqliteProjectionStore:
             self._set_meta(connection, "crew_legacy_count", str(len(crew_legacies)))
             self._set_meta(connection, "proof_dossier_count", str(len(proof_dossiers)))
             self._set_meta(connection, "proof_fragment_count", str(len(proof_fragments)))
+            self._set_meta(
+                connection,
+                "identity_player_count",
+                str(len(identity_admin_surfaces["players"])),
+            )
+            self._set_meta(
+                connection,
+                "identity_invite_count",
+                str(len(identity_admin_surfaces["invites"])),
+            )
+            self._set_meta(
+                connection,
+                "identity_key_request_count",
+                str(len(identity_admin_surfaces["key_requests"])),
+            )
             self._set_meta(connection, "chat_message_count", str(len(chat_messages)))
             self._set_meta(connection, "action_count", str(action_count))
             self._set_meta(
@@ -564,6 +642,9 @@ class SqliteProjectionStore:
                 "crew_legacy_count": 0,
                 "proof_dossier_count": 0,
                 "proof_fragment_count": 0,
+                "identity_player_count": 0,
+                "identity_invite_count": 0,
+                "identity_key_request_count": 0,
                 "chat_message_count": 0,
                 "action_count": 0,
                 "pending_decision_count": 0,
@@ -600,6 +681,15 @@ class SqliteProjectionStore:
                 ).fetchone()[0]
                 proof_fragment_count = connection.execute(
                     "select count(*) from proof_fragment_surface"
+                ).fetchone()[0]
+                identity_player_count = connection.execute(
+                    "select count(*) from identity_player_surface"
+                ).fetchone()[0]
+                identity_invite_count = connection.execute(
+                    "select count(*) from identity_invite_surface"
+                ).fetchone()[0]
+                identity_key_request_count = connection.execute(
+                    "select count(*) from identity_key_request_surface"
                 ).fetchone()[0]
                 chat_message_count = connection.execute(
                     "select count(*) from chat_message_surface"
@@ -664,6 +754,9 @@ class SqliteProjectionStore:
                 "crew_legacy_count": 0,
                 "proof_dossier_count": 0,
                 "proof_fragment_count": 0,
+                "identity_player_count": 0,
+                "identity_invite_count": 0,
+                "identity_key_request_count": 0,
                 "chat_message_count": 0,
                 "action_count": 0,
                 "pending_decision_count": 0,
@@ -704,6 +797,18 @@ class SqliteProjectionStore:
             ),
             "proof_fragment_count": int(
                 meta.get("proof_fragment_count", str(proof_fragment_count))
+            ),
+            "identity_player_count": int(
+                meta.get("identity_player_count", str(identity_player_count))
+            ),
+            "identity_invite_count": int(
+                meta.get("identity_invite_count", str(identity_invite_count))
+            ),
+            "identity_key_request_count": int(
+                meta.get(
+                    "identity_key_request_count",
+                    str(identity_key_request_count),
+                )
             ),
             "chat_message_count": int(
                 meta.get("chat_message_count", str(chat_message_count))
@@ -805,6 +910,42 @@ class SqliteProjectionStore:
         if row is None:
             raise KeyError(fragment_id)
         return json.loads(row[0])
+
+    def read_admin_players(self) -> list[dict[str, Any]]:
+        with sqlite3.connect(self.path) as connection:
+            self._ensure_schema(connection)
+            rows = connection.execute(
+                """
+                select payload_json
+                from identity_player_surface
+                order by player_id
+                """
+            ).fetchall()
+        return [json.loads(row[0]) for row in rows]
+
+    def read_admin_invites(self) -> list[dict[str, Any]]:
+        with sqlite3.connect(self.path) as connection:
+            self._ensure_schema(connection)
+            rows = connection.execute(
+                """
+                select payload_json
+                from identity_invite_surface
+                order by invite_id
+                """
+            ).fetchall()
+        return [json.loads(row[0]) for row in rows]
+
+    def read_admin_key_requests(self) -> list[dict[str, Any]]:
+        with sqlite3.connect(self.path) as connection:
+            self._ensure_schema(connection)
+            rows = connection.execute(
+                """
+                select payload_json
+                from identity_key_request_surface
+                order by request_id
+                """
+            ).fetchall()
+        return [json.loads(row[0]) for row in rows]
 
     def read_visible_artifacts(
         self,
@@ -1164,6 +1305,43 @@ class SqliteProjectionStore:
         )
         connection.execute(
             """
+            create table if not exists identity_player_surface (
+                player_id text primary key,
+                display_name text not null,
+                token_revoked integer not null,
+                payload_json text not null,
+                updated_sequence integer not null
+            )
+            """
+        )
+        connection.execute(
+            """
+            create table if not exists identity_invite_surface (
+                invite_id text primary key,
+                used integer not null,
+                payload_json text not null,
+                updated_sequence integer not null
+            )
+            """
+        )
+        connection.execute(
+            """
+            create table if not exists identity_key_request_surface (
+                request_id text primary key,
+                status text not null,
+                payload_json text not null,
+                updated_sequence integer not null
+            )
+            """
+        )
+        connection.execute(
+            """
+            create index if not exists idx_identity_key_request_surface_status
+            on identity_key_request_surface (status, request_id)
+            """
+        )
+        connection.execute(
+            """
             create index if not exists idx_proof_fragment_surface_fragment
             on proof_fragment_surface (fragment_id, player_id)
             """
@@ -1440,6 +1618,7 @@ def build_projection_snapshot(events: list[GameEvent]) -> dict[str, Any]:
     oracle_audits = _oracle_audits_from_events(events)
     proof_dossiers = proof_dossiers_from_events(events)
     proof_fragments = proof_fragments_from_events(events)
+    identity_admin_surfaces = identity_admin_surfaces_from_events(events)
     actions_by_crew = _current_actions_by_crew_from_events(events)
     pending_decisions = _pending_decisions_from_projection_inputs(
         board=board,
@@ -1472,6 +1651,7 @@ def build_projection_snapshot(events: list[GameEvent]) -> dict[str, Any]:
         "oracle_audits": oracle_audits,
         "proof_dossiers": proof_dossiers,
         "proof_fragments": proof_fragments,
+        "identity_admin_surfaces": identity_admin_surfaces,
         "actions_by_crew": actions_by_crew,
         "pending_decisions": pending_decisions,
         "visible_rumors_by_crew": visible_rumors_by_crew,

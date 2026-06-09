@@ -6,6 +6,7 @@ from hollow_lodge.domain.contracts import Campaign, Contract
 from hollow_lodge.domain.artifact_graph import ArtifactGraph
 from hollow_lodge.domain.crews import Crew
 from hollow_lodge.domain.events import GameEvent
+from hollow_lodge.domain.identity import AccessKeyRequest, Invite, Player
 from hollow_lodge.server.artifact_seed import (
     STARTER_ARTIFACT_GRAPH,
     STARTER_PUBLIC_ARTIFACT_IDS,
@@ -84,6 +85,94 @@ def crew_summaries_from_events(events: list[GameEvent]) -> dict[str, dict[str, A
             "readiness_warning": crew.readiness_warning,
         }
         for crew_id, crew in sorted(crews.items())
+    }
+
+
+def identity_admin_surfaces_from_events(events: list[GameEvent]) -> dict[str, Any]:
+    players: dict[str, Player] = {}
+    invites: dict[str, Invite] = {}
+    key_requests: dict[str, AccessKeyRequest] = {}
+
+    for event in events:
+        if event.type == "identity.player.registered":
+            invite_hash = event.payload.get("invite_hash")
+            if invite_hash is not None:
+                for invite_id, invite in list(invites.items()):
+                    if invite.invite_hash == invite_hash:
+                        invites[invite_id] = Invite(
+                            invite_id=invite.invite_id,
+                            invite_hash=invite.invite_hash,
+                            used=True,
+                        )
+                        break
+            players[event.payload["player_id"]] = Player(
+                player_id=event.payload["player_id"],
+                display_name=event.payload["display_name"],
+                token_hash=event.payload["token_hash"],
+            )
+        elif event.type == "identity.token.revoked":
+            player = players[event.payload["player_id"]]
+            players[player.player_id] = Player(
+                player_id=player.player_id,
+                display_name=player.display_name,
+                token_hash=player.token_hash,
+                token_revoked=True,
+            )
+        elif event.type == "identity.invite.created":
+            invites[event.payload["invite_id"]] = Invite(
+                invite_id=event.payload["invite_id"],
+                invite_hash=event.payload["invite_hash"],
+                used=event.payload["used"],
+            )
+        elif event.type == "identity.key_request.created":
+            key_requests[event.payload["request_id"]] = AccessKeyRequest(
+                request_id=event.payload["request_id"],
+                display_name=event.payload["display_name"],
+                contact=event.payload.get("contact"),
+                status=event.payload["status"],
+            )
+        elif event.type == "identity.key_request.approved":
+            key_request = key_requests[event.payload["request_id"]]
+            key_requests[key_request.request_id] = AccessKeyRequest(
+                request_id=key_request.request_id,
+                display_name=key_request.display_name,
+                contact=key_request.contact,
+                status=event.payload["status"],
+            )
+            invites[event.payload["invite_id"]] = Invite(
+                invite_id=event.payload["invite_id"],
+                invite_hash=event.payload["invite_hash"],
+                used=event.payload["used"],
+            )
+
+    return {
+        "players": [
+            {
+                "player_id": player.player_id,
+                "display_name": player.display_name,
+                "token_revoked": player.token_revoked,
+            }
+            for player in sorted(players.values(), key=lambda item: item.player_id)
+        ],
+        "invites": [
+            {
+                "invite_id": invite.invite_id,
+                "used": invite.used,
+            }
+            for invite in sorted(invites.values(), key=lambda item: item.invite_id)
+        ],
+        "key_requests": [
+            {
+                "request_id": key_request.request_id,
+                "display_name": key_request.display_name,
+                "contact": key_request.contact,
+                "status": key_request.status,
+            }
+            for key_request in sorted(
+                key_requests.values(),
+                key=lambda item: item.request_id,
+            )
+        ],
     }
 
 

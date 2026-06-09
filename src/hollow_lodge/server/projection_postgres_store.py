@@ -41,6 +41,7 @@ class PostgresProjectionStore:
         crew_legacies = snapshot["crew_legacies"]
         proof_dossiers = snapshot["proof_dossiers"]
         proof_fragments = snapshot["proof_fragments"]
+        identity_admin_surfaces = snapshot["identity_admin_surfaces"]
         chat_messages = snapshot["chat_messages"]
         actions_by_crew = snapshot["actions_by_crew"]
         pending_decisions = snapshot["pending_decisions"]
@@ -65,6 +66,9 @@ class PostgresProjectionStore:
                 "crew_legacy",
                 "proof_dossier",
                 "proof_fragment_surface",
+                "identity_player_surface",
+                "identity_invite_surface",
+                "identity_key_request_surface",
                 "chat_message_surface",
                 "action_surface",
                 "pending_decision_surface",
@@ -286,6 +290,59 @@ class PostgresProjectionStore:
                         last_sequence,
                     ),
                 )
+            for player in identity_admin_surfaces["players"]:
+                connection.execute(
+                    """
+                    insert into identity_player_surface (
+                        player_id,
+                        display_name,
+                        token_revoked,
+                        payload_json,
+                        updated_sequence
+                    ) values (%s, %s, %s, %s::jsonb, %s)
+                    """,
+                    (
+                        player["player_id"],
+                        player["display_name"],
+                        bool(player["token_revoked"]),
+                        _json_dumps(player),
+                        last_sequence,
+                    ),
+                )
+            for invite in identity_admin_surfaces["invites"]:
+                connection.execute(
+                    """
+                    insert into identity_invite_surface (
+                        invite_id,
+                        used,
+                        payload_json,
+                        updated_sequence
+                    ) values (%s, %s, %s::jsonb, %s)
+                    """,
+                    (
+                        invite["invite_id"],
+                        bool(invite["used"]),
+                        _json_dumps(invite),
+                        last_sequence,
+                    ),
+                )
+            for key_request in identity_admin_surfaces["key_requests"]:
+                connection.execute(
+                    """
+                    insert into identity_key_request_surface (
+                        request_id,
+                        status,
+                        payload_json,
+                        updated_sequence
+                    ) values (%s, %s, %s::jsonb, %s)
+                    """,
+                    (
+                        key_request["request_id"],
+                        key_request["status"],
+                        _json_dumps(key_request),
+                        last_sequence,
+                    ),
+                )
             for event in visible_events:
                 payload = event.model_dump(mode="json")
                 connection.execute(
@@ -449,6 +506,21 @@ class PostgresProjectionStore:
             self._set_meta(connection, "crew_legacy_count", str(len(crew_legacies)))
             self._set_meta(connection, "proof_dossier_count", str(len(proof_dossiers)))
             self._set_meta(connection, "proof_fragment_count", str(len(proof_fragments)))
+            self._set_meta(
+                connection,
+                "identity_player_count",
+                str(len(identity_admin_surfaces["players"])),
+            )
+            self._set_meta(
+                connection,
+                "identity_invite_count",
+                str(len(identity_admin_surfaces["invites"])),
+            )
+            self._set_meta(
+                connection,
+                "identity_key_request_count",
+                str(len(identity_admin_surfaces["key_requests"])),
+            )
             self._set_meta(connection, "chat_message_count", str(len(chat_messages)))
             self._set_meta(connection, "action_count", str(action_count))
             self._set_meta(
@@ -510,6 +582,15 @@ class PostgresProjectionStore:
                 ).fetchone()[0]
                 proof_fragment_count = connection.execute(
                     "select count(*) from proof_fragment_surface"
+                ).fetchone()[0]
+                identity_player_count = connection.execute(
+                    "select count(*) from identity_player_surface"
+                ).fetchone()[0]
+                identity_invite_count = connection.execute(
+                    "select count(*) from identity_invite_surface"
+                ).fetchone()[0]
+                identity_key_request_count = connection.execute(
+                    "select count(*) from identity_key_request_surface"
                 ).fetchone()[0]
                 chat_message_count = connection.execute(
                     "select count(*) from chat_message_surface"
@@ -575,6 +656,9 @@ class PostgresProjectionStore:
                 "crew_legacy_count": 0,
                 "proof_dossier_count": 0,
                 "proof_fragment_count": 0,
+                "identity_player_count": 0,
+                "identity_invite_count": 0,
+                "identity_key_request_count": 0,
                 "chat_message_count": 0,
                 "action_count": 0,
                 "pending_decision_count": 0,
@@ -616,6 +700,18 @@ class PostgresProjectionStore:
             ),
             "proof_fragment_count": int(
                 meta.get("proof_fragment_count", str(proof_fragment_count))
+            ),
+            "identity_player_count": int(
+                meta.get("identity_player_count", str(identity_player_count))
+            ),
+            "identity_invite_count": int(
+                meta.get("identity_invite_count", str(identity_invite_count))
+            ),
+            "identity_key_request_count": int(
+                meta.get(
+                    "identity_key_request_count",
+                    str(identity_key_request_count),
+                )
             ),
             "chat_message_count": int(
                 meta.get("chat_message_count", str(chat_message_count))
@@ -717,6 +813,42 @@ class PostgresProjectionStore:
         if row is None:
             raise KeyError(fragment_id)
         return _load_json(row[0])
+
+    def read_admin_players(self) -> list[dict[str, Any]]:
+        with self._connect() as connection:
+            self._ensure_schema(connection)
+            rows = connection.execute(
+                """
+                select payload_json
+                from identity_player_surface
+                order by player_id
+                """
+            ).fetchall()
+        return [_load_json(row[0]) for row in rows]
+
+    def read_admin_invites(self) -> list[dict[str, Any]]:
+        with self._connect() as connection:
+            self._ensure_schema(connection)
+            rows = connection.execute(
+                """
+                select payload_json
+                from identity_invite_surface
+                order by invite_id
+                """
+            ).fetchall()
+        return [_load_json(row[0]) for row in rows]
+
+    def read_admin_key_requests(self) -> list[dict[str, Any]]:
+        with self._connect() as connection:
+            self._ensure_schema(connection)
+            rows = connection.execute(
+                """
+                select payload_json
+                from identity_key_request_surface
+                order by request_id
+                """
+            ).fetchall()
+        return [_load_json(row[0]) for row in rows]
 
     def read_visible_artifacts(
         self,
@@ -1073,6 +1205,43 @@ class PostgresProjectionStore:
             """
             create index if not exists idx_proof_fragment_surface_fragment
             on proof_fragment_surface (fragment_id, player_id)
+            """
+        )
+        connection.execute(
+            """
+            create table if not exists identity_player_surface (
+                player_id text primary key,
+                display_name text not null,
+                token_revoked boolean not null,
+                payload_json jsonb not null,
+                updated_sequence bigint not null
+            )
+            """
+        )
+        connection.execute(
+            """
+            create table if not exists identity_invite_surface (
+                invite_id text primary key,
+                used boolean not null,
+                payload_json jsonb not null,
+                updated_sequence bigint not null
+            )
+            """
+        )
+        connection.execute(
+            """
+            create table if not exists identity_key_request_surface (
+                request_id text primary key,
+                status text not null,
+                payload_json jsonb not null,
+                updated_sequence bigint not null
+            )
+            """
+        )
+        connection.execute(
+            """
+            create index if not exists idx_identity_key_request_surface_status
+            on identity_key_request_surface (status, request_id)
             """
         )
         connection.execute(

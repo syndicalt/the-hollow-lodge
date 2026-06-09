@@ -427,6 +427,64 @@ def test_projection_store_records_schema_migration_ledger(tmp_path):
     assert projection["latest_schema_migration"] == SCHEMA_VERSION
 
 
+def test_projection_store_materializes_identity_admin_surfaces_without_secrets(
+    tmp_path,
+    monkeypatch,
+):
+    monkeypatch.setenv("HOLLOW_LODGE_ADMIN_TOKEN", "admin-secret")
+    client = TestClient(create_app(data_dir=tmp_path, invite_codes=["a"]))
+    key_request = client.post(
+        "/identity/key-requests",
+        json={"display_name": "Grace", "contact": "grace@example.com"},
+        headers={"Idempotency-Key": "key-request-grace"},
+    ).json()
+    invite = client.post(
+        "/identity/admin/invites",
+        headers={
+            "Idempotency-Key": "admin-invite-ada",
+            "X-Hollow-Lodge-Admin-Token": "admin-secret",
+        },
+    ).json()
+    registered = register(client, invite["invite_code"], "Ada")
+    client.post(
+        f"/identity/admin/key-requests/{key_request['request_id']}/approve",
+        headers={
+            "Idempotency-Key": "approve-request-grace",
+            "X-Hollow-Lodge-Admin-Token": "admin-secret",
+        },
+    )
+
+    projection = client.app.state.projection_store
+    diagnostics = projection.diagnostics()
+
+    assert diagnostics["identity_player_count"] == 1
+    assert diagnostics["identity_invite_count"] == 2
+    assert diagnostics["identity_key_request_count"] == 1
+    assert projection.read_admin_players() == [
+        {
+            "player_id": registered["player_id"],
+            "display_name": "Ada",
+            "token_revoked": False,
+        }
+    ]
+    assert projection.read_admin_key_requests() == [
+        {
+            "request_id": key_request["request_id"],
+            "display_name": "Grace",
+            "contact": "grace@example.com",
+            "status": "approved",
+        }
+    ]
+    stored = (tmp_path / "server-projections.sqlite3").read_text(
+        encoding="utf-8",
+        errors="ignore",
+    )
+    assert registered["token"] not in stored
+    assert "token_hash" not in stored
+    assert invite["invite_code"] not in stored
+    assert "grace@example.com" in stored
+
+
 def test_projection_store_materializes_visible_chat_messages_without_bystander_access(
     tmp_path,
 ):
