@@ -2752,6 +2752,28 @@ Expected verification:
 - `pytest tests/server/test_app_config.py tests/server/test_projection_store.py tests/eventlog/test_postgres_store.py -q`
 - `pytest -q`
 
+### Slice 109: Safe Diagnostics Collection Fallbacks
+
+Status: completed.
+
+Make `/diagnostics` resilient to unexpected diagnostics-provider failures. If
+`event_store.diagnostics()` raises, the endpoint now returns a safe
+`event_log.status=unavailable` block with backend/path metadata when available,
+safe counts, and exception type only. If `projection_store.diagnostics()`
+raises, the endpoint returns a safe `projection_db.status=unavailable` block
+with the known authoritative sequence, lag when computable, zeroed counts, and
+exception type only.
+
+This keeps hosted readiness checks from turning into HTTP 500s or leaking raw
+database/provider error text while still failing readiness smoke through
+unavailable status and nonzero/unknown lag.
+
+Expected verification:
+
+- `pytest tests/server/test_app_config.py::test_diagnostics_reports_safe_unavailable_event_log_on_unexpected_error tests/server/test_app_config.py::test_diagnostics_reports_safe_unavailable_projection_on_unexpected_error -q`
+- `pytest tests/server/test_app_config.py tests/server/test_projection_store.py tests/e2e/test_projection_backend_smoke.py tests/client/test_cli_commands.py -q`
+- `pytest -q`
+
 ## Completion Standard
 
 Each slice must:

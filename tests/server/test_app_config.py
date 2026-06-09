@@ -252,6 +252,78 @@ def test_diagnostics_marks_projection_unavailable_when_event_log_head_unavailabl
     assert projection["lag"] is None
 
 
+def test_diagnostics_reports_safe_unavailable_event_log_on_unexpected_error(
+    tmp_path,
+    monkeypatch,
+):
+    client = TestClient(create_app(data_dir=tmp_path))
+
+    def fail_event_log_diagnostics():
+        raise RuntimeError("raw event diagnostics postgresql://user:secret@host/db")
+
+    monkeypatch.setattr(
+        client.app.state.event_store,
+        "diagnostics",
+        fail_event_log_diagnostics,
+    )
+
+    response = client.get("/diagnostics")
+    body = response.json()
+
+    assert response.status_code == 200
+    assert body["data"]["event_log"]["backend"] == "jsonl"
+    assert body["data"]["event_log"]["status"] == "unavailable"
+    assert body["data"]["event_log"]["error_type"] == "RuntimeError"
+    assert body["data"]["projection_db"]["status"] == "unavailable"
+    assert body["data"]["projection_db"]["authoritative_last_sequence"] is None
+    assert body["data"]["projection_db"]["lag"] is None
+    assert "secret" not in response.text
+    assert "postgresql://user" not in response.text
+
+
+def test_diagnostics_reports_safe_unavailable_projection_on_unexpected_error(
+    tmp_path,
+    monkeypatch,
+):
+    client = TestClient(create_app(data_dir=tmp_path))
+
+    monkeypatch.setattr(
+        client.app.state.event_store,
+        "diagnostics",
+        lambda: {
+            "backend": "jsonl",
+            "path": str(tmp_path / "server-events.jsonl"),
+            "exists": True,
+            "status": "available",
+            "event_count": 7,
+            "last_sequence": 7,
+            "last_event_hash": "event-hash-7",
+            "event_hash_chain_sha256": "a" * 64,
+        },
+    )
+
+    def fail_projection_diagnostics(*, authoritative_last_sequence=None):
+        raise RuntimeError("raw projection diagnostics postgresql://user:secret@host/db")
+
+    monkeypatch.setattr(
+        client.app.state.projection_store,
+        "diagnostics",
+        fail_projection_diagnostics,
+    )
+
+    response = client.get("/diagnostics")
+    projection = response.json()["data"]["projection_db"]
+
+    assert response.status_code == 200
+    assert projection["backend"] == "sqlite"
+    assert projection["status"] == "unavailable"
+    assert projection["authoritative_last_sequence"] == 7
+    assert projection["lag"] == 7
+    assert projection["error_type"] == "RuntimeError"
+    assert "secret" not in response.text
+    assert "postgresql://user" not in response.text
+
+
 def test_projection_store_defaults_to_sqlite_backend(tmp_path):
     client = TestClient(create_app(data_dir=tmp_path))
 

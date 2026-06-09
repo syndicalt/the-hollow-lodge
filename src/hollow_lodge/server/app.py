@@ -143,7 +143,7 @@ def create_app(
 
     @app.get("/diagnostics", tags=["system"])
     def diagnostics() -> dict[str, Any]:
-        event_log_diagnostics = app.state.event_store.diagnostics()
+        event_log_diagnostics = _event_log_diagnostics(app.state.event_store)
         return {
             "server": {"version": __version__},
             "oracle": oracle_diagnostics_from_env(
@@ -207,6 +207,88 @@ def _startup_bootstrap_error(context: str, exc: Exception) -> RuntimeError:
     )
 
 
+def _event_log_diagnostics(event_store: Any) -> dict[str, Any]:
+    try:
+        return event_store.diagnostics()
+    except Exception as exc:
+        diagnostics: dict[str, Any] = {
+            "backend": _store_backend(event_store),
+            "exists": False,
+            "status": "unavailable",
+            "event_count": 0,
+            "last_sequence": None,
+            "last_event_hash": None,
+            "event_hash_chain_sha256": None,
+            "error_type": exc.__class__.__name__,
+        }
+        path = getattr(event_store, "path", None)
+        if path is not None:
+            diagnostics["path"] = str(path)
+        safe_database_url = getattr(event_store, "safe_database_url", None)
+        if safe_database_url is not None:
+            diagnostics["database_url"] = str(safe_database_url)
+        database_url_env = getattr(event_store, "database_url_env", None)
+        if database_url_env is not None:
+            diagnostics["database_url_env"] = str(database_url_env)
+        return diagnostics
+
+
+def _projection_unavailable_diagnostics(
+    projection_store: Any,
+    *,
+    authoritative_last_sequence: int | None,
+    error_type: str,
+) -> dict[str, Any]:
+    authoritative = authoritative_last_sequence or 0
+    diagnostics: dict[str, Any] = {
+        "backend": _store_backend(projection_store),
+        "exists": False,
+        "status": "unavailable",
+        "schema_version": None,
+        "last_sequence": 0,
+        "authoritative_last_sequence": authoritative_last_sequence,
+        "lag": None if authoritative_last_sequence is None else authoritative,
+        "contract_count": 0,
+        "crew_count": 0,
+        "deal_count": 0,
+        "crew_legacy_count": 0,
+        "proof_dossier_count": 0,
+        "proof_fragment_count": 0,
+        "chat_message_count": 0,
+        "action_count": 0,
+        "pending_decision_count": 0,
+        "visible_rumor_count": 0,
+        "contract_unlock_count": 0,
+        "oracle_audit_count": 0,
+        "artifact_inspection_count": 0,
+        "schema_migration_count": 0,
+        "latest_schema_migration": None,
+        "visible_event_count": 0,
+        "public_artifact_count": 0,
+        "scoped_artifact_count": 0,
+        "error_type": error_type,
+    }
+    path = getattr(projection_store, "path", None)
+    if path is not None:
+        diagnostics["path"] = str(path)
+    safe_database_url = getattr(projection_store, "safe_database_url", None)
+    if safe_database_url is not None:
+        diagnostics["database_url"] = str(safe_database_url)
+    database_url_env = getattr(projection_store, "database_url_env", None)
+    if database_url_env is not None:
+        diagnostics["database_url_env"] = str(database_url_env)
+    return diagnostics
+
+
+def _store_backend(store: Any) -> str:
+    backend = getattr(store, "backend", None)
+    if backend is not None:
+        return str(backend)
+    if getattr(store, "path", None) is not None:
+        return "jsonl"
+    return "unknown"
+
+
 def _projection_diagnostics_from_event_log(
     state: Any,
     event_log_diagnostics: dict[str, Any],
@@ -215,18 +297,32 @@ def _projection_diagnostics_from_event_log(
         event_log_diagnostics
     )
     if authoritative_last_sequence is None:
-        projection_diagnostics = state.projection_store.diagnostics(
-            authoritative_last_sequence=0
-        )
+        try:
+            projection_diagnostics = state.projection_store.diagnostics(
+                authoritative_last_sequence=0
+            )
+        except Exception as exc:
+            return _projection_unavailable_diagnostics(
+                state.projection_store,
+                authoritative_last_sequence=None,
+                error_type=exc.__class__.__name__,
+            )
         return {
             **projection_diagnostics,
             "status": "unavailable",
             "authoritative_last_sequence": None,
             "lag": None,
         }
-    return state.projection_store.diagnostics(
-        authoritative_last_sequence=authoritative_last_sequence
-    )
+    try:
+        return state.projection_store.diagnostics(
+            authoritative_last_sequence=authoritative_last_sequence
+        )
+    except Exception as exc:
+        return _projection_unavailable_diagnostics(
+            state.projection_store,
+            authoritative_last_sequence=authoritative_last_sequence,
+            error_type=exc.__class__.__name__,
+        )
 
 
 def _authoritative_last_sequence_from_diagnostics(

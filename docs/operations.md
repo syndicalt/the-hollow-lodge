@@ -44,6 +44,11 @@ process raises a bounded error that names the bootstrap stage and exception
 type without including raw database URLs, API keys, invite codes, or provider
 messages.
 
+Unexpected `/diagnostics` collection failures fail closed. If an event-log or
+projection diagnostic provider raises, the endpoint returns an unavailable
+diagnostic block with only safe backend metadata and exception type, rather
+than returning HTTP 500 or exposing raw database/provider exception text.
+
 ## Authoritative Event Log
 
 The authoritative game record is the append-only Eventloom log. Local
