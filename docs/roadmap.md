@@ -286,6 +286,10 @@ Status:
   crew-board reads can now use a safe per-crew unlock status read model when the
   projection is fresh, keeping raw seed requirements, hidden truth, and artifact
   graph internals out of the database surface.
+- Diagnostics projection lag chain-head completed: `/diagnostics` now reuses
+  event-log diagnostics to compute projection lag, avoiding an extra full
+  Eventloom replay after the event-log status block has already supplied the
+  authoritative chain head.
 
 Proof gate:
 
@@ -479,6 +483,10 @@ Status:
   `unlock_status` rows can now be read from SQLite/Postgres projections by
   `/contracts` and crew boards when fresh, while stale or unavailable state falls
   back to the existing Eventloom-derived unlock calculation.
+- Diagnostics projection lag chain-head completed: `/diagnostics` now feeds
+  projection diagnostics from the event-log diagnostic `last_sequence`, and
+  marks projection lag unavailable if the authoritative event-log diagnostics
+  cannot provide a valid chain head.
 - Admin oracle audit surface completed: operators can inspect redacted
   provider, validation, fallback, count, and hash evidence for server-only
   oracle audit events without exposing raw oracle inputs, hidden truth, or
@@ -2496,6 +2504,28 @@ Expected verification:
 
 - `pytest tests/server/test_projection_store.py::test_projection_store_materializes_contract_unlocks_without_hidden_rules tests/server/test_projection_store.py::test_contract_board_applies_fresh_projected_unlock_statuses tests/server/test_projection_store.py::test_contract_unlock_projection_falls_back_when_stale tests/server/test_projection_store.py::test_crew_board_applies_fresh_projected_unlock_statuses -q`
 - `pytest tests/server/test_projection_store.py tests/server/test_contract_seed.py tests/server/test_crew_routes.py tests/server/test_deal_routes.py tests/server/test_app_config.py tests/e2e/test_projection_backend_smoke.py tests/client/test_cli_commands.py tests/client/test_render_packets.py tests/test_mcp_server.py -q`
+- `pytest -q`
+
+### Slice 99: Diagnostics Projection Lag Chain-Head
+
+Status: completed.
+
+Remove the extra authoritative Eventloom replay from `/diagnostics` projection
+lag reporting. The diagnostics route now computes event-log diagnostics once,
+passes that safe `last_sequence` into projection diagnostics, and reports
+projection lag from the same chain head already shown in the event-log status
+block.
+
+If event-log diagnostics are unavailable or return a malformed chain head,
+projection diagnostics fail closed for lag reporting by marking the projection
+status unavailable and setting `authoritative_last_sequence` and `lag` to null.
+This preserves operational visibility without claiming a fresh read model when
+the source-of-truth chain head cannot be established.
+
+Expected verification:
+
+- `pytest tests/server/test_app_config.py::test_diagnostics_uses_event_log_diagnostics_for_projection_lag tests/server/test_app_config.py::test_diagnostics_marks_projection_unavailable_when_event_log_head_unavailable -q`
+- `pytest tests/server/test_app_config.py tests/server/test_projection_store.py tests/e2e/test_projection_backend_smoke.py tests/client/test_cli_commands.py -q`
 - `pytest -q`
 
 ## Completion Standard

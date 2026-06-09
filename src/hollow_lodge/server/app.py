@@ -137,6 +137,7 @@ def create_app(
 
     @app.get("/diagnostics", tags=["system"])
     def diagnostics() -> dict[str, Any]:
+        event_log_diagnostics = app.state.event_store.diagnostics()
         return {
             "server": {"version": __version__},
             "oracle": oracle_diagnostics_from_env(
@@ -144,11 +145,10 @@ def create_app(
             ),
             "data": {
                 "directory": str(root),
-                "event_log": app.state.event_store.diagnostics(),
-                "projection_db": app.state.projection_store.diagnostics(
-                    authoritative_last_sequence=_last_event_sequence(
-                        app.state.event_store.read()
-                    )
+                "event_log": event_log_diagnostics,
+                "projection_db": _projection_diagnostics_from_event_log(
+                    app.state,
+                    event_log_diagnostics,
                 ),
                 "projection_reads": projection_read_diagnostics(),
                 "projection_refresh": projection_refresh_diagnostics(app.state),
@@ -172,6 +172,42 @@ def _oracle_provider_name(oracle: ResolutionOracle) -> str:
 
 def _last_event_sequence(events: list[Any]) -> int:
     return events[-1].sequence if events else 0
+
+
+def _projection_diagnostics_from_event_log(
+    state: Any,
+    event_log_diagnostics: dict[str, Any],
+) -> dict[str, Any]:
+    authoritative_last_sequence = _authoritative_last_sequence_from_diagnostics(
+        event_log_diagnostics
+    )
+    if authoritative_last_sequence is None:
+        projection_diagnostics = state.projection_store.diagnostics(
+            authoritative_last_sequence=0
+        )
+        return {
+            **projection_diagnostics,
+            "status": "unavailable",
+            "authoritative_last_sequence": None,
+            "lag": None,
+        }
+    return state.projection_store.diagnostics(
+        authoritative_last_sequence=authoritative_last_sequence
+    )
+
+
+def _authoritative_last_sequence_from_diagnostics(
+    event_log_diagnostics: dict[str, Any],
+) -> int | None:
+    if event_log_diagnostics.get("status") == "unavailable":
+        return None
+    sequence = event_log_diagnostics.get("last_sequence")
+    if sequence is None:
+        return 0
+    try:
+        return int(sequence)
+    except (TypeError, ValueError):
+        return None
 
 
 app = create_app()

@@ -145,6 +145,13 @@ chain diagnostics instead of replaying the full Eventloom log. If the
 authoritative event-log diagnostics are unavailable or malformed, projected
 reads fail closed and routes use their existing Eventloom fallback paths.
 
+The `/diagnostics` projection database block uses the same event-log diagnostic
+chain head for `authoritative_last_sequence` and `lag`. In Postgres event-log
+mode, diagnostics therefore do not replay full event payloads just to calculate
+projection lag after the event-log status block has already produced safe chain
+metadata. If the event-log chain head is unavailable or malformed, projection
+lag is reported as unavailable rather than fresh.
+
 When those fallback paths need full events for read-only derivations such as
 contract unlocks, crew legacy, or pending-decision context, the server reuses a
 request-scoped authoritative event snapshot. The snapshot is not retained

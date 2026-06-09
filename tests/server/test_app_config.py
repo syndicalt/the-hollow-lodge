@@ -102,6 +102,100 @@ def test_diagnostics_reports_existing_event_log(tmp_path):
     assert len(event_log_diagnostics["event_hash_chain_sha256"]) == 64
 
 
+def test_diagnostics_uses_event_log_diagnostics_for_projection_lag(
+    tmp_path,
+    monkeypatch,
+):
+    client = TestClient(create_app(data_dir=tmp_path))
+    original_projection_diagnostics = client.app.state.projection_store.diagnostics
+    calls = {"event_log_diagnostics": 0, "projection_authoritative": None}
+
+    def tracked_event_log_diagnostics():
+        calls["event_log_diagnostics"] += 1
+        return {
+            "backend": "postgres",
+            "database_url": "postgresql://user:***@host:5432/hollow_lodge",
+            "database_url_env": "HOLLOW_LODGE_EVENT_DATABASE_URL",
+            "exists": True,
+            "status": "available",
+            "event_count": 12,
+            "last_sequence": 12,
+            "last_event_hash": "hash_12",
+            "event_hash_chain_sha256": "a" * 64,
+        }
+
+    def tracked_projection_diagnostics(*, authoritative_last_sequence=None):
+        calls["projection_authoritative"] = authoritative_last_sequence
+        return original_projection_diagnostics(
+            authoritative_last_sequence=authoritative_last_sequence
+        )
+
+    monkeypatch.setattr(
+        client.app.state.event_store,
+        "diagnostics",
+        tracked_event_log_diagnostics,
+    )
+    monkeypatch.setattr(
+        client.app.state.event_store,
+        "read",
+        lambda **_: (_ for _ in ()).throw(
+            AssertionError("diagnostics should not replay the event log")
+        ),
+    )
+    monkeypatch.setattr(
+        client.app.state.projection_store,
+        "diagnostics",
+        tracked_projection_diagnostics,
+    )
+
+    response = client.get("/diagnostics")
+    body = response.json()
+
+    assert response.status_code == 200
+    assert calls["event_log_diagnostics"] == 1
+    assert calls["projection_authoritative"] == 12
+    assert body["data"]["event_log"]["last_sequence"] == 12
+    assert body["data"]["projection_db"]["lag"] == (
+        12 - body["data"]["projection_db"]["last_sequence"]
+    )
+
+
+def test_diagnostics_marks_projection_unavailable_when_event_log_head_unavailable(
+    tmp_path,
+    monkeypatch,
+):
+    client = TestClient(create_app(data_dir=tmp_path))
+    monkeypatch.setattr(
+        client.app.state.event_store,
+        "diagnostics",
+        lambda: {
+            "backend": "jsonl",
+            "path": str(tmp_path / "server-events.jsonl"),
+            "exists": True,
+            "status": "unavailable",
+            "event_count": 0,
+            "last_sequence": None,
+            "last_event_hash": None,
+            "event_hash_chain_sha256": None,
+        },
+    )
+    monkeypatch.setattr(
+        client.app.state.event_store,
+        "read",
+        lambda **_: (_ for _ in ()).throw(
+            AssertionError("diagnostics should not replay unavailable event log")
+        ),
+    )
+
+    response = client.get("/diagnostics")
+    projection = response.json()["data"]["projection_db"]
+
+    assert response.status_code == 200
+    assert projection["status"] == "unavailable"
+    assert projection["authoritative_last_sequence"] is None
+    assert projection["lag"] is None
+
+
 def test_projection_store_defaults_to_sqlite_backend(tmp_path):
     client = TestClient(create_app(data_dir=tmp_path))
 
