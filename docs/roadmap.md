@@ -2328,6 +2328,29 @@ Expected verification:
 - `pytest tests/server/test_projection_store.py tests/server/test_crew_routes.py tests/server/test_chat_routes.py tests/server/test_deal_routes.py tests/server/test_app_config.py tests/client/test_render_packets.py tests/test_mcp_server.py -q`
 - `pytest -q`
 
+### Slice 93: Projection Readiness Cache
+
+Status: completed.
+
+Reduce repeated authoritative event-log replays during projection-backed read
+requests. Projected read helpers now share a request-scoped freshness check:
+the first enabled projection surface on a request reads the authoritative chain
+head, asks the projection store for diagnostics, and caches that bounded
+diagnostic packet on `request.state`. Subsequent projection surfaces in the
+same request reuse the cached status and lag result before reading their
+projection table.
+
+This keeps the Eventloom log authoritative and keeps stale/unavailable
+projection fallback semantics unchanged, while avoiding one full event-log read
+per enabled projection surface on dense Codex surfaces such as `/inbox` and
+crew boards. No projection schema change is required.
+
+Expected verification:
+
+- `pytest tests/server/test_projection_store.py::test_inbox_projection_reads_share_request_freshness_check tests/server/test_projection_store.py::test_inbox_and_crew_board_read_fresh_pending_decision_projection_when_enabled tests/server/test_projection_store.py::test_contract_board_route_reads_projection_when_global_flag_enabled tests/server/test_projection_store.py::test_crew_board_reads_fresh_projected_crew_summary_when_enabled -q`
+- `pytest tests/server/test_projection_store.py tests/server/test_app_config.py tests/server/test_crew_routes.py tests/server/test_contract_seed.py tests/server/test_deal_routes.py tests/server/test_chat_routes.py tests/server/test_event_sync.py tests/server/test_artifact_routes.py tests/server/test_proof_routes.py tests/client/test_render_packets.py tests/test_mcp_server.py tests/e2e/test_projection_backend_smoke.py -q`
+- `pytest -q`
+
 ## Completion Standard
 
 Each slice must:

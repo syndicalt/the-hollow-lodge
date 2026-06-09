@@ -16,7 +16,7 @@ from hollow_lodge.server.projected_dossiers import projected_proof_dossier
 from hollow_lodge.server.projected_legacy import projected_crew_legacy
 from hollow_lodge.server.projected_pending_decisions import projected_pending_decisions
 from hollow_lodge.server.projected_rumors import projected_visible_rumors_for_crew
-from hollow_lodge.server.projection_config import projection_read_enabled
+from hollow_lodge.server.projection_readiness import projection_read_ready
 from hollow_lodge.server.runtime_services import (
     ensure_deal_service,
     refresh_projection_store,
@@ -200,14 +200,7 @@ def _dossier_for_crew(request: Request, *, player_id: str, crew_id: str) -> dict
 
 
 def _projected_crew_summary(request: Request, crew_id: str) -> dict | None:
-    if not projection_read_enabled("HOLLOW_LODGE_CREW_SUMMARY_PROJECTION_READS"):
-        return None
-    events = request.app.state.event_store.read()
-    authoritative_last_sequence = events[-1].sequence if events else 0
-    diagnostics = request.app.state.projection_store.diagnostics(
-        authoritative_last_sequence=authoritative_last_sequence,
-    )
-    if diagnostics.get("status") != "available" or diagnostics.get("lag") != 0:
+    if not projection_read_ready(request, "HOLLOW_LODGE_CREW_SUMMARY_PROJECTION_READS"):
         return None
     try:
         return request.app.state.projection_store.read_crew_summary(crew_id)

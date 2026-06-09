@@ -19,7 +19,7 @@ from hollow_lodge.server.projected_deals import projected_visible_deals
 from hollow_lodge.server.projected_dossiers import projected_proof_dossier
 from hollow_lodge.server.projected_pending_decisions import projected_pending_decisions
 from hollow_lodge.server.projected_rumors import projected_visible_rumors_for_crew
-from hollow_lodge.server.projection_config import projection_read_enabled
+from hollow_lodge.server.projection_readiness import projection_read_ready
 from hollow_lodge.server.projections import (
     apply_contract_unlock_status,
     crew_legacy_from_contracts,
@@ -202,14 +202,10 @@ def _board_for_player_with_unlocks(request: Request, player_id: str) -> dict:
 
 
 def _projection_contract_board(request: Request) -> dict | None:
-    if not projection_read_enabled("HOLLOW_LODGE_CONTRACT_BOARD_PROJECTION_READS"):
-        return None
-    events = request.app.state.event_store.read()
-    authoritative_last_sequence = events[-1].sequence if events else 0
-    diagnostics = request.app.state.projection_store.diagnostics(
-        authoritative_last_sequence=authoritative_last_sequence,
-    )
-    if diagnostics.get("status") != "available" or diagnostics.get("lag") != 0:
+    if not projection_read_ready(
+        request,
+        "HOLLOW_LODGE_CONTRACT_BOARD_PROJECTION_READS",
+    ):
         return None
     try:
         return request.app.state.projection_store.read_contract_board()

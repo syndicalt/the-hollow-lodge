@@ -783,6 +783,48 @@ def test_inbox_and_crew_board_read_fresh_pending_decision_projection_when_enable
     assert crew_board.json()["pending_decisions"] == inbox.json()["pending_decisions"]
 
 
+def test_inbox_projection_reads_share_request_freshness_check(tmp_path, monkeypatch):
+    monkeypatch.setenv("HOLLOW_LODGE_ARTIFACT_PROJECTION_READS", "1")
+    monkeypatch.setenv("HOLLOW_LODGE_DEAL_PROJECTION_READS", "1")
+    monkeypatch.setenv("HOLLOW_LODGE_PENDING_DECISION_PROJECTION_READS", "1")
+    client = TestClient(create_app(data_dir=tmp_path, invite_codes=["a", "b"]))
+    ada = register(client, "a", "Ada")
+    bela = register(client, "b", "Bela")
+    gilt = create_crew(client, ada["token"], "crew-create-gilt", "The Gilt Knives")
+    moth = create_crew(client, bela["token"], "crew-create-moth", "The Moth Choir")
+    proposed = client.post(
+        "/deals",
+        headers=command_auth(ada["token"], "deal-propose"),
+        json=proposed_deal_payload(gilt, moth),
+    )
+    original_diagnostics = client.app.state.projection_store.diagnostics
+    diagnostics_calls = {"count": 0}
+
+    def tracked_diagnostics(*, authoritative_last_sequence=None):
+        diagnostics_calls["count"] += 1
+        return original_diagnostics(
+            authoritative_last_sequence=authoritative_last_sequence,
+        )
+
+    client.app.state.projection_store.diagnostics = tracked_diagnostics
+
+    response = client.get("/inbox", headers=auth(bela["token"]))
+
+    assert proposed.status_code == 201
+    assert response.status_code == 200
+    assert diagnostics_calls["count"] == 1
+    assert response.json()["deals"] == [proposed.json()]
+    assert any(
+        decision["kind"] == "incoming_deal"
+        and decision["deal_id"] == proposed.json()["deal_id"]
+        for decision in response.json()["pending_decisions"]
+    )
+    assert {
+        artifact["artifact_id"]
+        for artifact in response.json()["visible_artifacts"]
+    } == {"artifact_lot_card", "artifact_ledger_rubric"}
+
+
 def test_pending_decision_projection_reads_fall_back_when_stale(tmp_path, monkeypatch):
     monkeypatch.setenv("HOLLOW_LODGE_PENDING_DECISION_PROJECTION_READS", "1")
     client = TestClient(create_app(data_dir=tmp_path, invite_codes=["a"]))
