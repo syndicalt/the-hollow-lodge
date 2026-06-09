@@ -20,6 +20,37 @@ def auth(token: str) -> dict[str, str]:
     return {"Authorization": f"Bearer {token}"}
 
 
+def ash_seed_with_follow_up_title(title: str) -> dict:
+    seed = json.loads(Path("tests/fixtures/ash_window_contract.json").read_text(encoding="utf-8"))
+    follow_up = json.loads(Path("tests/fixtures/ash_window_contract.json").read_text(encoding="utf-8"))
+    follow_up["contract"]["contract_id"] = "contract_glass_chapel"
+    follow_up["contract"]["title"] = title
+    follow_up["contract"]["phase"]["name"] = "Chapel Preview"
+    follow_up["contract"]["arc"] = {
+        "arc_id": "arc_cinders_below",
+        "title": "Cinders Below",
+        "chapter": 3,
+        "sequence": 30,
+        "public_summary": "The Lodge follows the window ash into chapel glass.",
+        "previous_contract_id": "contract_ash_window",
+    }
+    follow_up["hidden_truth"]["truth_id"] = "truth_glass_chapel"
+    follow_up["hidden_truth"]["summary"] = "The chapel glass remembers every arsonist."
+    follow_up["artifact_graph"]["contract_id"] = "contract_glass_chapel"
+    for artifact in follow_up["artifact_graph"]["artifacts"]:
+        artifact["contract_id"] = "contract_glass_chapel"
+    for rule in follow_up["artifact_graph"]["unlock_rules"]:
+        rule["contract_id"] = "contract_glass_chapel"
+    seed["phase_followups"] = [
+        {
+            "phase": "Cinder Preview",
+            "trigger": "phase_resolved",
+            "seed": follow_up,
+        }
+    ]
+    return seed
+
+
 def test_starter_contract_seed_is_visible_without_hidden_truth(tmp_path):
     client = TestClient(create_app(data_dir=tmp_path, invite_codes=["a"]))
     ada = register(client, "a", "Ada")
@@ -773,6 +804,37 @@ def test_contract_activation_replay_rejects_different_arc_metadata(
         "/contracts/admin/activate",
         headers={
             "Idempotency-Key": "activate-arc-ash-window",
+            "X-Hollow-Lodge-Admin-Token": "admin-secret",
+        },
+        json={"seed": changed_seed},
+    )
+
+    assert first.status_code == 201
+    assert conflict.status_code == 409
+    assert conflict.json()["detail"] == "idempotency key conflict"
+
+
+def test_contract_activation_replay_rejects_different_follow_up_seed(
+    tmp_path,
+    monkeypatch,
+):
+    monkeypatch.setenv("HOLLOW_LODGE_ADMIN_TOKEN", "admin-secret")
+    seed = ash_seed_with_follow_up_title("The Glass Chapel")
+    changed_seed = ash_seed_with_follow_up_title("The Chapel Under Glass")
+    client = TestClient(create_app(data_dir=tmp_path, invite_codes=["a"]))
+
+    first = client.post(
+        "/contracts/admin/activate",
+        headers={
+            "Idempotency-Key": "activate-follow-up-ash-window",
+            "X-Hollow-Lodge-Admin-Token": "admin-secret",
+        },
+        json={"seed": seed},
+    )
+    conflict = client.post(
+        "/contracts/admin/activate",
+        headers={
+            "Idempotency-Key": "activate-follow-up-ash-window",
             "X-Hollow-Lodge-Admin-Token": "admin-secret",
         },
         json={"seed": changed_seed},

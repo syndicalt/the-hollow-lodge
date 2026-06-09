@@ -38,7 +38,7 @@ from hollow_lodge.server.projections import (
     legacy_delta_for_standing,
     rumor_memory_from_events,
 )
-from hollow_lodge.server.contract_seed import ContractSeed, PhaseReward
+from hollow_lodge.server.contract_seed import ContractSeed, PhaseFollowUp, PhaseReward
 from hollow_lodge.server.seed_data import STARTER_CAMPAIGN, STARTER_CONTRACT, STARTER_HIDDEN_TRUTH
 from hollow_lodge.server.auth import authenticate_token
 from hollow_lodge.server.rumors import visible_rumors_for_crew
@@ -1020,6 +1020,10 @@ class ContractService:
                     "phase_rewards": [
                         reward.model_dump(mode="json") for reward in seed.phase_rewards
                     ],
+                    "phase_followups": [
+                        follow_up.model_dump(mode="json")
+                        for follow_up in seed.phase_followups
+                    ],
                     "unlock_requirements": [
                         requirement.model_dump(mode="json")
                         for requirement in seed.unlock_requirements
@@ -1116,6 +1120,10 @@ class ContractService:
                     phase=phase_name,
                     reveal=existing.payload["reveal"],
                 )
+                self._activate_auction_preview_phase_followups(
+                    contract_id=contract_id,
+                    phase=phase_name,
+                )
                 return existing.payload["reveal"]
             resolved = self._resolved_auction_preview(
                 contract_id=contract_id,
@@ -1131,6 +1139,10 @@ class ContractService:
                     contract=contract,
                     phase=phase_name,
                     reveal=resolved,
+                )
+                self._activate_auction_preview_phase_followups(
+                    contract_id=contract_id,
+                    phase=phase_name,
                 )
                 return resolved
             if (
@@ -1182,6 +1194,10 @@ class ContractService:
                 contract=contract,
                 phase=phase_name,
                 reveal=reveal,
+            )
+            self._activate_auction_preview_phase_followups(
+                contract_id=contract_id,
+                phase=phase_name,
             )
             return reveal
 
@@ -1274,6 +1290,10 @@ class ContractService:
                 "phase_rewards": [
                     reward.model_dump(mode="json") for reward in seed.phase_rewards
                 ],
+                "phase_followups": [
+                    follow_up.model_dump(mode="json")
+                    for follow_up in seed.phase_followups
+                ],
                 "unlock_requirements": [
                     requirement.model_dump(mode="json")
                     for requirement in seed.unlock_requirements
@@ -1350,6 +1370,25 @@ class ContractService:
                 crew_id=leader_crew_id,
                 artifact_id=reward.artifact_id,
                 reason=reward.reason,
+            )
+
+    def _activate_auction_preview_phase_followups(
+        self,
+        *,
+        contract_id: str,
+        phase: str,
+    ) -> None:
+        phase_key = re.sub(r"[^a-z0-9]+", "-", phase.casefold()).strip("-")
+        for follow_up in self._phase_followups_for_contract(contract_id):
+            if follow_up.phase != phase or follow_up.trigger != "phase_resolved":
+                continue
+            self.activate_contract_seed(
+                seed=follow_up.seed,
+                actor_id="server",
+                idempotency_key=(
+                    f"auto-activate.{contract_id}.{phase_key}."
+                    f"{follow_up.seed.contract.contract_id}"
+                ),
             )
 
     def _record_auction_preview_legacy_deltas(
@@ -1714,6 +1753,20 @@ class ContractService:
                 return tuple(
                     PhaseReward.model_validate(reward)
                     for reward in payload.get("phase_rewards", ())
+                )
+        return ()
+
+    def _phase_followups_for_contract(self, contract_id: str) -> tuple[PhaseFollowUp, ...]:
+        for event in reversed(self._event_store.read()):
+            if event.type != "artifact.graph.seeded":
+                continue
+            payload = event.payload
+            graph_payload = payload.get("graph", payload)
+            graph = ArtifactGraph.model_validate(graph_payload)
+            if graph.contract_id == contract_id:
+                return tuple(
+                    PhaseFollowUp.model_validate(follow_up)
+                    for follow_up in payload.get("phase_followups", ())
                 )
         return ()
 

@@ -122,6 +122,73 @@ def test_contract_seed_accepts_public_campaign_arc_metadata():
     assert seed.contract.arc.previous_contract_id == "contract_false_finger"
 
 
+def test_contract_seed_accepts_phase_resolved_follow_up_contract_seed():
+    raw = json.loads(FIXTURE.read_text(encoding="utf-8"))
+    follow_up = json.loads(FIXTURE.read_text(encoding="utf-8"))
+    follow_up["contract"]["contract_id"] = "contract_glass_chapel"
+    follow_up["contract"]["title"] = "The Glass Chapel"
+    follow_up["contract"]["phase"]["name"] = "Chapel Preview"
+    follow_up["contract"]["arc"] = {
+        "arc_id": "arc_cinders_below",
+        "title": "Cinders Below",
+        "chapter": 3,
+        "sequence": 30,
+        "public_summary": "The Lodge follows the window ash into chapel glass.",
+        "previous_contract_id": "contract_ash_window",
+    }
+    follow_up["hidden_truth"]["truth_id"] = "truth_glass_chapel"
+    follow_up["hidden_truth"]["summary"] = "The chapel glass remembers every arsonist."
+    follow_up["artifact_graph"]["contract_id"] = "contract_glass_chapel"
+    for artifact in follow_up["artifact_graph"]["artifacts"]:
+        artifact["contract_id"] = "contract_glass_chapel"
+    for rule in follow_up["artifact_graph"]["unlock_rules"]:
+        rule["contract_id"] = "contract_glass_chapel"
+    raw["phase_followups"] = [
+        {
+            "phase": "Cinder Preview",
+            "trigger": "phase_resolved",
+            "seed": follow_up,
+        }
+    ]
+
+    seed = ContractSeed.model_validate(raw)
+
+    assert seed.phase_followups[0].phase == "Cinder Preview"
+    assert seed.phase_followups[0].seed.contract.contract_id == "contract_glass_chapel"
+    assert seed.phase_followups[0].seed.hidden_truth.summary == (
+        "The chapel glass remembers every arsonist."
+    )
+
+
+def test_contract_seed_rejects_follow_up_for_unknown_phase():
+    raw = json.loads(FIXTURE.read_text(encoding="utf-8"))
+    follow_up = json.loads(FIXTURE.read_text(encoding="utf-8"))
+    follow_up["contract"]["contract_id"] = "contract_glass_chapel"
+    follow_up["contract"]["arc"] = {
+        "arc_id": "arc_cinders_below",
+        "title": "Cinders Below",
+        "chapter": 3,
+        "sequence": 30,
+        "public_summary": "The Lodge follows the window ash into chapel glass.",
+        "previous_contract_id": "contract_ash_window",
+    }
+    follow_up["artifact_graph"]["contract_id"] = "contract_glass_chapel"
+    for artifact in follow_up["artifact_graph"]["artifacts"]:
+        artifact["contract_id"] = "contract_glass_chapel"
+    for rule in follow_up["artifact_graph"]["unlock_rules"]:
+        rule["contract_id"] = "contract_glass_chapel"
+    raw["phase_followups"] = [
+        {
+            "phase": "Missing Preview",
+            "trigger": "phase_resolved",
+            "seed": follow_up,
+        }
+    ]
+
+    with pytest.raises(ValueError, match="unknown phase follow-up phase"):
+        ContractSeed.model_validate(raw)
+
+
 def test_contract_seed_rejects_arc_previous_link_to_self():
     raw = json.loads(FIXTURE.read_text(encoding="utf-8"))
     raw["contract"]["arc"] = {

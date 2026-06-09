@@ -20,6 +20,14 @@ class PhaseReward(BaseModel):
     reason: str = Field(min_length=1)
 
 
+class PhaseFollowUp(BaseModel):
+    model_config = ConfigDict(frozen=True)
+
+    phase: str = Field(min_length=1)
+    trigger: Literal["phase_resolved"]
+    seed: ContractSeed
+
+
 class ContractUnlockRequirement(BaseModel):
     model_config = ConfigDict(frozen=True)
 
@@ -66,6 +74,7 @@ class ContractSeed(BaseModel):
     public_artifact_ids: tuple[str, ...] = Field(default_factory=tuple)
     scoring_hints: dict[str, Any] = Field(default_factory=dict)
     phase_rewards: tuple[PhaseReward, ...] = Field(default_factory=tuple)
+    phase_followups: tuple[PhaseFollowUp, ...] = Field(default_factory=tuple)
     unlock_requirements: tuple[ContractUnlockRequirement, ...] = Field(default_factory=tuple)
 
     @model_validator(mode="after")
@@ -86,6 +95,21 @@ class ContractSeed(BaseModel):
                 raise ValueError(f"unknown phase reward artifact: {reward.artifact_id}")
             if reward.phase != self.contract.phase.name:
                 raise ValueError(f"unknown phase reward phase: {reward.phase}")
+        for follow_up in self.phase_followups:
+            if follow_up.phase != self.contract.phase.name:
+                raise ValueError(f"unknown phase follow-up phase: {follow_up.phase}")
+            if follow_up.seed.contract.contract_id == self.contract.contract_id:
+                raise ValueError("phase follow-up cannot reference parent contract")
+            if follow_up.seed.contract.campaign_id != self.contract.campaign_id:
+                raise ValueError("phase follow-up campaign mismatch")
+            if (
+                follow_up.seed.contract.arc is None
+                or follow_up.seed.contract.arc.previous_contract_id
+                != self.contract.contract_id
+            ):
+                raise ValueError(
+                    "phase follow-up arc previous contract must reference parent contract"
+                )
         return self
 
 

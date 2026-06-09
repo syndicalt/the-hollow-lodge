@@ -39,6 +39,9 @@ The next work should harden the actual game loop before expanding content.
 - Add content through data and contract seeds rather than hard-coded branches.
 - No reward hacking: tests must prove player-facing behavior or server
   invariants, not implementation trivia.
+- The append-only event log remains authoritative, but the read side is nearing
+  the point where JSONL scans should give way to database-backed projections for
+  contracts, crew legacy, artifacts, unlocks, and activity summaries.
 
 ## Milestone 1: Playable Alpha Loop
 
@@ -283,8 +286,12 @@ Status:
   crew containment, exploitation, or integration follow-through from repeated
   credible rumor signals, using only safe aggregate legacy counts to unlock
   future opportunities.
-- Deferred: multi-day campaign arc authoring, deeper death/legacy inheritance,
-  and additional long-term unlock paths.
+- Follow-up contract activation completed: contract seeds can now carry
+  server-only phase-resolved follow-up seeds, letting a resolved chapter
+  publish the next arc contract through normal lifecycle events without exposing
+  hidden truth or authoring rules.
+- Deferred: deeper death/legacy inheritance, additional long-term unlock paths,
+  and database-backed projection storage for heavier campaign reads.
 
 Likely files:
 
@@ -1045,6 +1052,25 @@ Expected verification:
 
 - `pytest tests/server/test_contract_seed_pipeline.py::test_contract_seed_accepts_rumor_escalation_unlock_requirement tests/server/test_contract_seed.py::test_rumor_escalation_unlock_requires_matching_crew_follow_through -q`
 - `pytest tests/server/test_contract_seed_pipeline.py tests/server/test_contract_seed.py tests/server/test_crew_routes.py tests/server/test_crew_legacy_projection.py tests/client/test_render_packets.py -q`
+- `pytest -q`
+
+### Slice 39: Phase-Resolved Follow-Up Contract Activation
+
+Status: completed.
+
+Add the first real campaign-arc authoring hook. Contract seeds can now include
+server-only `phase_followups` that embed a validated follow-up contract seed
+for the same campaign. When the source phase resolves, the server activates the
+follow-up seed with deterministic idempotency keys, publishing only the normal
+public board and lifecycle events for the new contract while keeping hidden
+truth, artifact graph internals, unlock requirements, and follow-up authoring
+rules out of visible event streams. Replaying the phase lock or restarting from
+the event log does not duplicate the follow-up activation.
+
+Expected verification:
+
+- `pytest tests/server/test_contract_seed_pipeline.py::test_contract_seed_accepts_phase_resolved_follow_up_contract_seed tests/server/test_contract_seed_pipeline.py::test_contract_seed_rejects_follow_up_for_unknown_phase tests/server/test_contract_seed.py::test_contract_activation_replay_rejects_different_follow_up_seed tests/server/test_phase_resolution.py::test_seeded_phase_resolution_publishes_follow_up_contract_without_hidden_leak -q`
+- `pytest tests/server/test_contract_seed_pipeline.py tests/server/test_contract_seed.py tests/server/test_phase_resolution.py tests/server/test_artifact_routes.py tests/e2e/test_contract_content_pipeline.py tests/client/test_render_packets.py -q`
 - `pytest -q`
 
 ## Completion Standard

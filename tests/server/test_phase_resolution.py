@@ -1,4 +1,6 @@
 import hashlib
+import json
+from pathlib import Path
 
 from fastapi.testclient import TestClient
 
@@ -101,6 +103,113 @@ def lock_ash_window(client: TestClient, player: dict, key: str, hours_elapsed: i
         headers=command_auth(player["token"], key),
         json={"hours_elapsed": hours_elapsed},
     )
+
+
+def ash_window_seed_with_glass_chapel_follow_up() -> dict:
+    seed = json.loads(Path("tests/fixtures/ash_window_contract.json").read_text(encoding="utf-8"))
+    seed["contract"]["arc"] = {
+        "arc_id": "arc_cinders_below",
+        "title": "Cinders Below",
+        "chapter": 2,
+        "sequence": 20,
+        "public_summary": "The Lodge follows fire omens from auction catalogues into old glass.",
+        "previous_contract_id": "contract_false_finger",
+        "next_contract_hint": "A burned ledger points toward the chapel undercroft.",
+    }
+    follow_up = json.loads(json.dumps(seed))
+    follow_up["contract"]["contract_id"] = "contract_glass_chapel"
+    follow_up["contract"]["title"] = "The Glass Chapel"
+    follow_up["contract"]["premise"] = (
+        "A chapel window shows saints with soot under their fingernails."
+    )
+    follow_up["contract"]["phase"] = {"name": "Chapel Preview", "remaining_hours": 8}
+    follow_up["contract"]["evidence_assets"] = [
+        {
+            "asset_id": "asset_glass_chapel_notice",
+            "title": "Glass chapel notice",
+            "public_summary": "A chapel repair notice lists glass removed before the fire.",
+        }
+    ]
+    follow_up["contract"]["proof_dossier_needs"] = [
+        "chapel provenance",
+        "glass residue",
+        "saint iconography",
+    ]
+    follow_up["contract"]["arc"] = {
+        "arc_id": "arc_cinders_below",
+        "title": "Cinders Below",
+        "chapter": 3,
+        "sequence": 30,
+        "public_summary": "The Lodge follows the window ash into chapel glass.",
+        "previous_contract_id": "contract_ash_window",
+    }
+    follow_up["hidden_truth"] = {
+        "truth_id": "truth_glass_chapel",
+        "summary": "The chapel glass remembers every arsonist.",
+    }
+    follow_up["artifact_graph"]["contract_id"] = "contract_glass_chapel"
+    follow_up["artifact_graph"]["artifacts"] = [
+        {
+            "artifact_id": "artifact_glass_notice",
+            "contract_id": "contract_glass_chapel",
+            "kind": "catalogue",
+            "title": "Glass Chapel Notice",
+            "public_summary": "A repair notice puts chapel glass out of sequence.",
+            "full_text": "Notice: chapel glass removed before the reported fire.",
+            "tags": ["glass", "chapel", "notice"],
+            "proof_lanes": ["provenance", "material"],
+            "phase_relevance": ["Chapel Preview"],
+            "visible_flags": ["public-notice"],
+        },
+        {
+            "artifact_id": "artifact_saint_glass",
+            "contract_id": "contract_glass_chapel",
+            "kind": "receipt",
+            "title": "Saint Glass Receipt",
+            "public_summary": "A receipt mentions soot under the painted saint hands.",
+            "full_text": "Receipt: soot is trapped under saint-hand pigment.",
+            "tags": ["soot", "saint", "glass"],
+            "proof_lanes": ["material", "occult"],
+            "phase_relevance": ["Chapel Preview"],
+            "hidden_flags": ["arson-memory"],
+        },
+    ]
+    follow_up["artifact_graph"]["edges"] = [
+        {
+            "source_id": "artifact_glass_notice",
+            "target_id": "artifact_saint_glass",
+            "relation": "points_to",
+            "public_summary": "The glass notice points toward saint-hand soot.",
+        }
+    ]
+    follow_up["artifact_graph"]["unlock_rules"] = [
+        {
+            "rule_id": "unlock-saint-glass",
+            "artifact_id": "artifact_saint_glass",
+            "contract_id": "contract_glass_chapel",
+            "phase": "Chapel Preview",
+            "trigger": "action_mentions_tag",
+            "required_terms": ["saint"],
+            "award_scope": "crew",
+            "award_reason": "Followed the chapel notice to the saint glass.",
+        }
+    ]
+    follow_up["public_artifact_ids"] = ["artifact_glass_notice"]
+    follow_up["scoring_hints"] = {
+        "rubric_hooks": ["chapel provenance", "glass residue", "saint iconography"],
+        "allowed_reveal_strings": [
+            "Chapel provenance is now suspect.",
+            "Saint glass points toward another lead.",
+        ],
+    }
+    seed["phase_followups"] = [
+        {
+            "phase": "Cinder Preview",
+            "trigger": "phase_resolved",
+            "seed": follow_up,
+        }
+    ]
+    return seed
 
 
 def test_auction_preview_reveal_scores_crews_without_hidden_truth_leak(tmp_path):
@@ -207,6 +316,69 @@ def test_activated_contract_phase_resolves_with_seed_truth_and_reveal_bounds(tmp
     assert "cinder oracle" not in str(reveal)
     assert "cinder oracle" not in board.text
     assert "contract.hidden_truth.seeded" not in events.text
+
+
+def test_seeded_phase_resolution_publishes_follow_up_contract_without_hidden_leak(
+    tmp_path,
+    monkeypatch,
+):
+    monkeypatch.setenv("HOLLOW_LODGE_ADMIN_TOKEN", "admin-secret")
+    client = TestClient(create_app(data_dir=tmp_path, invite_codes=["a", "b"]))
+    activated = client.post(
+        "/contracts/admin/activate",
+        headers={
+            "Idempotency-Key": "activate-ash-window-with-follow-up",
+            "X-Hollow-Lodge-Admin-Token": "admin-secret",
+        },
+        json={"seed": ash_window_seed_with_glass_chapel_follow_up()},
+    )
+    ada = register(client, "a", "Ada")
+    linus = register(client, "b", "Linus")
+    gilt = create_crew(client, ada["token"], "crew-create-gilt", "The Gilt Knives")
+    moth = create_crew(client, linus["token"], "crew-create-moth", "The Moth Choir")
+    set_claim(client, ada, gilt, "claim-gilt", "The window proves an impossible fire chronology.")
+    submit_action(
+        client,
+        ada,
+        gilt,
+        "action-gilt",
+        "Compare the ash notice timestamp with the soot cooling pattern.",
+    )
+    set_claim(client, linus, moth, "claim-moth", "The ash notice is just auction theater.")
+    submit_action(
+        client,
+        linus,
+        moth,
+        "action-moth",
+        "Interview the witness about the recovered window frame.",
+    )
+    board_before = client.get("/contracts", headers=auth(ada["token"]))
+
+    resolved = lock_ash_window(client, ada, "phase-lock-ash-follow-up")
+    replay = lock_ash_window(client, ada, "phase-lock-ash-follow-up")
+    board_after = client.get("/contracts", headers=auth(ada["token"]))
+    visible_events = client.get("/events", headers=auth(ada["token"]))
+
+    assert activated.status_code == 201
+    assert "contract_glass_chapel" not in board_before.text
+    assert resolved.status_code == 200
+    assert replay.status_code == 200
+    rendered = {
+        contract["contract_id"]: contract
+        for contract in board_after.json()["contracts"]
+    }
+    assert rendered["contract_glass_chapel"]["title"] == "The Glass Chapel"
+    assert rendered["contract_glass_chapel"]["phase"]["name"] == "Chapel Preview"
+    assert rendered["contract_glass_chapel"]["lifecycle_status"] == "active"
+    assert rendered["contract_glass_chapel"]["arc"]["previous_contract_id"] == (
+        "contract_ash_window"
+    )
+    event_log = (tmp_path / "server-events.jsonl").read_text(encoding="utf-8")
+    assert event_log.count('"contract_id":"contract_glass_chapel"') >= 1
+    assert event_log.count('"idempotency_key":"auto-activate.contract_ash_window.cinder-preview.contract_glass_chapel"') == 1
+    assert "contract.hidden_truth.seeded" not in visible_events.text
+    assert "phase_followups" not in visible_events.text
+    assert "chapel glass remembers" not in visible_events.text
 
 
 def test_artifact_citations_flow_into_oracle_scoring_packet(tmp_path):
