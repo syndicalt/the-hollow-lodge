@@ -24,7 +24,10 @@ def test_full_game_loop_with_escrow_trade(tmp_path):
     assert result["gilt_board"]["dossier"]["artifact_citations"]
     assert result["moth_board"]["dossier"]["artifact_citations"]
     assert result["reveal"]["standings"]
+    assert result["codex_packets"][0] == "what_now"
+    assert result["codex_packets"][1:3] == ["contract_board", "artifact_graph"]
     assert result["codex_packets"] == [
+        "what_now",
         "contract_board",
         "artifact_graph",
         "mutation",
@@ -105,6 +108,46 @@ def test_full_game_loop_with_escrow_trade(tmp_path):
         {"operation": "phase_lock", "confirmed": False},
         {"operation": "phase_lock", "confirmed": True},
     ]
+    assert result["initial_what_now"]["surface"] == "what_now"
+    assert result["initial_what_now"]["agent_context"]["mutation"] is False
+    assert (
+        result["initial_what_now"]["agent_context"]["player"]["player_id"]
+        == "player_0001"
+    )
+    assert (
+        result["initial_what_now"]["agent_context"]["player"]["display_name"]
+        == "Ada Corelumen"
+    )
+    assert (
+        result["initial_what_now"]["agent_context"]["player"]["active_crew_id"]
+        == result["gilt_crew_id"]
+    )
+    assert (
+        result["initial_what_now"]["agent_context"]["summary_counts"]["active_contracts"]
+        == 1
+    )
+    assert "What Now: Ada Corelumen" in result["initial_what_now"]["player_markdown"]
+    assert "- active contracts: 1" in result["initial_what_now"]["player_markdown"]
+    serialized_initial = str(result["initial_what_now"])
+    for forbidden in (
+        "hidden_truth",
+        "hidden_truth_summary",
+        "contract.hidden_truth.seeded",
+        "server_only",
+        "visibility",
+        "oracle.resolution",
+        "accepted_output",
+        "accepted_output_hash",
+        "input_packet_hash",
+        "provider",
+        "model",
+        "prompt_version",
+        "validation_status",
+        "fallback_reason",
+        "token",
+        "join_code",
+    ):
+        assert forbidden not in serialized_initial
     assert "Acceptance preview:" in "\n".join(result["lines"])
     assert "codex mutation previews/confirms:" in "\n".join(result["lines"])
     assert "The Saint's False Finger" in "\n".join(result["lines"])

@@ -44,6 +44,7 @@ def run_mock(data_dir: str) -> dict[str, Any]:
     )
 
     contract_board = _get(client, "/contracts", headers=ada_headers)
+    initial_what_now_packet = ada_session.render_what_now()
     initial_contract_packet = ada_session.render_contract_board()
     initial_artifact_packet = ada_session.render_artifacts()
     artifact_inspect_preview = ada_session.inspect_artifact(
@@ -280,6 +281,7 @@ def run_mock(data_dir: str) -> dict[str, Any]:
     final_crew_activity_packet = ada_session.render_crew_activity()
     final_activity_packet = ada_session.render_activity()
     codex_packets = [
+        initial_what_now_packet,
         initial_contract_packet,
         initial_artifact_packet,
         artifact_inspect_preview,
@@ -359,6 +361,8 @@ def run_mock(data_dir: str) -> dict[str, Any]:
     ]
     lines = [
         f"contract: {contract_board['contracts'][0]['title']} / {contract_board['contracts'][0]['phase']['name']}",
+        "initial what now:",
+        initial_what_now_packet.player_markdown,
         "initial contract board:",
         initial_contract_packet.player_markdown,
         "initial artifact graph:",
@@ -418,6 +422,7 @@ def run_mock(data_dir: str) -> dict[str, Any]:
     ]
     return {
         "deal": fulfilled,
+        "gilt_crew_id": gilt["crew_id"],
         "moth_crew_id": moth["crew_id"],
         "grace_player_id": grace["player_id"],
         "gilt_received_artifact_id": gilt_received,
@@ -429,6 +434,7 @@ def run_mock(data_dir: str) -> dict[str, Any]:
         "action_award_timeline": action_award_timeline,
         "codex_packets": [packet.surface for packet in codex_packets],
         "codex_mutations": codex_mutations,
+        "initial_what_now": initial_what_now_packet.model_dump(mode="json"),
         "final_dossier": final_dossier_packet.model_dump(mode="json"),
         "thread": thread_packet.model_dump(mode="json"),
         "final_activity_delta": final_activity_delta_packet.model_dump(mode="json"),

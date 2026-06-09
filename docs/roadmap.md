@@ -4176,6 +4176,29 @@ Expected verification:
 - `pytest tests/e2e/test_full_game_loop_with_escrow.py tests/client/test_contract_board.py tests/client/test_render_packets.py tests/client/test_codex_session.py tests/server/test_phase_resolution.py tests/server/test_resolution_oracle.py tests/workflows/test_oracle_boundary.py -q`
 - `pytest -q`
 
+### Slice 173: Full Loop What-Now Entry Proof Gate
+
+Status: completed.
+
+Strengthen the playable-loop smoke so the two-crew Codex playthrough starts
+from the same landing surface the play guide recommends. The mock now renders
+`render_what_now` before lower-level contract, artifact, deal, dossier, or
+activity surfaces, includes it as the first Codex packet in the transcript,
+and returns the structured initial packet for assertions.
+
+The e2e proof verifies that the initial `what_now` packet is non-mutating,
+belongs to Ada Corelumen, points at the active Gilt crew, reports the active
+contract count, renders the expected player-facing landing text, and omits
+hidden truth, server-only visibility metadata, raw oracle/audit fields, auth
+tokens, and crew join codes. This keeps the proof aligned with the intended
+inside-Codex entrypoint instead of starting from lower-level boards.
+
+Expected verification:
+
+- `pytest tests/e2e/test_full_game_loop_with_escrow.py::test_full_game_loop_with_escrow_trade -q`
+- `pytest tests/e2e/test_full_game_loop_with_escrow.py tests/e2e/test_codex_render_surfaces.py tests/client/test_render_packets.py tests/client/test_codex_session.py tests/test_mcp_server.py tests/client/test_installer_script.py tests/client/test_cli_commands.py -q`
+- `pytest -q`
+
 ## Completion Standard
 
 Each slice must:
