@@ -18,6 +18,7 @@ from hollow_lodge.server.projected_artifacts import projected_visible_artifacts
 from hollow_lodge.server.projected_deals import projected_visible_deals
 from hollow_lodge.server.projected_dossiers import projected_proof_dossier
 from hollow_lodge.server.projected_pending_decisions import projected_pending_decisions
+from hollow_lodge.server.projected_rumors import projected_visible_rumors_for_crew
 from hollow_lodge.server.projection_config import projection_read_enabled
 from hollow_lodge.server.projections import (
     apply_contract_unlock_status,
@@ -137,10 +138,6 @@ def inbox(
         crew_id: _deals_for_crew(request, player.player_id, crew_id)
         for crew_id in crew_ids
     }
-    rumors_by_crew = {
-        crew_id: visible_rumors_for_crew(request.app.state.event_store, crew_id)
-        for crew_id in crew_ids
-    }
     projected_decisions = projected_pending_decisions(
         request,
         player.player_id,
@@ -170,7 +167,10 @@ def inbox(
                 crew_id: _current_actions_for_crew(request, crew_id)
                 for crew_id in crew_ids
             },
-            rumors_by_crew=rumors_by_crew,
+            rumors_by_crew={
+                crew_id: _visible_rumors_for_crew(request, crew_id)
+                for crew_id in crew_ids
+            },
             crew_legacies={
                 crew_id: crew_legacy_from_contracts(
                     crew_id=crew_id,
@@ -302,6 +302,13 @@ def _current_actions_for_crew(request: Request, crew_id: str) -> list[dict]:
     if projected is not None:
         return projected
     return _action_service(request).current_actions_for_crew(crew_id)
+
+
+def _visible_rumors_for_crew(request: Request, crew_id: str) -> list[dict]:
+    projected = projected_visible_rumors_for_crew(request, crew_id)
+    if projected is not None:
+        return projected
+    return visible_rumors_for_crew(request.app.state.event_store, crew_id)
 
 
 def _parse_contract_seed(seed: Any) -> ContractSeed:

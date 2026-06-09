@@ -2306,6 +2306,28 @@ Expected verification:
 - `pytest tests/server/test_projection_store.py tests/server/test_crew_routes.py tests/server/test_chat_routes.py tests/server/test_deal_routes.py tests/server/test_app_config.py tests/e2e/test_projection_backend_smoke.py tests/client/test_cli_commands.py -q`
 - `pytest -q`
 
+### Slice 92: Inbox Rumor Projection Reads
+
+Status: completed.
+
+Reuse the safe visible-rumor projection for inbox pending-decision fallback
+without changing the authoritative Eventloom write path. When
+`HOLLOW_LODGE_RUMOR_PROJECTION_READS=1`, `/inbox` now supplies local
+pending-decision calculation with `visible_rumor_surface` rows only if the
+projection is available and has zero lag. Stale or unavailable projection state
+falls back to the existing crew-scoped event-log visibility replay.
+
+This slice does not advance the projection schema because it reuses the
+version `6` rumor read model from Slice 91. It also avoids building replayed
+rumor inputs when `HOLLOW_LODGE_PENDING_DECISION_PROJECTION_READS=1` has
+already supplied fresh pending decisions.
+
+Expected verification:
+
+- `pytest tests/server/test_projection_store.py::test_inbox_pending_decisions_use_projected_visible_rumors_when_enabled tests/server/test_projection_store.py::test_inbox_visible_rumors_fall_back_when_projection_is_stale -q`
+- `pytest tests/server/test_projection_store.py tests/server/test_crew_routes.py tests/server/test_chat_routes.py tests/server/test_deal_routes.py tests/server/test_app_config.py tests/client/test_render_packets.py tests/test_mcp_server.py -q`
+- `pytest -q`
+
 ## Completion Standard
 
 Each slice must:
