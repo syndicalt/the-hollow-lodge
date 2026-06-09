@@ -4552,6 +4552,33 @@ Expected verification:
 - `pytest tests/e2e/test_mcp_codex_play_loop.py tests/test_mcp_server.py tests/client/test_artifact_render.py tests/client/test_codex_session.py tests/client/test_render_packets.py tests/server/test_artifact_routes.py tests/server/test_artifact_projections.py tests/e2e/test_artifact_game_loop.py -q`
 - `pytest -q`
 
+### Slice 188: Actual MCP Action Revision Proof Gate
+
+Status: completed.
+
+Extend the real MCP-boundary play loop so submitted freeform actions remain
+editable and cancelable inside Codex before phase lock. The actual MCP e2e now
+submits two actions, renders the pre-revision crew board, previews and confirms
+`edit_action` for the first action, previews and confirms `cancel_action` for
+the second action, and renders the post-revision crew board before locking the
+phase.
+
+The proof verifies revision preview/confirm semantics, shaped action mutation
+results, the pre-lock pending-decision transition from two submitted action ids
+to only the edited action id, and activity counts for submitted, edited, and
+canceled actions. The canceled noisy action remains absent from the final
+pending decision and does not change the resolved `Strong lead (94)` result,
+while the serialized MCP packet leakage guard now covers private cancel
+metadata such as `private_reason` alongside hidden truth, server-only fields,
+oracle audit metadata, auth material, hashes, idempotency keys, and raw event
+envelopes.
+
+Expected verification:
+
+- `pytest tests/e2e/test_mcp_codex_play_loop.py -q`
+- `pytest tests/e2e/test_mcp_codex_play_loop.py tests/e2e/test_action_revision_loop.py tests/test_mcp_server.py tests/client/test_codex_session.py tests/client/test_render_packets.py tests/server/test_action_routes.py tests/server/test_phase_resolution.py -q`
+- `pytest -q`
+
 ## Completion Standard
 
 Each slice must:

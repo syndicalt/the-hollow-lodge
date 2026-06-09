@@ -118,9 +118,15 @@ def test_player_can_progress_contract_through_actual_mcp_tools(tmp_path, monkeyp
         path = url.removeprefix("http://testserver")
         return client.patch(path, headers=headers, json=json)
 
+    def fake_delete(url, headers=None, timeout=None):
+        assert url.startswith("http://testserver")
+        path = url.removeprefix("http://testserver")
+        return client.delete(path, headers=headers)
+
     monkeypatch.setattr(httpx, "get", fake_get)
     monkeypatch.setattr(httpx, "post", fake_post)
     monkeypatch.setattr(httpx, "patch", fake_patch)
+    monkeypatch.setattr(httpx, "delete", fake_delete)
 
     landing = _assert_packet(_call_tool("render_what_now"), surface="what_now")
     assert landing["agent_context"]["mutation"] is False
@@ -688,13 +694,57 @@ def test_player_can_progress_contract_through_actual_mcp_tools(tmp_path, monkeyp
         "status": "submitted",
     }
 
-    crew_board = _assert_packet(
+    second_action_preview = _assert_packet(
+        _call_tool(
+            "submit_action",
+            {
+                "crew_id": crew["crew_id"],
+                "intent": "Pressure the auction clerk loudly about the debt mark.",
+                "confirm": False,
+            },
+        ),
+        surface="mutation",
+    )
+    assert second_action_preview["agent_context"] == {
+        "operation": "submit_action",
+        "mutation": False,
+        "confirmed": False,
+        "preview": {
+            "crew_id": crew["crew_id"],
+            "intent": "Pressure the auction clerk loudly about the debt mark.",
+        },
+    }
+
+    second_action_confirm = _assert_packet(
+        _call_tool(
+            "submit_action",
+            {
+                "crew_id": crew["crew_id"],
+                "intent": "Pressure the auction clerk loudly about the debt mark.",
+                "confirm": True,
+            },
+        ),
+        surface="mutation",
+    )
+    assert second_action_confirm["agent_context"] == {
+        "operation": "submit_action",
+        "mutation": True,
+        "confirmed": True,
+        "result": {
+            "action_id": "action_000002",
+            "crew_id": crew["crew_id"],
+            "intent": "Pressure the auction clerk loudly about the debt mark.",
+            "status": "submitted",
+        },
+    }
+
+    pre_revision_board = _assert_packet(
         _call_tool("render_crew_board", {"crew_id": crew["crew_id"]}),
         surface="crew_board",
     )
     action_decisions = [
         decision
-        for decision in crew_board["agent_context"]["pending_decisions"]
+        for decision in pre_revision_board["agent_context"]["pending_decisions"]
         if decision["kind"] == "contract_action"
     ]
     assert action_decisions == [
@@ -708,10 +758,118 @@ def test_player_can_progress_contract_through_actual_mcp_tools(tmp_path, monkeyp
             "crew_id": crew["crew_id"],
             "contract_id": "contract_false_finger",
             "action": "review_submitted_action",
+            "action_ids": ["action_000001", "action_000002"],
+        }
+    ]
+    assert "Submitted action open for edits" in pre_revision_board["player_markdown"]
+
+    edit_action_preview = _assert_packet(
+        _call_tool(
+            "edit_action",
+            {
+                "action_id": "action_000001",
+                "intent": (
+                    "Compare the red ledger's provenance date against the chapel "
+                    "timestamp."
+                ),
+                "confirm": False,
+            },
+        ),
+        surface="mutation",
+    )
+    assert edit_action_preview["agent_context"] == {
+        "operation": "edit_action",
+        "mutation": False,
+        "confirmed": False,
+        "preview": {
+            "action_id": "action_000001",
+            "intent": (
+                "Compare the red ledger's provenance date against the chapel "
+                "timestamp."
+            ),
+        },
+    }
+
+    edit_action_confirm = _assert_packet(
+        _call_tool(
+            "edit_action",
+            {
+                "action_id": "action_000001",
+                "intent": (
+                    "Compare the red ledger's provenance date against the chapel "
+                    "timestamp."
+                ),
+                "confirm": True,
+            },
+        ),
+        surface="mutation",
+    )
+    assert edit_action_confirm["agent_context"] == {
+        "operation": "edit_action",
+        "mutation": True,
+        "confirmed": True,
+        "result": {
+            "action_id": "action_000001",
+            "crew_id": crew["crew_id"],
+            "intent": (
+                "Compare the red ledger's provenance date against the chapel "
+                "timestamp."
+            ),
+            "status": "submitted",
+        },
+    }
+
+    cancel_action_preview = _assert_packet(
+        _call_tool("cancel_action", {"action_id": "action_000002", "confirm": False}),
+        surface="mutation",
+    )
+    assert cancel_action_preview["agent_context"] == {
+        "operation": "cancel_action",
+        "mutation": False,
+        "confirmed": False,
+        "preview": {"action_id": "action_000002"},
+    }
+
+    cancel_action_confirm = _assert_packet(
+        _call_tool("cancel_action", {"action_id": "action_000002", "confirm": True}),
+        surface="mutation",
+    )
+    assert cancel_action_confirm["agent_context"] == {
+        "operation": "cancel_action",
+        "mutation": True,
+        "confirmed": True,
+        "result": {
+            "action_id": "action_000002",
+            "crew_id": crew["crew_id"],
+            "intent": "Pressure the auction clerk loudly about the debt mark.",
+            "status": "canceled",
+        },
+    }
+
+    crew_board = _assert_packet(
+        _call_tool("render_crew_board", {"crew_id": crew["crew_id"]}),
+        surface="crew_board",
+    )
+    post_revision_decisions = [
+        decision
+        for decision in crew_board["agent_context"]["pending_decisions"]
+        if decision["kind"] == "contract_action"
+    ]
+    assert post_revision_decisions == [
+        {
+            "kind": "contract_action",
+            "label": "Submitted action open for edits",
+            "description": (
+                "The Saint's False Finger has submitted action(s) that can still "
+                "be reviewed, edited, or canceled before lock."
+            ),
+            "crew_id": crew["crew_id"],
+            "contract_id": "contract_false_finger",
+            "action": "review_submitted_action",
             "action_ids": ["action_000001"],
         }
     ]
-    assert "Submitted action open for edits" in crew_board["player_markdown"]
+    assert "action_000002" not in str(post_revision_decisions)
 
     lock_preview = _assert_packet(
         _call_tool(
@@ -788,7 +946,9 @@ def test_player_can_progress_contract_through_actual_mcp_tools(tmp_path, monkeyp
 
     activity = _assert_packet(_call_tool("render_activity"), surface="activity")
     assert activity["agent_context"]["event_type_counts"]["artifact.inspected"] == 1
-    assert activity["agent_context"]["event_type_counts"]["action.submitted"] == 1
+    assert activity["agent_context"]["event_type_counts"]["action.submitted"] == 2
+    assert activity["agent_context"]["event_type_counts"]["action.edited"] == 1
+    assert activity["agent_context"]["event_type_counts"]["action.canceled"] == 1
     assert activity["agent_context"]["event_type_counts"]["contract.phase.resolved"] == 1
     assert "phase result:" in activity["player_markdown"]
 
@@ -817,6 +977,13 @@ def test_player_can_progress_contract_through_actual_mcp_tools(tmp_path, monkeyp
             framing_preview,
             framing_confirm,
             dossier,
+            second_action_preview,
+            second_action_confirm,
+            pre_revision_board,
+            edit_action_preview,
+            edit_action_confirm,
+            cancel_action_preview,
+            cancel_action_confirm,
             crew_board,
             contract_board,
             activity,
@@ -828,6 +995,7 @@ def test_player_can_progress_contract_through_actual_mcp_tools(tmp_path, monkeyp
         "contract.hidden_truth.seeded",
         "server_only",
         "server_notes",
+        "private_reason",
         "visibility",
         "oracle.resolution",
         "accepted_output",
