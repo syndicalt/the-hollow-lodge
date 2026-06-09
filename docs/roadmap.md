@@ -3461,6 +3461,26 @@ Expected verification:
 - `pytest tests/client/test_cli_commands.py tests/client/test_installer_script.py tests/client/test_codex_mcp_config.py -q`
 - `pytest -q`
 
+### Slice 140: Doctor Inbox Readiness Validation
+
+Status: completed.
+
+Harden the installed-player proof gate by making `hollow-lodge doctor` verify
+that a registered client can fetch the authenticated inbox landing payload used
+by Codex render surfaces. Saved configs now report a redacted inbox status,
+including a safe active-contract count when the read succeeds.
+
+The inbox check remains read-only and is skipped for pending onboarding or
+unconfigured installs. Failures and player-id mismatches are bounded to
+`failed` or `mismatch` without echoing bearer tokens, server error text,
+unexpected player ids, contract titles, or other gameplay payload details.
+
+Expected verification:
+
+- `pytest tests/client/test_cli_commands.py::test_doctor_reports_registered_player_and_mcp_without_secret_material tests/client/test_cli_commands.py::test_doctor_reports_pending_onboarding_without_contact tests/client/test_cli_commands.py::test_doctor_reports_unconfigured_install_and_unreachable_server tests/client/test_cli_commands.py::test_doctor_reports_failed_saved_auth_without_leaking_error tests/client/test_cli_commands.py::test_doctor_reports_saved_auth_player_mismatch_without_leaking_token tests/client/test_cli_commands.py::test_doctor_reports_failed_inbox_without_leaking_error_or_payload tests/client/test_cli_commands.py::test_doctor_reports_inbox_player_mismatch_without_leaking_returned_player -q`
+- `pytest tests/client/test_cli_commands.py tests/client/test_installer_script.py tests/client/test_codex_mcp_config.py -q`
+- `pytest -q`
+
 ## Completion Standard
 
 Each slice must:

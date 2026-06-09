@@ -228,6 +228,7 @@ def doctor(
             f"display={display_name} active_crew={active_crew}"
         )
         typer.echo(f"auth: {_player_auth_status(registered_config)}")
+        typer.echo(f"inbox: {_player_inbox_status(registered_config)}")
     elif pending_config is not None:
         typer.echo(
             f"player: pending {pending_config.request_id} "
@@ -1492,6 +1493,22 @@ def _player_auth_status(config: ClientConfig) -> str:
     if player_id != config.player_id:
         return "mismatch"
     return f"ok {config.player_id}"
+
+
+def _player_inbox_status(config: ClientConfig) -> str:
+    try:
+        response = _api_from_config(config).inbox()
+    except Exception:
+        return "failed"
+
+    player_id = response.get("player_id")
+    if player_id is not None and player_id != config.player_id:
+        return "mismatch"
+
+    active_contracts = response.get("active_contracts")
+    if isinstance(active_contracts, list):
+        return f"ok active_contracts={len(active_contracts)}"
+    return "ok"
 
 
 def _command_status(command: str) -> str:
