@@ -319,6 +319,10 @@ Status:
   plus contract unlock and crew legacy calculations reached through those
   surfaces, now reuse the same fresh SQLite deal projection and stale fallback
   used by `/deals`, keeping Codex-facing deal context aligned.
+- Feature-flagged visible-event projection reads completed: `/events` can read
+  player- and crew-visible activity from SQLite when fresh, preserving
+  `since_sequence` sync semantics and post-join full-sync recovery while
+  keeping server-only and deny-all events out of the activity read model.
 - Deferred: deeper death/legacy inheritance, additional long-term unlock paths,
   and migrating heavier campaign reads onto the projection database.
 
@@ -1266,6 +1270,30 @@ Expected verification:
 
 - `pytest tests/server/test_projection_store.py::test_inbox_embeds_projected_visible_deals_when_enabled tests/server/test_projection_store.py::test_crew_board_embeds_projected_visible_deals_when_enabled tests/server/test_projection_store.py::test_embedded_visible_deals_fall_back_when_projection_is_stale -q`
 - `pytest tests/server/test_projection_store.py tests/server/test_deal_routes.py tests/server/test_deal_service.py tests/server/test_crew_routes.py tests/server/test_contract_seed.py tests/client/test_deal_mcp_render.py tests/client/test_deal_render.py tests/client/test_render_packets.py tests/client/test_contract_board.py tests/test_mcp_server.py -q`
+- `pytest -q`
+
+### Slice 48: Feature-Flagged Visible Event Projection Reads
+
+Status: completed.
+
+Move the player-visible activity read path onto the SQLite projection layer
+without moving event authority. The projection store now materializes only
+public, player-visible, and crew-visible events into a
+`visible_event_surface`; server-only and deny-all events remain out of that
+read model. `/events` reads from SQLite only when
+`HOLLOW_LODGE_VISIBLE_EVENT_PROJECTION_READS=1`, the projection is available,
+and lag is zero. Stale, missing, or unreadable projection state falls back to
+`VisibilityService`. The projected read preserves `since_sequence` filtering
+and current crew-membership semantics, so full sync after joining a crew can
+recover older crew-visible activity while delta sync still excludes events at
+or before the checkpoint. Chat mutations refresh the projection best-effort
+after successful event-log writes so Codex activity packets can use the fresh
+read model.
+
+Expected verification:
+
+- `pytest tests/server/test_event_sync.py::test_visible_events_route_reads_fresh_projection_when_enabled tests/server/test_event_sync.py::test_visible_events_projection_honors_since_sequence tests/server/test_event_sync.py::test_visible_events_projection_full_sync_recovers_crew_events_after_join tests/server/test_event_sync.py::test_visible_events_route_falls_back_when_projection_is_stale -q`
+- `pytest tests/server/test_event_sync.py tests/server/test_projection_store.py tests/server/test_chat_routes.py tests/client/test_local_log.py tests/client/test_codex_session.py tests/client/test_render_packets.py tests/test_mcp_server.py -q`
 - `pytest -q`
 
 ## Completion Standard

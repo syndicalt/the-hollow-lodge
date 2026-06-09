@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+import logging
+
 from pydantic import BaseModel, Field
 from fastapi import APIRouter, Depends, Header, HTTPException, Request, status
 
@@ -9,6 +11,7 @@ from hollow_lodge.server.auth import current_player
 
 
 router = APIRouter(prefix="/chat", tags=["chat"])
+logger = logging.getLogger(__name__)
 
 
 class DirectMessageRequest(BaseModel):
@@ -60,6 +63,7 @@ def direct_message(
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=detail) from exc
     except ValueError as exc:
         raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail=str(exc)) from exc
+    _refresh_projection_store(request)
     return ChatMessageResponse(message_id=message.message_id, conversation_id=message.message_id)
 
 
@@ -86,6 +90,7 @@ def crew_message(
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=detail) from exc
     except ValueError as exc:
         raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail=str(exc)) from exc
+    _refresh_projection_store(request)
     return ChatMessageResponse(message_id=message.message_id, conversation_id=payload.crew_id)
 
 
@@ -117,6 +122,7 @@ def crew_to_crew_message(
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=detail) from exc
     except ValueError as exc:
         raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail=str(exc)) from exc
+    _refresh_projection_store(request)
     return ChatMessageResponse(
         message_id=message.message_id,
         conversation_id=f"{payload.sender_crew_id}:{payload.recipient_crew_id}",
@@ -131,3 +137,13 @@ def _ensure_chat_artifact_service(request: Request) -> None:
     request.app.state.chat_service.set_artifact_service(
         request.app.state.artifact_service
     )
+
+
+def _refresh_projection_store(request: Request) -> None:
+    if hasattr(request.app.state, "projection_store"):
+        try:
+            request.app.state.projection_store.rebuild(
+                request.app.state.event_store.read()
+            )
+        except Exception:
+            logger.exception("failed to refresh chat projection")

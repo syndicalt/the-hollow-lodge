@@ -27,6 +27,11 @@ class SqliteProjectionStore:
         crew_summaries = crew_summaries_from_events(events)
         artifact_visibility = artifact_visibility_from_events(events)
         deals = deal_rows_from_events(events)
+        visible_events = [
+            event
+            for event in events
+            if _event_is_player_projectable(event)
+        ]
         last_sequence = events[-1].sequence if events else 0
         with sqlite3.connect(self.path) as connection:
             self._ensure_schema(connection)
@@ -36,6 +41,7 @@ class SqliteProjectionStore:
             connection.execute("delete from artifact_edge")
             connection.execute("delete from artifact_scoped_surface")
             connection.execute("delete from deal_surface")
+            connection.execute("delete from visible_event_surface")
             for contract in board["contracts"]:
                 connection.execute(
                     """
@@ -156,11 +162,38 @@ class SqliteProjectionStore:
                         last_sequence,
                     ),
                 )
+            for event in visible_events:
+                payload = event.model_dump(mode="json")
+                connection.execute(
+                    """
+                    insert into visible_event_surface (
+                        event_id,
+                        sequence,
+                        event_type,
+                        payload_json,
+                        visibility_json,
+                        updated_sequence
+                    ) values (?, ?, ?, ?, ?, ?)
+                    """,
+                    (
+                        event.event_id,
+                        event.sequence,
+                        event.type,
+                        json.dumps(payload, sort_keys=True, separators=(",", ":")),
+                        json.dumps(
+                            payload["visibility"],
+                            sort_keys=True,
+                            separators=(",", ":"),
+                        ),
+                        last_sequence,
+                    ),
+                )
             self._set_meta(connection, "schema_version", SCHEMA_VERSION)
             self._set_meta(connection, "last_sequence", str(last_sequence))
             self._set_meta(connection, "contract_count", str(len(board["contracts"])))
             self._set_meta(connection, "crew_count", str(len(crew_summaries)))
             self._set_meta(connection, "deal_count", str(len(deals)))
+            self._set_meta(connection, "visible_event_count", str(len(visible_events)))
             self._set_meta(
                 connection,
                 "public_artifact_count",
@@ -198,6 +231,7 @@ class SqliteProjectionStore:
                 "contract_count": 0,
                 "crew_count": 0,
                 "deal_count": 0,
+                "visible_event_count": 0,
                 "public_artifact_count": 0,
                 "scoped_artifact_count": 0,
             }
@@ -215,6 +249,9 @@ class SqliteProjectionStore:
                 ).fetchone()[0]
                 deal_count = connection.execute(
                     "select count(*) from deal_surface"
+                ).fetchone()[0]
+                visible_event_count = connection.execute(
+                    "select count(*) from visible_event_surface"
                 ).fetchone()[0]
                 public_artifact_count = connection.execute(
                     "select count(*) from artifact_surface"
@@ -235,6 +272,7 @@ class SqliteProjectionStore:
                 "contract_count": 0,
                 "crew_count": 0,
                 "deal_count": 0,
+                "visible_event_count": 0,
                 "public_artifact_count": 0,
                 "scoped_artifact_count": 0,
             }
@@ -256,6 +294,9 @@ class SqliteProjectionStore:
             "contract_count": int(meta.get("contract_count", str(contract_count))),
             "crew_count": int(meta.get("crew_count", str(crew_count))),
             "deal_count": int(meta.get("deal_count", str(deal_count))),
+            "visible_event_count": int(
+                meta.get("visible_event_count", str(visible_event_count))
+            ),
             "public_artifact_count": int(
                 meta.get("public_artifact_count", str(public_artifact_count))
             ),
@@ -365,6 +406,33 @@ class SqliteProjectionStore:
             ).fetchall()
         return [json.loads(row[0]) for row in rows]
 
+    def read_visible_events(
+        self,
+        player_id: str,
+        *,
+        crew_ids: list[str] | tuple[str, ...] = (),
+        since_sequence: int = 0,
+    ) -> list[dict[str, Any]]:
+        principals = {("player", player_id)}
+        principals.update(("crew", crew_id) for crew_id in crew_ids)
+        with sqlite3.connect(self.path) as connection:
+            self._ensure_schema(connection)
+            rows = connection.execute(
+                """
+                select payload_json, visibility_json
+                from visible_event_surface
+                where sequence > ?
+                order by sequence
+                """,
+                (since_sequence,),
+            ).fetchall()
+        visible: list[dict[str, Any]] = []
+        for payload_json, visibility_json in rows:
+            visibility = json.loads(visibility_json)
+            if _visibility_matches(visibility, principals):
+                visible.append(json.loads(payload_json))
+        return visible
+
     def _ensure_schema(self, connection: sqlite3.Connection) -> None:
         connection.execute(
             """
@@ -458,6 +526,24 @@ class SqliteProjectionStore:
             on deal_surface (recipient_crew_id, status)
             """
         )
+        connection.execute(
+            """
+            create table if not exists visible_event_surface (
+                event_id text primary key,
+                sequence integer not null,
+                event_type text not null,
+                payload_json text not null,
+                visibility_json text not null,
+                updated_sequence integer not null
+            )
+            """
+        )
+        connection.execute(
+            """
+            create index if not exists idx_visible_event_surface_sequence
+            on visible_event_surface (sequence)
+            """
+        )
 
     def _set_meta(self, connection: sqlite3.Connection, key: str, value: str) -> None:
         connection.execute(
@@ -482,3 +568,10 @@ def _visibility_matches(
         if principal_id is not None and (kind, principal_id) in principals:
             return True
     return False
+
+
+def _event_is_player_projectable(event: GameEvent) -> bool:
+    return any(
+        entry.kind in {"public", "player", "crew"}
+        for entry in event.visibility.entries
+    )
