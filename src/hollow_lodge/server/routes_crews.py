@@ -19,6 +19,7 @@ from hollow_lodge.server.projected_rumors import projected_visible_rumors_for_cr
 from hollow_lodge.server.projection_readiness import projection_read_ready
 from hollow_lodge.server.runtime_services import (
     ensure_deal_service,
+    read_authoritative_events,
     refresh_projection_store,
 )
 from hollow_lodge.server.rumors import visible_rumors_for_crew
@@ -118,7 +119,7 @@ def crew_board(
     apply_contract_unlock_status(
         contracts=contracts,
         crew_ids=[crew_id],
-        events=request.app.state.event_store.read(),
+        events=read_authoritative_events(request),
         deals_by_crew={crew_id: deals},
     )
     active_contracts = unlocked_actionable_contracts(contracts)
@@ -319,7 +320,7 @@ def _crew_legacy_for_board(
         crew_id=crew_id,
         contracts=contracts,
         deals=deals,
-        events=request.app.state.event_store.read(),
+        events=read_authoritative_events(request),
     )
 
 

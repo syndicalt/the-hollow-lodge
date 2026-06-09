@@ -144,6 +144,12 @@ chain diagnostics instead of replaying the full Eventloom log. If the
 authoritative event-log diagnostics are unavailable or malformed, projected
 reads fail closed and routes use their existing Eventloom fallback paths.
 
+When those fallback paths need full events for read-only derivations such as
+contract unlocks, crew legacy, or pending-decision context, the server reuses a
+request-scoped authoritative event snapshot. The snapshot is not retained
+across requests and is not used for mutations, imports, projection refresh, or
+integrity checks.
+
 Before any projection backend cutover, verify the current backend:
 
 ```sh

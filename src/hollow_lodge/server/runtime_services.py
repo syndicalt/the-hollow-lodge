@@ -5,8 +5,12 @@ from typing import Any
 
 from fastapi import Request
 
+from hollow_lodge.domain.events import GameEvent
 from hollow_lodge.server.artifact_service import ArtifactService
 from hollow_lodge.server.deal_service import DealService
+
+
+_AUTHORITATIVE_EVENTS_CACHE_ATTR = "_hollow_lodge_authoritative_events"
 
 
 def ensure_artifact_service(request: Request) -> ArtifactService:
@@ -29,6 +33,14 @@ def ensure_deal_service(request: Request) -> DealService:
             artifact_service=artifact_service,
         )
     return request.app.state.deal_service
+
+
+def read_authoritative_events(request: Request) -> list[GameEvent]:
+    cached = getattr(request.state, _AUTHORITATIVE_EVENTS_CACHE_ATTR, None)
+    if cached is None:
+        cached = request.app.state.event_store.read()
+        setattr(request.state, _AUTHORITATIVE_EVENTS_CACHE_ATTR, cached)
+    return cached
 
 
 def refresh_projection_store(

@@ -279,6 +279,9 @@ Status:
   freshness checks now use event-log diagnostics for the authoritative chain
   head instead of replaying the full Eventloom log on each projection-backed
   request.
+- Request-scoped Eventloom read reuse completed: dense contract and crew-board
+  read paths now share one authoritative event snapshot per request for
+  fallback-only unlock, legacy, and pending-decision derivations.
 
 Proof gate:
 
@@ -464,6 +467,10 @@ Status:
   `event_store.diagnostics().last_sequence`, letting Postgres-backed
   production requests use the metadata-only chain head rather than a full
   event-log replay before every projected surface read.
+- Request-scoped Eventloom read reuse completed: route-level fallback work for
+  contract unlocks, inbox pending decisions, and crew-board legacy now reuses a
+  single per-request authoritative event snapshot instead of independently
+  replaying the Eventloom log for each derived block.
 - Admin oracle audit surface completed: operators can inspect redacted
   provider, validation, fallback, count, and hash evidence for server-only
   oracle audit events without exposing raw oracle inputs, hidden truth, or
@@ -2435,6 +2442,29 @@ Expected verification:
 
 - `pytest tests/server/test_projection_store.py::test_projection_readiness_uses_event_log_diagnostics_without_replay tests/server/test_projection_store.py::test_projection_readiness_falls_back_when_event_log_diagnostics_unavailable tests/server/test_projection_store.py::test_deal_route_reads_fresh_projected_visible_deals_when_enabled tests/server/test_projection_store.py::test_deal_route_falls_back_when_projection_is_stale -q`
 - `pytest tests/server/test_projection_store.py tests/server/test_app_config.py tests/e2e/test_projection_backend_smoke.py tests/client/test_cli_commands.py -q`
+- `pytest -q`
+
+### Slice 97: Request-Scoped Eventloom Read Reuse
+
+Status: completed.
+
+Reduce repeated authoritative log replays inside dense Codex-facing read
+surfaces without changing the Eventloom authority boundary. Read-only route
+helpers now share `read_authoritative_events(request)`, a request-scoped
+snapshot used for fallback-only derivations such as contract unlock status,
+inbox pending-decision legacy context, and crew-board legacy fallback.
+
+This is deliberately not a mutable cache and not a replacement for projected
+read models. The cache lasts only for the current request. Mutations,
+projection refreshes, imports, and integrity checks still read the authoritative
+event store directly. The larger future slice remains crew-specific unlock
+status projection; this slice removes duplicate work in the existing fallback
+paths.
+
+Expected verification:
+
+- `pytest tests/server/test_projection_store.py::test_inbox_fallback_reuses_authoritative_events_with_projection_reads tests/server/test_projection_store.py::test_inbox_skips_local_decision_inputs_when_pending_projection_is_fresh tests/server/test_projection_store.py::test_pending_decision_projection_reads_fall_back_when_stale -q`
+- `pytest tests/server/test_projection_store.py tests/server/test_contract_seed.py tests/server/test_crew_routes.py tests/server/test_deal_routes.py tests/server/test_chat_routes.py tests/server/test_app_config.py tests/client/test_render_packets.py tests/test_mcp_server.py -q`
 - `pytest -q`
 
 ## Completion Standard

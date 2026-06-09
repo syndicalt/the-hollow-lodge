@@ -28,6 +28,7 @@ from hollow_lodge.server.projections import (
 )
 from hollow_lodge.server.runtime_services import (
     ensure_deal_service,
+    read_authoritative_events,
     refresh_projection_store,
 )
 from hollow_lodge.server.rumors import visible_rumors_for_crew
@@ -141,7 +142,7 @@ def inbox(
     if projected_decisions is not None:
         payload["pending_decisions"] = projected_decisions
     else:
-        events = request.app.state.event_store.read()
+        events = read_authoritative_events(request)
         deals_by_crew = {
             crew_id: _deals_for_crew(request, player.player_id, crew_id)
             for crew_id in crew_ids
@@ -192,7 +193,7 @@ def _board_for_player_with_unlocks(request: Request, player_id: str) -> dict:
     apply_contract_unlock_status(
         contracts=payload["contracts"],
         crew_ids=crew_ids,
-        events=request.app.state.event_store.read(),
+        events=read_authoritative_events(request),
         deals_by_crew={
             crew_id: _deals_for_crew(request, player_id, crew_id)
             for crew_id in crew_ids

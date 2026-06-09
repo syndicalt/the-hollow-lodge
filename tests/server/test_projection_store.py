@@ -863,6 +863,49 @@ def test_inbox_skips_local_decision_inputs_when_pending_projection_is_fresh(
     )
 
 
+def test_inbox_fallback_reuses_authoritative_events_with_projection_reads(
+    tmp_path,
+    monkeypatch,
+):
+    monkeypatch.setenv("HOLLOW_LODGE_CONTRACT_BOARD_PROJECTION_READS", "1")
+    monkeypatch.setenv("HOLLOW_LODGE_ARTIFACT_PROJECTION_READS", "1")
+    monkeypatch.setenv("HOLLOW_LODGE_DEAL_PROJECTION_READS", "1")
+    monkeypatch.setenv("HOLLOW_LODGE_PROOF_DOSSIER_PROJECTION_READS", "1")
+    monkeypatch.setenv("HOLLOW_LODGE_ACTION_PROJECTION_READS", "1")
+    monkeypatch.setenv("HOLLOW_LODGE_RUMOR_PROJECTION_READS", "1")
+    client = TestClient(create_app(data_dir=tmp_path, invite_codes=["a", "b"]))
+    ada = register(client, "a", "Ada")
+    bela = register(client, "b", "Bela")
+    gilt = create_crew(client, ada["token"], "crew-create-gilt", "The Gilt Knives")
+    moth = create_crew(client, bela["token"], "crew-create-moth", "The Moth Choir")
+    proposed = client.post(
+        "/deals",
+        headers=command_auth(ada["token"], "deal-propose"),
+        json=proposed_deal_payload(gilt, moth),
+    )
+    event_log_diagnostics = client.app.state.event_store.diagnostics()
+    original_read = client.app.state.event_store.read
+    reads = {"count": 0}
+
+    def tracked_read(*args, **kwargs):
+        reads["count"] += 1
+        return original_read(*args, **kwargs)
+
+    client.app.state.event_store.read = tracked_read
+    client.app.state.event_store.diagnostics = lambda: event_log_diagnostics
+
+    response = client.get("/inbox", headers=auth(bela["token"]))
+
+    assert proposed.status_code == 201
+    assert response.status_code == 200
+    assert reads["count"] == 1
+    assert any(
+        decision["kind"] == "incoming_deal"
+        and decision["deal_id"] == proposed.json()["deal_id"]
+        for decision in response.json()["pending_decisions"]
+    )
+
+
 def test_pending_decision_projection_reads_fall_back_when_stale(tmp_path, monkeypatch):
     monkeypatch.setenv("HOLLOW_LODGE_PENDING_DECISION_PROJECTION_READS", "1")
     client = TestClient(create_app(data_dir=tmp_path, invite_codes=["a"]))
