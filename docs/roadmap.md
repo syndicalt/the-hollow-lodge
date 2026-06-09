@@ -4453,6 +4453,30 @@ Expected verification:
 - `pytest tests/eventlog/test_postgres_store.py tests/server/test_contract_seed.py -q`
 - `pytest -q`
 
+### Slice 184: Actual MCP Brokered Chat Proof Gate
+
+Status: completed.
+
+Strengthen Milestone 2's brokered conversation proof by exercising chat
+through the real `the-hollow-lodge` MCP boundary. The actual MCP play-loop e2e
+now creates two crews, previews and confirms a crew-to-crew `send_message`
+tool call, renders the conversation index with `render_conversations`, opens
+the ordered thread with `render_thread`, and then continues through action
+submission and phase resolution.
+
+The proof verifies mutation preview/confirm semantics for brokered chat,
+stable conversation id and message summary fields, thread ordering and safe
+message shape, and the expected two-crew phase standings. The serialized MCP
+packets remain guarded against hidden truth, server-only fields, visibility,
+oracle audit metadata, provider/model/prompt details, auth material,
+idempotency keys, raw event envelopes, and local path override leaks.
+
+Expected verification:
+
+- `pytest tests/e2e/test_mcp_codex_play_loop.py -q`
+- `pytest tests/e2e/test_mcp_codex_play_loop.py tests/test_mcp_server.py tests/client/test_codex_session.py tests/client/test_render_packets.py tests/server/test_chat_routes.py -q`
+- `pytest -q`
+
 ## Completion Standard
 
 Each slice must:

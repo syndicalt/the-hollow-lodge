@@ -56,14 +56,21 @@ def _assert_packet(result, *, surface: str) -> dict[str, Any]:
 
 
 def test_player_can_progress_contract_through_actual_mcp_tools(tmp_path, monkeypatch):
-    app = create_app(data_dir=tmp_path / "server", invite_codes=["ada"])
+    app = create_app(data_dir=tmp_path / "server", invite_codes=["ada", "bela"])
     client = TestClient(app)
     ada = _register(client, "ada", "Ada Corelumen")
+    bela = _register(client, "bela", "Bela Moth")
     crew = _create_crew(
         client,
         token=ada["token"],
         name="The Gilt Knives",
         key="crew-create-gilt",
+    )
+    moth = _create_crew(
+        client,
+        token=bela["token"],
+        name="The Moth Lanterns",
+        key="crew-create-moth",
     )
 
     config_path = tmp_path / "config.json"
@@ -101,6 +108,103 @@ def test_player_can_progress_contract_through_actual_mcp_tools(tmp_path, monkeyp
     assert landing["agent_context"]["player"]["active_crew_id"] == crew["crew_id"]
     assert landing["agent_context"]["summary_counts"]["active_contracts"] == 1
     assert "What Now: Ada Corelumen" in landing["player_markdown"]
+
+    message_preview = _assert_packet(
+        _call_tool(
+            "send_message",
+            {
+                "scope": "crew_to_crew",
+                "sender_crew_id": crew["crew_id"],
+                "recipient_crew_id": moth["crew_id"],
+                "body": "We can trade ledger leverage before the auction closes.",
+                "confirm": False,
+            },
+        ),
+        surface="mutation",
+    )
+    assert message_preview["agent_context"] == {
+        "operation": "send_message",
+        "mutation": False,
+        "confirmed": False,
+        "preview": {
+            "scope": "crew_to_crew",
+            "sender_crew_id": crew["crew_id"],
+            "recipient_crew_id": moth["crew_id"],
+            "body": "We can trade ledger leverage before the auction closes.",
+            "artifact_ids": [],
+        },
+    }
+    assert "No server mutation was submitted." in message_preview["player_markdown"]
+
+    message_confirm = _assert_packet(
+        _call_tool(
+            "send_message",
+            {
+                "scope": "crew_to_crew",
+                "sender_crew_id": crew["crew_id"],
+                "recipient_crew_id": moth["crew_id"],
+                "body": "We can trade ledger leverage before the auction closes.",
+                "confirm": True,
+            },
+        ),
+        surface="mutation",
+    )
+    assert message_confirm["agent_context"]["operation"] == "send_message"
+    assert message_confirm["agent_context"]["mutation"] is True
+    assert message_confirm["agent_context"]["confirmed"] is True
+    assert message_confirm["agent_context"]["result"] == {
+        "message_id": "msg_000001",
+        "conversation_id": f"{crew['crew_id']}:{moth['crew_id']}",
+        "scope": "crew_to_crew",
+    }
+
+    conversations = _assert_packet(
+        _call_tool("render_conversations"),
+        surface="conversations",
+    )
+    assert conversations["agent_context"]["conversation_count"] == 1
+    conversation = conversations["agent_context"]["conversations"][0]
+    assert conversation == {
+        "conversation_id": f"{crew['crew_id']}:{moth['crew_id']}",
+        "message_count": 1,
+        "first_sequence": 10,
+        "last_sequence": 10,
+        "last_sender_player_id": ada["player_id"],
+        "last_body": "We can trade ledger leverage before the auction closes.",
+        "participant_ids": [crew["crew_id"], moth["crew_id"], ada["player_id"]],
+        "artifact_reference_count": 0,
+    }
+    assert "Visible conversations:" in conversations["player_markdown"]
+    assert f"- {crew['crew_id']}:{moth['crew_id']} (1 messages" in (
+        conversations["player_markdown"]
+    )
+
+    thread = _assert_packet(
+        _call_tool(
+            "render_thread",
+            {"conversation_id": conversation["conversation_id"]},
+        ),
+        surface="thread",
+    )
+    assert thread["agent_context"] == {
+        "conversation_id": conversation["conversation_id"],
+        "message_count": 1,
+        "messages": [
+            {
+                "sequence": 10,
+                "message_id": "msg_000001",
+                "sender_player_id": ada["player_id"],
+                "sender_crew_id": crew["crew_id"],
+                "recipient_crew_id": moth["crew_id"],
+                "body": "We can trade ledger leverage before the auction closes.",
+                "artifact_ids": [],
+            }
+        ],
+    }
+    assert f"Conversation: {conversation['conversation_id']}" in thread["player_markdown"]
+    assert "- 10 player_0001: We can trade ledger leverage" in (
+        thread["player_markdown"]
+    )
 
     action_preview = _assert_packet(
         _call_tool(
@@ -224,7 +328,18 @@ def test_player_can_progress_contract_through_actual_mcp_tools(tmp_path, monkeyp
                 "penalties": [],
                 "revealed_clues": ["Auction house provenance is now suspect."],
             },
-        }
+        },
+        {
+            "crew_id": moth["crew_id"],
+            "standing": "Weak",
+            "score": 0,
+            "score_reasoning": {
+                "strengths": [],
+                "weaknesses": ["no resolved proof lane"],
+                "penalties": [],
+                "revealed_clues": [],
+            },
+        },
     ]
     assert "Phase result:" in contract_board["player_markdown"]
     assert f"- {crew['crew_id']}: Viable (64)" in contract_board["player_markdown"]
@@ -238,6 +353,10 @@ def test_player_can_progress_contract_through_actual_mcp_tools(tmp_path, monkeyp
         str(packet)
         for packet in (
             landing,
+            message_preview,
+            message_confirm,
+            conversations,
+            thread,
             crew_board,
             contract_board,
             activity,
