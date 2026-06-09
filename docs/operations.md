@@ -200,6 +200,13 @@ backup manifest's event count, last sequence, last event hash, and
 backend is at the expected Eventloom chain head and ordered hash-chain summary
 without exposing event payloads.
 
+For the Postgres event-log backend, that diagnostic chain summary is derived
+from event metadata columns: sequence, event id, event hash, and previous hash.
+The server does not load full event payloads just to answer `/diagnostics`, and
+the status fails closed if the stored metadata chain has a sequence gap or
+previous-hash break. Full event validation still happens on gameplay reads,
+imports, and explicit integrity checks.
+
 After that smoke passes, set `HOLLOW_LODGE_REQUIRE_POSTGRES_EVENT_LOG=1` on
 the server service and redeploy once more. This turns the authoritative event
 storage cutover from a best-effort configuration into a startup invariant

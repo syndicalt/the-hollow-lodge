@@ -161,6 +161,43 @@ def test_postgres_event_store_diagnostics_include_chain_digest(monkeypatch):
         [first, second]
     )
     assert "contract_false_finger" not in str(diagnostics)
+    diagnostic_connection = fake.connections[-1]
+    assert not any(
+        "select event_json from event_log" in " ".join(sql.lower().split())
+        for sql, _ in diagnostic_connection.statements
+    )
+
+
+def test_postgres_event_store_diagnostics_reports_unavailable_for_chain_break(
+    monkeypatch,
+):
+    fake = FakePostgresConnector()
+    monkeypatch.setattr(PostgresEventStore, "_connect", lambda self: fake())
+    store = PostgresEventStore("postgresql://user:secret@example.com:5432/hollow_lodge")
+    first = store.append(
+        event_type="contract.seeded",
+        actor_id="server",
+        visibility=EventVisibility.server_only(),
+        payload={"contract_id": "contract_false_finger"},
+    )
+    second = store.append(
+        event_type="contract.board.published",
+        actor_id="server",
+        visibility=EventVisibility.crews(["crew_ember"]),
+        payload={"contract_id": "contract_false_finger"},
+    )
+    corrupted = json.loads(fake.event_rows[-1])
+    corrupted["previous_hash"] = "broken-chain"
+    corrupted["event_hash"] = second.event_hash
+    fake.event_rows[-1] = json.dumps(corrupted)
+
+    diagnostics = store.diagnostics()
+
+    assert first.event_hash != "broken-chain"
+    assert diagnostics["status"] == "unavailable"
+    assert diagnostics["event_count"] == 0
+    assert diagnostics["last_sequence"] is None
+    assert diagnostics["event_hash_chain_sha256"] is None
 
 
 def test_app_selects_postgres_event_store_from_explicit_event_database_url(
@@ -390,6 +427,20 @@ class FakePostgresConnection:
         normalized = " ".join(sql.lower().split())
         if normalized.startswith("select event_json from event_log"):
             return FakePostgresCursor(rows=[(row,) for row in self.connector.event_rows])
+        if normalized.startswith("select sequence, event_id, event_hash, previous_hash"):
+            return FakePostgresCursor(
+                rows=[
+                    (
+                        payload["sequence"],
+                        payload["event_id"],
+                        payload["event_hash"],
+                        payload["previous_hash"],
+                    )
+                    for payload in (
+                        json.loads(row) for row in self.connector.event_rows
+                    )
+                ]
+            )
         if normalized.startswith("insert into event_log"):
             self.connector.event_rows.append(params[-1])
             return FakePostgresCursor()

@@ -271,6 +271,10 @@ Status:
   failures after authoritative mutations remain non-blocking but are now visible
   in `/diagnostics` as bounded status, context, exception type, last successful
   sequence, and failure count.
+- Postgres event-log metadata diagnostics completed: hosted Postgres
+  event-log diagnostics now validate the stored sequence/hash chain and compute
+  the content-safe chain digest from metadata columns instead of reading every
+  full event payload.
 
 Proof gate:
 
@@ -446,6 +450,11 @@ Status:
   shared projection-refresh helper that records safe success/failure telemetry
   in diagnostics, preventing silent stale read-model incidents while preserving
   the Eventloom write authority boundary.
+- Postgres event-log metadata diagnostics completed: `/diagnostics` for the
+  Postgres authoritative Eventloom backend now derives event count, chain head,
+  and `event_hash_chain_sha256` from metadata columns without loading
+  `event_json`, while still failing closed if stored sequence or previous-hash
+  continuity is broken.
 - Admin oracle audit surface completed: operators can inspect redacted
   provider, validation, fallback, count, and hash evidence for server-only
   oracle audit events without exposing raw oracle inputs, hidden truth, or
@@ -2369,6 +2378,30 @@ Expected verification:
 
 - `pytest tests/server/test_projection_store.py::test_inbox_skips_local_decision_inputs_when_pending_projection_is_fresh tests/server/test_projection_store.py::test_inbox_projection_reads_share_request_freshness_check tests/server/test_projection_store.py::test_pending_decision_projection_reads_fall_back_when_stale -q`
 - `pytest tests/server/test_projection_store.py tests/server/test_contract_seed.py tests/server/test_crew_routes.py tests/server/test_deal_routes.py tests/server/test_chat_routes.py tests/server/test_app_config.py tests/client/test_render_packets.py tests/test_mcp_server.py -q`
+- `pytest -q`
+
+### Slice 95: Postgres Event-Log Metadata Diagnostics
+
+Status: completed.
+
+Make hosted database diagnostics scale with the authoritative Eventloom log.
+Postgres event-log diagnostics now read only sequence, event id, event hash,
+and previous hash metadata to validate chain continuity and compute the same
+content-safe `event_hash_chain_sha256` used by backup manifests. They no
+longer load full `event_json` payloads during `/diagnostics`, avoiding an
+operator-read path that grows with payload size while preserving manifest smoke
+semantics.
+
+This does not weaken authoritative validation for gameplay reads, imports, or
+integrity verification: those paths still validate full events and recompute
+event hashes from canonical payloads. The diagnostics path fails closed as
+`unavailable` if the stored metadata chain has a sequence gap or previous-hash
+break.
+
+Expected verification:
+
+- `pytest tests/eventlog/test_postgres_store.py::test_postgres_event_store_diagnostics_include_chain_digest tests/eventlog/test_postgres_store.py::test_postgres_event_store_diagnostics_reports_unavailable_for_chain_break -q`
+- `pytest tests/eventlog/test_postgres_store.py tests/e2e/test_projection_backend_smoke.py tests/server/test_app_config.py -q`
 - `pytest -q`
 
 ## Completion Standard

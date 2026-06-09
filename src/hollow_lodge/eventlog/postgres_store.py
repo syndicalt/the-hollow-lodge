@@ -1,12 +1,13 @@
 from __future__ import annotations
 
+import hashlib
 import json
 from typing import Any
 from urllib.parse import urlparse, urlunparse
 
 from pydantic import ValidationError
 
-from hollow_lodge.domain.events import EventVisibility, GameEvent
+from hollow_lodge.domain.events import EventVisibility, GameEvent, canonical_json_bytes
 from hollow_lodge.eventlog.jsonl_store import (
     EventLogIntegrityError,
     EventStore,
@@ -14,7 +15,6 @@ from hollow_lodge.eventlog.jsonl_store import (
     IntegrityReport,
     _command_fingerprint,
     _find_idempotent,
-    event_hash_chain_digest,
     validate_event_chain,
 )
 from hollow_lodge.eventlog.visibility import Principal, filter_visible_events
@@ -166,18 +166,9 @@ class PostgresEventStore(EventStore):
         try:
             with self._connect() as connection:
                 self._ensure_schema(connection)
-                count = connection.execute("select count(*) from event_log").fetchone()[0]
-                last_row = connection.execute(
-                    """
-                    select sequence, event_hash
-                    from event_log
-                    order by sequence desc
-                    limit 1
-                    """
-                ).fetchone()
-                events = self._read_unlocked(connection)
-                validate_event_chain(events)
-                chain_digest = event_hash_chain_digest(events)
+                chain_rows = self._read_chain_metadata(connection)
+                self._validate_chain_metadata(chain_rows)
+                chain_digest = _event_hash_chain_digest_from_rows(chain_rows)
         except Exception:
             return {
                 "backend": self.backend,
@@ -190,15 +181,16 @@ class PostgresEventStore(EventStore):
                 "last_event_hash": None,
                 "event_hash_chain_sha256": None,
             }
-        last_sequence = int(last_row[0]) if last_row is not None else None
-        last_event_hash = str(last_row[1]) if last_row is not None else None
+        last_row = chain_rows[-1] if chain_rows else None
+        last_sequence = int(last_row["sequence"]) if last_row is not None else None
+        last_event_hash = str(last_row["event_hash"]) if last_row is not None else None
         return {
             "backend": self.backend,
             "database_url": self.safe_database_url,
             "database_url_env": self.database_url_env,
             "exists": True,
             "status": "available",
-            "event_count": int(count),
+            "event_count": len(chain_rows),
             "last_sequence": last_sequence,
             "last_event_hash": last_event_hash,
             "event_hash_chain_sha256": chain_digest,
@@ -314,9 +306,54 @@ class PostgresEventStore(EventStore):
                 raise EventLogIntegrityError(f"invalid event row {index + 1}") from exc
         return events
 
+    def _read_chain_metadata(self, connection: Any) -> list[dict[str, Any]]:
+        rows = connection.execute(
+            """
+            select sequence, event_id, event_hash, previous_hash
+            from event_log
+            order by sequence
+            """
+        ).fetchall()
+        return [
+            {
+                "sequence": int(row[0]),
+                "event_id": str(row[1]),
+                "event_hash": str(row[2]),
+                "previous_hash": None if row[3] is None else str(row[3]),
+            }
+            for row in rows
+        ]
+
+    def _validate_chain_metadata(self, rows: list[dict[str, Any]]) -> None:
+        previous_hash: str | None = None
+        expected_sequence = 1
+        for row in rows:
+            sequence = row["sequence"]
+            if sequence != expected_sequence:
+                raise EventLogIntegrityError(
+                    f"invalid sequence {sequence}; expected {expected_sequence}"
+                )
+            if row["previous_hash"] != previous_hash:
+                raise EventLogIntegrityError(f"hash chain break at sequence {sequence}")
+            previous_hash = row["event_hash"]
+            expected_sequence += 1
+
 
 def _json_dumps(value: Any) -> str:
     return json.dumps(value, sort_keys=True, separators=(",", ":"))
+
+
+def _event_hash_chain_digest_from_rows(rows: list[dict[str, Any]]) -> str:
+    chain_rows = [
+        {
+            "sequence": row["sequence"],
+            "event_id": row["event_id"],
+            "event_hash": row["event_hash"],
+            "previous_hash": row["previous_hash"],
+        }
+        for row in rows
+    ]
+    return hashlib.sha256(canonical_json_bytes(chain_rows)).hexdigest()
 
 
 def _load_json(value: Any) -> Any:
