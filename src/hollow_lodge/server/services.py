@@ -39,6 +39,7 @@ from hollow_lodge.server.projections import (
     legacy_delta_for_standing,
     rumor_memory_from_events,
 )
+from hollow_lodge.server.proof_seed import STARTER_FRAGMENT
 from hollow_lodge.server.contract_seed import ContractSeed, PhaseFollowUp, PhaseReward
 from hollow_lodge.server.seed_data import STARTER_CAMPAIGN, STARTER_CONTRACT, STARTER_HIDDEN_TRUTH
 from hollow_lodge.server.auth import authenticate_token
@@ -59,12 +60,6 @@ REGISTRATION_REPLAY_TTL = timedelta(minutes=15)
 INVITE_REPLAY_TTL = timedelta(minutes=15)
 SIDE_ACTION_LIMIT_PER_PHASE = 1
 COMMAND_SERIALIZATION_LOCK = threading.RLock()
-STARTER_FRAGMENT = ProofFragment(
-    fragment_id="fragment_starter_ledger",
-    content_summary="A red ledger rubric names three prior owners.",
-    source_chain=("archive:lot-card",),
-    provenance_flags=("copied-hand", "ink-after-binding"),
-)
 
 
 def _event_store_replay_dir(event_store: EventStore) -> Path:

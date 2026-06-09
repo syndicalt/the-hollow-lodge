@@ -9,6 +9,7 @@ from hollow_lodge.domain.identity import Player
 from hollow_lodge.server.artifact_service import ArtifactService
 from hollow_lodge.server.auth import current_player
 from hollow_lodge.server.projected_dossiers import projected_proof_dossier
+from hollow_lodge.server.projected_fragments import projected_proof_fragment
 from hollow_lodge.server.runtime_services import refresh_projection_store
 from hollow_lodge.server.services import ProofService
 
@@ -50,6 +51,9 @@ def get_fragment(
     request: Request,
     player: Player = Depends(current_player),
 ):
+    projected = projected_proof_fragment(request, player.player_id, fragment_id)
+    if projected is not None:
+        return projected
     try:
         return _proof_service(request).fragment_for_player(
             fragment_id=fragment_id,
@@ -71,12 +75,14 @@ def transfer_fragment(
     player: Player = Depends(current_player),
 ):
     try:
-        return _proof_service(request).transfer_fragment(
+        result = _proof_service(request).transfer_fragment(
             fragment_id=fragment_id,
             sender_player_id=player.player_id,
             recipient_player_id=payload.recipient_player_id,
             idempotency_key=idempotency_key,
         )
+        _refresh_projection_store(request)
+        return result
     except KeyError as exc:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="fragment not found") from exc
     except ValueError as exc:
@@ -94,11 +100,13 @@ def check_fragment_provenance(
     player: Player = Depends(current_player),
 ):
     try:
-        return _proof_service(request).check_provenance(
+        result = _proof_service(request).check_provenance(
             fragment_id=fragment_id,
             player_id=player.player_id,
             idempotency_key=idempotency_key,
         )
+        _refresh_projection_store(request)
+        return result
     except KeyError as exc:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="fragment not found") from exc
     except ValueError as exc:

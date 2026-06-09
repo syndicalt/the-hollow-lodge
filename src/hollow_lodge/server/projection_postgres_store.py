@@ -40,6 +40,7 @@ class PostgresProjectionStore:
         deals = snapshot["deals"]
         crew_legacies = snapshot["crew_legacies"]
         proof_dossiers = snapshot["proof_dossiers"]
+        proof_fragments = snapshot["proof_fragments"]
         chat_messages = snapshot["chat_messages"]
         actions_by_crew = snapshot["actions_by_crew"]
         pending_decisions = snapshot["pending_decisions"]
@@ -63,6 +64,7 @@ class PostgresProjectionStore:
                 "visible_event_surface",
                 "crew_legacy",
                 "proof_dossier",
+                "proof_fragment_surface",
                 "chat_message_surface",
                 "action_surface",
                 "pending_decision_surface",
@@ -267,6 +269,23 @@ class PostgresProjectionStore:
                         last_sequence,
                     ),
                 )
+            for row in proof_fragments:
+                connection.execute(
+                    """
+                    insert into proof_fragment_surface (
+                        player_id,
+                        fragment_id,
+                        payload_json,
+                        updated_sequence
+                    ) values (%s, %s, %s::jsonb, %s)
+                    """,
+                    (
+                        row["player_id"],
+                        row["fragment_id"],
+                        _json_dumps(row["surface"]),
+                        last_sequence,
+                    ),
+                )
             for event in visible_events:
                 payload = event.model_dump(mode="json")
                 connection.execute(
@@ -429,6 +448,7 @@ class PostgresProjectionStore:
             self._set_meta(connection, "deal_count", str(len(deals)))
             self._set_meta(connection, "crew_legacy_count", str(len(crew_legacies)))
             self._set_meta(connection, "proof_dossier_count", str(len(proof_dossiers)))
+            self._set_meta(connection, "proof_fragment_count", str(len(proof_fragments)))
             self._set_meta(connection, "chat_message_count", str(len(chat_messages)))
             self._set_meta(connection, "action_count", str(action_count))
             self._set_meta(
@@ -487,6 +507,9 @@ class PostgresProjectionStore:
                 ).fetchone()[0]
                 proof_dossier_count = connection.execute(
                     "select count(*) from proof_dossier"
+                ).fetchone()[0]
+                proof_fragment_count = connection.execute(
+                    "select count(*) from proof_fragment_surface"
                 ).fetchone()[0]
                 chat_message_count = connection.execute(
                     "select count(*) from chat_message_surface"
@@ -551,6 +574,7 @@ class PostgresProjectionStore:
                 "deal_count": 0,
                 "crew_legacy_count": 0,
                 "proof_dossier_count": 0,
+                "proof_fragment_count": 0,
                 "chat_message_count": 0,
                 "action_count": 0,
                 "pending_decision_count": 0,
@@ -589,6 +613,9 @@ class PostgresProjectionStore:
             ),
             "proof_dossier_count": int(
                 meta.get("proof_dossier_count", str(proof_dossier_count))
+            ),
+            "proof_fragment_count": int(
+                meta.get("proof_fragment_count", str(proof_fragment_count))
             ),
             "chat_message_count": int(
                 meta.get("chat_message_count", str(chat_message_count))
@@ -674,6 +701,21 @@ class PostgresProjectionStore:
             ).fetchone()
         if row is None:
             raise KeyError(crew_id)
+        return _load_json(row[0])
+
+    def read_proof_fragment(self, player_id: str, fragment_id: str) -> dict[str, Any]:
+        with self._connect() as connection:
+            self._ensure_schema(connection)
+            row = connection.execute(
+                """
+                select payload_json
+                from proof_fragment_surface
+                where player_id = %s and fragment_id = %s
+                """,
+                (player_id, fragment_id),
+            ).fetchone()
+        if row is None:
+            raise KeyError(fragment_id)
         return _load_json(row[0])
 
     def read_visible_artifacts(
@@ -1014,6 +1056,23 @@ class PostgresProjectionStore:
             """
             create index if not exists idx_proof_dossier_packet_lead
             on proof_dossier (packet_lead_player_id)
+            """
+        )
+        connection.execute(
+            """
+            create table if not exists proof_fragment_surface (
+                player_id text not null,
+                fragment_id text not null,
+                payload_json jsonb not null,
+                updated_sequence bigint not null,
+                primary key (player_id, fragment_id)
+            )
+            """
+        )
+        connection.execute(
+            """
+            create index if not exists idx_proof_fragment_surface_fragment
+            on proof_fragment_surface (fragment_id, player_id)
             """
         )
         connection.execute(

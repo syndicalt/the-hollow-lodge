@@ -261,6 +261,149 @@ def test_dossier_route_falls_back_when_projected_dossier_is_stale(
     assert response.json()["dossier_id"] == f"dossier_{crew['crew_id']}"
 
 
+def test_projection_store_materializes_proof_fragments_without_provenance_flags(
+    tmp_path,
+):
+    client = TestClient(create_app(data_dir=tmp_path, invite_codes=["a"]))
+    ada = register(client, "a", "Ada")
+
+    projected = client.app.state.projection_store.read_proof_fragment(
+        ada["player_id"],
+        "fragment_starter_ledger",
+    )
+    diagnostics = client.app.state.projection_store.diagnostics()
+    with sqlite3.connect(tmp_path / "server-projections.sqlite3") as connection:
+        rows = connection.execute(
+            """
+            select player_id, fragment_id, payload_json
+            from proof_fragment_surface
+            order by player_id, fragment_id
+            """
+        ).fetchall()
+
+    assert diagnostics["proof_fragment_count"] == 1
+    assert projected == {
+        "fragment_id": "fragment_starter_ledger",
+        "content_summary": "A red ledger rubric names three prior owners.",
+        "source_chain": ["archive:lot-card"],
+        "provenance_checked": False,
+    }
+    assert [(row[0], row[1]) for row in rows] == [
+        (ada["player_id"], "fragment_starter_ledger")
+    ]
+    stored_text = "\n".join(row[2] for row in rows)
+    assert "provenance_flags" not in stored_text
+    assert "copied-hand" not in stored_text
+    assert "ink-after-binding" not in stored_text
+
+
+def test_proof_fragment_route_reads_fresh_projection_when_enabled(
+    tmp_path,
+    monkeypatch,
+):
+    monkeypatch.setenv("HOLLOW_LODGE_PROOF_FRAGMENT_PROJECTION_READS", "1")
+    client = TestClient(create_app(data_dir=tmp_path, invite_codes=["a"]))
+    ada = register(client, "a", "Ada")
+    original_read = client.app.state.projection_store.read_proof_fragment
+    calls = {"count": 0}
+
+    def tracked_read_proof_fragment(player_id: str, fragment_id: str):
+        calls["count"] += 1
+        return original_read(player_id, fragment_id)
+
+    client.app.state.projection_store.read_proof_fragment = tracked_read_proof_fragment
+    client.app.state.proof_service.fragment_for_player = (
+        lambda **kwargs: (_ for _ in ()).throw(
+            AssertionError("fresh proof fragment projection should be used")
+        )
+    )
+
+    response = client.get(
+        "/proofs/fragments/fragment_starter_ledger",
+        headers=auth(ada["token"]),
+    )
+
+    assert response.status_code == 200
+    assert calls["count"] == 1
+    assert response.json()["fragment_id"] == "fragment_starter_ledger"
+    assert response.json()["provenance_checked"] is False
+    assert "provenance_flags" not in response.text
+    assert "ink-after-binding" not in response.text
+
+
+def test_proof_fragment_route_falls_back_when_projection_is_stale(
+    tmp_path,
+    monkeypatch,
+):
+    monkeypatch.setenv("HOLLOW_LODGE_PROOF_FRAGMENT_PROJECTION_READS", "1")
+    client = TestClient(create_app(data_dir=tmp_path, invite_codes=["a"]))
+    ada = register(client, "a", "Ada")
+    client.app.state.projection_store.rebuild(client.app.state.event_store.read())
+    client.app.state.event_store.append_command(
+        event_type="contract.note.published",
+        actor_id="server",
+        visibility=EventVisibility.public(),
+        payload={"note": "projection stale marker"},
+        idempotency_key="proof-fragment-projection-stale-marker",
+    )
+
+    def fail_if_projection_read(player_id: str, fragment_id: str):
+        raise AssertionError("stale proof fragment projection should not be used")
+
+    client.app.state.projection_store.read_proof_fragment = fail_if_projection_read
+
+    response = client.get(
+        "/proofs/fragments/fragment_starter_ledger",
+        headers=auth(ada["token"]),
+    )
+
+    assert response.status_code == 200
+    assert response.json()["fragment_id"] == "fragment_starter_ledger"
+
+
+def test_proof_fragment_transfer_refreshes_projection_for_flagged_reads(
+    tmp_path,
+    monkeypatch,
+):
+    monkeypatch.setenv("HOLLOW_LODGE_PROOF_FRAGMENT_PROJECTION_READS", "1")
+    client = TestClient(create_app(data_dir=tmp_path, invite_codes=["a", "b"]))
+    ada = register(client, "a", "Ada")
+    grace = register(client, "b", "Grace")
+
+    transfer = client.post(
+        "/proofs/fragments/fragment_starter_ledger/transfer",
+        headers=command_auth(ada["token"], "proof-transfer-projection"),
+        json={"recipient_player_id": grace["player_id"]},
+    )
+    copy_id = transfer.json()["fragment_id"]
+    original_read = client.app.state.projection_store.read_proof_fragment
+    calls = {"count": 0}
+
+    def tracked_read_proof_fragment(player_id: str, fragment_id: str):
+        calls["count"] += 1
+        return original_read(player_id, fragment_id)
+
+    client.app.state.projection_store.read_proof_fragment = tracked_read_proof_fragment
+    client.app.state.proof_service.fragment_for_player = (
+        lambda **kwargs: (_ for _ in ()).throw(
+            AssertionError("fresh proof fragment projection should be used after transfer")
+        )
+    )
+
+    response = client.get(
+        f"/proofs/fragments/{copy_id}",
+        headers=auth(grace["token"]),
+    )
+
+    assert transfer.status_code == 201
+    assert response.status_code == 200
+    assert calls["count"] == 1
+    assert response.json()["fragment_id"] == copy_id
+    assert response.json()["provenance_checked"] is False
+    assert "provenance_flags" not in response.text
+    assert "ink-after-binding" not in response.text
+
+
 def test_projection_store_records_schema_migration_ledger(tmp_path):
     client = TestClient(create_app(data_dir=tmp_path, invite_codes=["a"]))
     projection = client.get("/diagnostics").json()["data"]["projection_db"]

@@ -499,6 +499,10 @@ Status:
   can read player-visible source text and source-chain fields from the
   projection database when fresh, while hidden flags, hidden truth, and graph
   internals remain excluded from the read model.
+- Proof fragment projection reads completed: `GET /proofs/fragments/{fragment_id}`
+  can read player-scoped fragment surfaces from the projection database when
+  fresh, while provenance flags remain gated behind the explicit provenance
+  check command.
 - Deferred: deeper death/legacy inheritance, additional long-term unlock paths,
   and migrating heavier campaign reads onto the projection database.
 
@@ -2587,6 +2591,34 @@ Expected verification:
 
 - `pytest tests/server/test_projection_store.py::test_projection_store_materializes_artifact_inspections_without_hidden_fields tests/server/test_projection_store.py::test_artifact_inspection_route_reads_fresh_projection_when_enabled tests/server/test_projection_store.py::test_artifact_inspection_route_falls_back_when_projection_is_stale -q`
 - `pytest tests/server/test_projection_store.py tests/server/test_artifact_routes.py tests/server/test_app_config.py tests/e2e/test_projection_backend_smoke.py tests/client/test_cli_commands.py tests/client/test_api.py -q`
+- `pytest -q`
+
+### Slice 102: Proof Fragment Projection Reads
+
+Status: completed.
+
+Move player proof-fragment lookup onto the projection database without changing
+the provenance-check action boundary. SQLite and Postgres projection stores now
+materialize `proof_fragment_surface` rows keyed by player and fragment id.
+Rows contain only the same safe fragment surface returned by
+`GET /proofs/fragments/{fragment_id}`: fragment id, content summary,
+source-chain entries, and provenance checked state.
+
+`GET /proofs/fragments/{fragment_id}` can read this surface with
+`HOLLOW_LODGE_PROOF_FRAGMENT_PROJECTION_READS=1` when projection diagnostics
+show zero lag. If the projection is stale, unavailable, disabled, or missing
+the requested player/fragment pair, the route keeps the existing
+Eventloom-derived `ProofService` fallback. The projection intentionally omits
+provenance flags such as copied-hand and ink-after-binding; those remain
+exposed only by the explicit provenance-check command. Proof fragment transfer
+and provenance-check mutations now refresh projections so the read surface can
+stay zero-lag after proof commands. This slice advances the projection schema
+to version `10`.
+
+Expected verification:
+
+- `pytest tests/server/test_projection_store.py::test_projection_store_materializes_proof_fragments_without_provenance_flags tests/server/test_projection_store.py::test_proof_fragment_route_reads_fresh_projection_when_enabled tests/server/test_projection_store.py::test_proof_fragment_route_falls_back_when_projection_is_stale tests/server/test_projection_store.py::test_proof_fragment_transfer_refreshes_projection_for_flagged_reads -q`
+- `pytest tests/server/test_projection_store.py tests/server/test_proof_routes.py tests/server/test_app_config.py tests/e2e/test_projection_backend_smoke.py tests/client/test_cli_commands.py tests/client/test_api.py -q`
 - `pytest -q`
 
 ## Completion Standard
