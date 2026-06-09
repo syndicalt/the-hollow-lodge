@@ -1429,6 +1429,26 @@ Expected verification:
 - `pytest tests/server/test_projection_store.py tests/server/test_app_config.py -q`
 - `pytest -q`
 
+### Slice 55: Postgres Projection Store Adapter
+
+Status: completed.
+
+Add the first production Postgres projection backend while preserving the
+append-only Eventloom JSONL log as the source of truth. The server can now
+select a `postgresql://` projection URL through
+`HOLLOW_LODGE_PROJECTION_DATABASE_URL`, install the required `psycopg` driver in
+the package and Railway image, materialize the same projection snapshot used by
+SQLite into Postgres tables, and serve the existing projection read interface
+for contract boards, crew summaries, crew legacy, artifacts, deals, and visible
+events. Hosted diagnostics redact the Postgres password and report backend
+status without exposing secrets.
+
+Expected verification:
+
+- `pytest tests/server/test_app_config.py::test_postgres_projection_database_url_selects_postgres_backend tests/server/test_app_config.py::test_server_docker_image_installs_openai_client_for_openai_oracle -q`
+- `pytest tests/server/test_projection_store.py tests/server/test_app_config.py -q`
+- `pytest -q`
+
 ## Completion Standard
 
 Each slice must:

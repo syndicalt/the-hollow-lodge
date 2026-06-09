@@ -1,34 +1,26 @@
 from __future__ import annotations
 
-from copy import deepcopy
 import json
-import sqlite3
-from pathlib import Path
 from typing import Any
+from urllib.parse import urlparse, urlunparse
 
-from hollow_lodge.domain.deals import deal_rows_from_events
 from hollow_lodge.domain.events import GameEvent
-from hollow_lodge.server.projections import (
-    apply_contract_unlock_status,
-    artifact_visibility_from_events,
-    contract_board_from_events,
-    crew_legacy_from_contracts,
-    crew_summaries_from_events,
-    unlocked_actionable_contracts,
+from hollow_lodge.server.projection_store import (
+    SCHEMA_VERSION,
+    _artifact_scope_key,
+    _visibility_matches,
+    build_projection_snapshot,
 )
 
 
-SCHEMA_VERSION = "1"
+class PostgresProjectionStore:
+    backend = "postgres"
 
-
-class SqliteProjectionStore:
-    backend = "sqlite"
-
-    def __init__(self, path: str | Path):
-        self.path = Path(path)
+    def __init__(self, database_url: str):
+        self.database_url = database_url
+        self.safe_database_url = _redact_database_url(database_url)
 
     def rebuild(self, events: list[GameEvent]) -> dict[str, Any]:
-        self.path.parent.mkdir(parents=True, exist_ok=True)
         snapshot = build_projection_snapshot(events)
         board = snapshot["board"]
         crew_summaries = snapshot["crew_summaries"]
@@ -37,16 +29,21 @@ class SqliteProjectionStore:
         crew_legacies = snapshot["crew_legacies"]
         visible_events = snapshot["visible_events"]
         last_sequence = snapshot["last_sequence"]
-        with sqlite3.connect(self.path) as connection:
+
+        with self._connect() as connection:
             self._ensure_schema(connection)
-            connection.execute("delete from contract_board")
-            connection.execute("delete from crew_summary")
-            connection.execute("delete from artifact_surface")
-            connection.execute("delete from artifact_edge")
-            connection.execute("delete from artifact_scoped_surface")
-            connection.execute("delete from deal_surface")
-            connection.execute("delete from visible_event_surface")
-            connection.execute("delete from crew_legacy")
+            for table in (
+                "contract_board",
+                "crew_summary",
+                "artifact_surface",
+                "artifact_edge",
+                "artifact_scoped_surface",
+                "deal_surface",
+                "visible_event_surface",
+                "crew_legacy",
+            ):
+                connection.execute(f"delete from {table}")
+
             for contract in board["contracts"]:
                 connection.execute(
                     """
@@ -57,14 +54,14 @@ class SqliteProjectionStore:
                         phase_status,
                         payload_json,
                         updated_sequence
-                    ) values (?, ?, ?, ?, ?, ?)
+                    ) values (%s, %s, %s, %s, %s::jsonb, %s)
                     """,
                     (
                         contract["contract_id"],
                         contract["campaign_id"],
                         contract.get("lifecycle_status", "active"),
                         contract.get("phase", {}).get("status", "active"),
-                        json.dumps(contract, sort_keys=True, separators=(",", ":")),
+                        _json_dumps(contract),
                         last_sequence,
                     ),
                 )
@@ -76,12 +73,12 @@ class SqliteProjectionStore:
                         member_count,
                         payload_json,
                         updated_sequence
-                    ) values (?, ?, ?, ?)
+                    ) values (%s, %s, %s::jsonb, %s)
                     """,
                     (
                         crew_id,
                         crew["member_count"],
-                        json.dumps(crew, sort_keys=True, separators=(",", ":")),
+                        _json_dumps(crew),
                         last_sequence,
                     ),
                 )
@@ -93,12 +90,12 @@ class SqliteProjectionStore:
                         contract_id,
                         payload_json,
                         updated_sequence
-                    ) values (?, ?, ?, ?)
+                    ) values (%s, %s, %s::jsonb, %s)
                     """,
                     (
                         artifact_id,
                         artifact["contract_id"],
-                        json.dumps(artifact, sort_keys=True, separators=(",", ":")),
+                        _json_dumps(artifact),
                         last_sequence,
                     ),
                 )
@@ -111,22 +108,20 @@ class SqliteProjectionStore:
                         relation,
                         payload_json,
                         updated_sequence
-                    ) values (?, ?, ?, ?, ?)
+                    ) values (%s, %s, %s, %s::jsonb, %s)
+                    on conflict (source_id, target_id, relation) do update set
+                        payload_json = excluded.payload_json,
+                        updated_sequence = excluded.updated_sequence
                     """,
                     (
                         edge["source_id"],
                         edge["target_id"],
                         edge["relation"],
-                        json.dumps(edge, sort_keys=True, separators=(",", ":")),
+                        _json_dumps(edge),
                         last_sequence,
                     ),
                 )
             for scoped in artifact_visibility["scoped_surfaces"]:
-                visibility_json = json.dumps(
-                    scoped["visibility"],
-                    sort_keys=True,
-                    separators=(",", ":"),
-                )
                 connection.execute(
                     """
                     insert into artifact_scoped_surface (
@@ -135,8 +130,8 @@ class SqliteProjectionStore:
                         payload_json,
                         visibility_json,
                         updated_sequence
-                    ) values (?, ?, ?, ?, ?)
-                    on conflict(artifact_id, scope_key) do update set
+                    ) values (%s, %s, %s::jsonb, %s::jsonb, %s)
+                    on conflict (artifact_id, scope_key) do update set
                         payload_json = excluded.payload_json,
                         visibility_json = excluded.visibility_json,
                         updated_sequence = excluded.updated_sequence
@@ -144,12 +139,8 @@ class SqliteProjectionStore:
                     (
                         scoped["artifact_id"],
                         _artifact_scope_key(scoped["visibility"]),
-                        json.dumps(
-                            scoped["surface"],
-                            sort_keys=True,
-                            separators=(",", ":"),
-                        ),
-                        visibility_json,
+                        _json_dumps(scoped["surface"]),
+                        _json_dumps(scoped["visibility"]),
                         last_sequence,
                     ),
                 )
@@ -163,14 +154,14 @@ class SqliteProjectionStore:
                         status,
                         payload_json,
                         updated_sequence
-                    ) values (?, ?, ?, ?, ?, ?)
+                    ) values (%s, %s, %s, %s, %s::jsonb, %s)
                     """,
                     (
                         deal["deal_id"],
                         deal["proposer_crew_id"],
                         deal["recipient_crew_id"],
                         deal["status"],
-                        json.dumps(deal, sort_keys=True, separators=(",", ":")),
+                        _json_dumps(deal),
                         last_sequence,
                     ),
                 )
@@ -181,11 +172,11 @@ class SqliteProjectionStore:
                         crew_id,
                         payload_json,
                         updated_sequence
-                    ) values (?, ?, ?)
+                    ) values (%s, %s::jsonb, %s)
                     """,
                     (
                         crew_id,
-                        json.dumps(legacy, sort_keys=True, separators=(",", ":")),
+                        _json_dumps(legacy),
                         last_sequence,
                     ),
                 )
@@ -200,21 +191,18 @@ class SqliteProjectionStore:
                         payload_json,
                         visibility_json,
                         updated_sequence
-                    ) values (?, ?, ?, ?, ?, ?)
+                    ) values (%s, %s, %s, %s::jsonb, %s::jsonb, %s)
                     """,
                     (
                         event.event_id,
                         event.sequence,
                         event.type,
-                        json.dumps(payload, sort_keys=True, separators=(",", ":")),
-                        json.dumps(
-                            payload["visibility"],
-                            sort_keys=True,
-                            separators=(",", ":"),
-                        ),
+                        _json_dumps(payload),
+                        _json_dumps(payload["visibility"]),
                         last_sequence,
                     ),
                 )
+
             self._set_meta(connection, "schema_version", SCHEMA_VERSION)
             self._set_meta(connection, "last_sequence", str(last_sequence))
             self._set_meta(connection, "contract_count", str(len(board["contracts"])))
@@ -232,41 +220,13 @@ class SqliteProjectionStore:
                 "scoped_artifact_count",
                 str(len(artifact_visibility["scoped_surfaces"])),
             )
-            self._set_meta(
-                connection,
-                "campaign_json",
-                json.dumps(
-                    board["campaign"],
-                    sort_keys=True,
-                    separators=(",", ":"),
-                ),
-            )
+            self._set_meta(connection, "campaign_json", _json_dumps(board["campaign"]))
             connection.commit()
         return self.diagnostics(authoritative_last_sequence=last_sequence)
 
     def diagnostics(self, *, authoritative_last_sequence: int | None = None) -> dict[str, Any]:
-        exists = self.path.exists()
-        if not exists:
-            authoritative = authoritative_last_sequence or 0
-            return {
-                "backend": self.backend,
-                "path": str(self.path),
-                "exists": False,
-                "status": "not_created",
-                "schema_version": int(SCHEMA_VERSION),
-                "last_sequence": 0,
-                "authoritative_last_sequence": authoritative,
-                "lag": authoritative,
-                "contract_count": 0,
-                "crew_count": 0,
-                "deal_count": 0,
-                "crew_legacy_count": 0,
-                "visible_event_count": 0,
-                "public_artifact_count": 0,
-                "scoped_artifact_count": 0,
-            }
         try:
-            with sqlite3.connect(self.path) as connection:
+            with self._connect() as connection:
                 self._ensure_schema(connection)
                 meta = dict(
                     connection.execute("select key, value from projection_meta").fetchall()
@@ -292,12 +252,12 @@ class SqliteProjectionStore:
                 scoped_artifact_count = connection.execute(
                     "select count(*) from artifact_scoped_surface"
                 ).fetchone()[0]
-        except sqlite3.DatabaseError:
+        except Exception:
             authoritative = authoritative_last_sequence or 0
             return {
                 "backend": self.backend,
-                "path": str(self.path),
-                "exists": True,
+                "database_url": self.safe_database_url,
+                "exists": False,
                 "status": "unavailable",
                 "schema_version": int(SCHEMA_VERSION),
                 "last_sequence": 0,
@@ -320,7 +280,7 @@ class SqliteProjectionStore:
         lag = max(0, authoritative - last_sequence)
         return {
             "backend": self.backend,
-            "path": str(self.path),
+            "database_url": self.safe_database_url,
             "exists": True,
             "status": "stale" if lag else "available",
             "schema_version": int(meta.get("schema_version", SCHEMA_VERSION)),
@@ -345,7 +305,7 @@ class SqliteProjectionStore:
         }
 
     def read_contract_board(self) -> dict[str, Any]:
-        with sqlite3.connect(self.path) as connection:
+        with self._connect() as connection:
             self._ensure_schema(connection)
             meta = dict(
                 connection.execute("select key, value from projection_meta").fetchall()
@@ -355,30 +315,30 @@ class SqliteProjectionStore:
             ).fetchall()
         return {
             "campaign": json.loads(meta["campaign_json"]) if "campaign_json" in meta else None,
-            "contracts": [json.loads(row[0]) for row in rows],
+            "contracts": [_load_json(row[0]) for row in rows],
         }
 
     def read_crew_summary(self, crew_id: str) -> dict[str, Any]:
-        with sqlite3.connect(self.path) as connection:
+        with self._connect() as connection:
             self._ensure_schema(connection)
             row = connection.execute(
-                "select payload_json from crew_summary where crew_id = ?",
+                "select payload_json from crew_summary where crew_id = %s",
                 (crew_id,),
             ).fetchone()
         if row is None:
             raise KeyError(crew_id)
-        return json.loads(row[0])
+        return _load_json(row[0])
 
     def read_crew_legacy(self, crew_id: str) -> dict[str, Any]:
-        with sqlite3.connect(self.path) as connection:
+        with self._connect() as connection:
             self._ensure_schema(connection)
             row = connection.execute(
-                "select payload_json from crew_legacy where crew_id = ?",
+                "select payload_json from crew_legacy where crew_id = %s",
                 (crew_id,),
             ).fetchone()
         if row is None:
             raise KeyError(crew_id)
-        return json.loads(row[0])
+        return _load_json(row[0])
 
     def read_visible_artifacts(
         self,
@@ -388,7 +348,7 @@ class SqliteProjectionStore:
     ) -> dict[str, Any]:
         principals = {("player", player_id)}
         principals.update(("crew", crew_id) for crew_id in crew_ids)
-        with sqlite3.connect(self.path) as connection:
+        with self._connect() as connection:
             self._ensure_schema(connection)
             artifact_rows = connection.execute(
                 "select payload_json from artifact_surface order by artifact_id"
@@ -402,19 +362,19 @@ class SqliteProjectionStore:
             ).fetchall()
             scoped_rows = connection.execute(
                 """
-                select artifact_id, payload_json, visibility_json
+                select payload_json, visibility_json
                 from artifact_scoped_surface
                 order by artifact_id, scope_key
                 """
             ).fetchall()
         artifacts_by_id = {
-            json.loads(row[0])["artifact_id"]: json.loads(row[0])
-            for row in artifact_rows
+            artifact["artifact_id"]: artifact
+            for artifact in (_load_json(row[0]) for row in artifact_rows)
         }
-        for _, payload_json, visibility_json in scoped_rows:
-            visibility = json.loads(visibility_json)
+        for payload_json, visibility_json in scoped_rows:
+            visibility = _load_json(visibility_json)
             if _visibility_matches(visibility, principals):
-                artifact = json.loads(payload_json)
+                artifact = _load_json(payload_json)
                 artifacts_by_id[artifact["artifact_id"]] = artifact
         return {
             "contract_id": "multiple",
@@ -422,7 +382,7 @@ class SqliteProjectionStore:
                 artifacts_by_id[artifact_id]
                 for artifact_id in sorted(artifacts_by_id)
             ],
-            "edges": [json.loads(row[0]) for row in edge_rows],
+            "edges": [_load_json(row[0]) for row in edge_rows],
         }
 
     def read_visible_deals(
@@ -435,26 +395,19 @@ class SqliteProjectionStore:
         crew_set = set(crew_ids)
         if not crew_set:
             return []
-        with sqlite3.connect(self.path) as connection:
+        with self._connect() as connection:
             self._ensure_schema(connection)
             rows = connection.execute(
                 """
                 select payload_json
                 from deal_surface
-                where proposer_crew_id in (
-                    select value from json_each(?)
-                )
-                or recipient_crew_id in (
-                    select value from json_each(?)
-                )
+                where proposer_crew_id = any(%s)
+                   or recipient_crew_id = any(%s)
                 order by deal_id
                 """,
-                (
-                    json.dumps(sorted(crew_set), separators=(",", ":")),
-                    json.dumps(sorted(crew_set), separators=(",", ":")),
-                ),
+                (sorted(crew_set), sorted(crew_set)),
             ).fetchall()
-        return [json.loads(row[0]) for row in rows]
+        return [_load_json(row[0]) for row in rows]
 
     def read_visible_events(
         self,
@@ -465,25 +418,34 @@ class SqliteProjectionStore:
     ) -> list[dict[str, Any]]:
         principals = {("player", player_id)}
         principals.update(("crew", crew_id) for crew_id in crew_ids)
-        with sqlite3.connect(self.path) as connection:
+        with self._connect() as connection:
             self._ensure_schema(connection)
             rows = connection.execute(
                 """
                 select payload_json, visibility_json
                 from visible_event_surface
-                where sequence > ?
+                where sequence > %s
                 order by sequence
                 """,
                 (since_sequence,),
             ).fetchall()
         visible: list[dict[str, Any]] = []
         for payload_json, visibility_json in rows:
-            visibility = json.loads(visibility_json)
+            visibility = _load_json(visibility_json)
             if _visibility_matches(visibility, principals):
-                visible.append(json.loads(payload_json))
+                visible.append(_load_json(payload_json))
         return visible
 
-    def _ensure_schema(self, connection: sqlite3.Connection) -> None:
+    def _connect(self) -> Any:
+        try:
+            import psycopg
+        except ImportError as exc:
+            raise RuntimeError(
+                "Postgres projection backend requires the psycopg package"
+            ) from exc
+        return psycopg.connect(self.database_url)
+
+    def _ensure_schema(self, connection: Any) -> None:
         connection.execute(
             """
             create table if not exists projection_meta (
@@ -499,8 +461,8 @@ class SqliteProjectionStore:
                 campaign_id text not null,
                 lifecycle_status text not null,
                 phase_status text not null,
-                payload_json text not null,
-                updated_sequence integer not null
+                payload_json jsonb not null,
+                updated_sequence bigint not null
             )
             """
         )
@@ -515,8 +477,8 @@ class SqliteProjectionStore:
             create table if not exists crew_summary (
                 crew_id text primary key,
                 member_count integer not null,
-                payload_json text not null,
-                updated_sequence integer not null
+                payload_json jsonb not null,
+                updated_sequence bigint not null
             )
             """
         )
@@ -524,8 +486,8 @@ class SqliteProjectionStore:
             """
             create table if not exists crew_legacy (
                 crew_id text primary key,
-                payload_json text not null,
-                updated_sequence integer not null
+                payload_json jsonb not null,
+                updated_sequence bigint not null
             )
             """
         )
@@ -534,8 +496,8 @@ class SqliteProjectionStore:
             create table if not exists artifact_surface (
                 artifact_id text primary key,
                 contract_id text not null,
-                payload_json text not null,
-                updated_sequence integer not null
+                payload_json jsonb not null,
+                updated_sequence bigint not null
             )
             """
         )
@@ -545,13 +507,24 @@ class SqliteProjectionStore:
                 source_id text not null,
                 target_id text not null,
                 relation text not null,
-                payload_json text not null,
-                updated_sequence integer not null,
+                payload_json jsonb not null,
+                updated_sequence bigint not null,
                 primary key (source_id, target_id, relation)
             )
             """
         )
-        self._ensure_artifact_scoped_surface_schema(connection)
+        connection.execute(
+            """
+            create table if not exists artifact_scoped_surface (
+                artifact_id text not null,
+                scope_key text not null,
+                payload_json jsonb not null,
+                visibility_json jsonb not null,
+                updated_sequence bigint not null,
+                primary key (artifact_id, scope_key)
+            )
+            """
+        )
         connection.execute(
             """
             create table if not exists deal_surface (
@@ -559,8 +532,8 @@ class SqliteProjectionStore:
                 proposer_crew_id text not null,
                 recipient_crew_id text not null,
                 status text not null,
-                payload_json text not null,
-                updated_sequence integer not null
+                payload_json jsonb not null,
+                updated_sequence bigint not null
             )
             """
         )
@@ -580,11 +553,11 @@ class SqliteProjectionStore:
             """
             create table if not exists visible_event_surface (
                 event_id text primary key,
-                sequence integer not null,
+                sequence bigint not null,
                 event_type text not null,
-                payload_json text not null,
-                visibility_json text not null,
-                updated_sequence integer not null
+                payload_json jsonb not null,
+                visibility_json jsonb not null,
+                updated_sequence bigint not null
             )
             """
         )
@@ -595,120 +568,34 @@ class SqliteProjectionStore:
             """
         )
 
-    def _ensure_artifact_scoped_surface_schema(self, connection: sqlite3.Connection) -> None:
-        existing_columns = {
-            row[1]
-            for row in connection.execute(
-                "pragma table_info(artifact_scoped_surface)"
-            ).fetchall()
-        }
-        if existing_columns and "scope_key" not in existing_columns:
-            connection.execute("drop table artifact_scoped_surface")
-        connection.execute(
-            """
-            create table if not exists artifact_scoped_surface (
-                artifact_id text not null,
-                scope_key text not null,
-                payload_json text not null,
-                visibility_json text not null,
-                updated_sequence integer not null,
-                primary key (artifact_id, scope_key)
-            )
-            """
-        )
-
-    def _set_meta(self, connection: sqlite3.Connection, key: str, value: str) -> None:
+    def _set_meta(self, connection: Any, key: str, value: str) -> None:
         connection.execute(
             """
             insert into projection_meta (key, value)
-            values (?, ?)
-            on conflict(key) do update set value = excluded.value
+            values (%s, %s)
+            on conflict (key) do update set value = excluded.value
             """,
             (key, value),
         )
 
 
-def _visibility_matches(
-    visibility: dict[str, Any],
-    principals: set[tuple[str, str]],
-) -> bool:
-    for entry in visibility.get("principals", visibility.get("entries", [])):
-        kind = entry.get("kind")
-        principal_id = entry.get("id")
-        if kind == "public":
-            return True
-        if principal_id is not None and (kind, principal_id) in principals:
-            return True
-    return False
+def _json_dumps(value: Any) -> str:
+    return json.dumps(value, sort_keys=True, separators=(",", ":"))
 
 
-def build_projection_snapshot(events: list[GameEvent]) -> dict[str, Any]:
-    board = contract_board_from_events(events)
-    crew_summaries = crew_summaries_from_events(events)
-    artifact_visibility = artifact_visibility_from_events(events)
-    deals = deal_rows_from_events(events)
-    crew_legacies = _crew_legacies_from_projection_inputs(
-        crew_ids=crew_summaries.keys(),
-        contracts=board["contracts"],
-        deals=deals,
-        events=events,
-    )
-    visible_events = [
-        event
-        for event in events
-        if _event_is_player_projectable(event)
-    ]
-    return {
-        "board": board,
-        "crew_summaries": crew_summaries,
-        "artifact_visibility": artifact_visibility,
-        "deals": deals,
-        "crew_legacies": crew_legacies,
-        "visible_events": visible_events,
-        "last_sequence": events[-1].sequence if events else 0,
-    }
+def _load_json(value: Any) -> Any:
+    if isinstance(value, str):
+        return json.loads(value)
+    return value
 
 
-def _artifact_scope_key(visibility: dict[str, Any]) -> str:
-    return json.dumps(visibility, sort_keys=True, separators=(",", ":"))
-
-
-def _event_is_player_projectable(event: GameEvent) -> bool:
-    return any(
-        entry.kind in {"public", "player", "crew"}
-        for entry in event.visibility.entries
-    )
-
-
-def _crew_legacies_from_projection_inputs(
-    *,
-    crew_ids: Any,
-    contracts: list[dict[str, Any]],
-    deals: list[dict[str, Any]],
-    events: list[GameEvent],
-) -> dict[str, dict[str, Any]]:
-    legacies: dict[str, dict[str, Any]] = {}
-    for crew_id in sorted(str(candidate) for candidate in crew_ids):
-        crew_deals = [
-            deal
-            for deal in deals
-            if crew_id in {deal.get("proposer_crew_id"), deal.get("recipient_crew_id")}
-        ]
-        crew_contracts = [
-            deepcopy(contract)
-            for contract in contracts
-            if contract.get("lifecycle_status", "active") != "archived"
-        ]
-        apply_contract_unlock_status(
-            contracts=crew_contracts,
-            crew_ids=[crew_id],
-            events=events,
-            deals_by_crew={crew_id: crew_deals},
-        )
-        legacies[crew_id] = crew_legacy_from_contracts(
-            crew_id=crew_id,
-            contracts=unlocked_actionable_contracts(crew_contracts),
-            deals=crew_deals,
-            events=events,
-        )
-    return legacies
+def _redact_database_url(database_url: str) -> str:
+    parsed = urlparse(database_url)
+    if parsed.password is None:
+        return database_url
+    netloc = parsed.hostname or ""
+    if parsed.username:
+        netloc = f"{parsed.username}:***@{netloc}"
+    if parsed.port:
+        netloc = f"{netloc}:{parsed.port}"
+    return urlunparse(parsed._replace(netloc=netloc))

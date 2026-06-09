@@ -4,6 +4,7 @@ import os
 from pathlib import Path
 from urllib.parse import unquote, urlparse, urlunparse
 
+from hollow_lodge.server.projection_postgres_store import PostgresProjectionStore
 from hollow_lodge.server.projection_store import SqliteProjectionStore
 
 
@@ -21,11 +22,7 @@ def projection_store_from_env(root: Path) -> SqliteProjectionStore:
         return SqliteProjectionStore(_sqlite_path_from_url(database_url))
 
     if scheme in {"postgres", "postgresql"}:
-        raise RuntimeError(
-            "Postgres projection backend is not implemented yet; unset "
-            f"{PROJECTION_DATABASE_URL_ENV} or use a sqlite:/// URL. "
-            f"Configured URL: {_redact_database_url(database_url)}"
-        )
+        return PostgresProjectionStore(database_url)
 
     raise RuntimeError(
         "Unsupported projection database URL scheme "

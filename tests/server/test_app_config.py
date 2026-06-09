@@ -101,24 +101,99 @@ def test_sqlite_projection_database_url_selects_explicit_path(tmp_path, monkeypa
     assert projection["path"] == str(projection_path)
 
 
-def test_postgres_projection_database_url_fails_fast(tmp_path, monkeypatch):
+def test_postgres_projection_database_url_selects_postgres_backend(
+    tmp_path,
+    monkeypatch,
+):
+    from hollow_lodge.server.projection_postgres_store import PostgresProjectionStore
+
     monkeypatch.setenv(
         "HOLLOW_LODGE_PROJECTION_DATABASE_URL",
         "postgresql://user:secret@example.com:5432/hollow_lodge",
     )
+    fake = FakePostgresConnector(
+        meta_rows=[
+            ("schema_version", "1"),
+            ("last_sequence", "100"),
+            ("contract_count", "1"),
+            ("crew_count", "0"),
+            ("deal_count", "0"),
+            ("crew_legacy_count", "0"),
+            ("visible_event_count", "1"),
+            ("public_artifact_count", "2"),
+            ("scoped_artifact_count", "0"),
+        ]
+    )
+    monkeypatch.setattr(PostgresProjectionStore, "_connect", lambda self: fake())
 
-    try:
-        create_app(data_dir=tmp_path)
-    except RuntimeError as exc:
-        message = str(exc)
-    else:
-        raise AssertionError("postgres projection backend should fail fast")
+    client = TestClient(create_app(data_dir=tmp_path))
 
-    assert "Postgres projection backend is not implemented yet" in message
-    assert "secret" not in message
+    projection = client.get("/diagnostics").json()["data"]["projection_db"]
+    all_sql = "\n".join(
+        sql for connection in fake.connections for sql, _ in connection.statements
+    ).lower()
+
+    assert client.app.state.projection_store.backend == "postgres"
+    assert projection["backend"] == "postgres"
+    assert projection["database_url"] == "postgresql://user:***@example.com:5432/hollow_lodge"
+    assert projection["status"] == "available"
+    assert projection["lag"] == 0
+    assert "secret" not in str(projection)
+    assert "create table if not exists projection_meta" in all_sql
+    assert "insert into contract_board" in all_sql
+    assert any(connection.committed for connection in fake.connections)
 
 
 def test_server_docker_image_installs_openai_client_for_openai_oracle():
     dockerfile = Path("Dockerfile").read_text(encoding="utf-8")
 
     assert '"openai>=' in dockerfile
+    assert '"psycopg[binary]>=' in dockerfile
+
+
+class FakePostgresConnector:
+    def __init__(self, *, meta_rows: list[tuple[str, str]]):
+        self.meta_rows = meta_rows
+        self.connections: list[FakePostgresConnection] = []
+
+    def __call__(self) -> "FakePostgresConnection":
+        connection = FakePostgresConnection(meta_rows=self.meta_rows)
+        self.connections.append(connection)
+        return connection
+
+
+class FakePostgresConnection:
+    def __init__(self, *, meta_rows: list[tuple[str, str]]):
+        self.meta_rows = meta_rows
+        self.statements: list[tuple[str, tuple]] = []
+        self.committed = False
+
+    def __enter__(self) -> "FakePostgresConnection":
+        return self
+
+    def __exit__(self, exc_type, exc, traceback) -> None:
+        return None
+
+    def execute(self, sql: str, params: tuple = ()) -> "FakePostgresCursor":
+        self.statements.append((sql, params))
+        normalized = " ".join(sql.lower().split())
+        if "select key, value from projection_meta" in normalized:
+            return FakePostgresCursor(rows=self.meta_rows)
+        if normalized.startswith("select count(*)"):
+            return FakePostgresCursor(row=(0,))
+        return FakePostgresCursor()
+
+    def commit(self) -> None:
+        self.committed = True
+
+
+class FakePostgresCursor:
+    def __init__(self, *, rows: list[tuple] | None = None, row: tuple | None = None):
+        self._rows = rows or []
+        self._row = row
+
+    def fetchall(self) -> list[tuple]:
+        return self._rows
+
+    def fetchone(self) -> tuple | None:
+        return self._row

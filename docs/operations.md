@@ -49,10 +49,15 @@ An explicit SQLite projection path can be configured with:
 HOLLOW_LODGE_PROJECTION_DATABASE_URL=sqlite:////data/server-projections.sqlite3
 ```
 
-Postgres URLs are intentionally rejected until the Postgres projection store is
-implemented. This prevents a Railway `DATABASE_URL` migration from silently
-serving local SQLite projections while operators believe Postgres is active.
-`/diagnostics` reports the active projection backend and path.
+Postgres projection storage can be enabled explicitly with:
+
+```sh
+HOLLOW_LODGE_PROJECTION_DATABASE_URL=postgresql://user:password@host:5432/database
+```
+
+Only the projection database moves to Postgres. The Eventloom JSONL log remains
+authoritative. `/diagnostics` reports the active projection backend and redacts
+the configured Postgres password before returning operational status.
 
 ## Access Requests
 
