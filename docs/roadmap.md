@@ -4268,6 +4268,30 @@ Expected verification:
 - `pytest tests/server/test_resolution_oracle.py tests/server/test_phase_resolution.py tests/workflows/test_openai_oracle.py tests/workflows/test_oracle_boundary.py tests/workflows/test_deterministic_oracle.py tests/workflows/test_oracle_factory.py -q`
 - `pytest -q`
 
+### Slice 177: Social Pressure Codex Smoke
+
+Status: completed.
+
+Strengthen the Milestone 7 proof gate with a Codex-session smoke for leaky
+private arrangements. A new three-crew mock has Gilt propose a soft-term
+escrow deal to Moth, renders Ash's bystander activity, inbox, crew board, and
+deal list through Codex packets, submits Ash's rumor investigation through the
+same Codex mutation path, and then confirms Moth can still accept the escrowed
+swap reliably.
+
+The e2e proof verifies that the bystander sees only a sanitized deal-originated
+rumor and `rumor_response` pending decision, never the participant-visible
+deal card. It also verifies the investigation creates bounded response and
+verification activity with a `credible_soft_term_signal`, updates bystander
+crew legacy, and keeps artifact escrow fulfillment intact for the participants
+while preserving the rumor/pending-decision privacy boundary.
+
+Expected verification:
+
+- `pytest tests/e2e/test_social_pressure_loop.py -q`
+- `pytest tests/e2e/test_social_pressure_loop.py tests/server/test_deal_routes.py tests/server/test_action_routes.py tests/client/test_render_packets.py tests/test_mcp_server.py -q`
+- `pytest -q`
+
 ## Completion Standard
 
 Each slice must:
