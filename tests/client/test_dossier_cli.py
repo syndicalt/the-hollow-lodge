@@ -190,7 +190,7 @@ def test_dossier_citation_and_frame_commands_send_only_requested_fields(tmp_path
     config_path = tmp_path / "config.json"
     write_config(config_path)
 
-    cite = runner.invoke(
+    cite_preview = runner.invoke(
         cli.app,
         [
             "dossier",
@@ -204,7 +204,7 @@ def test_dossier_citation_and_frame_commands_send_only_requested_fields(tmp_path
             str(config_path),
         ],
     )
-    frame = runner.invoke(
+    frame_preview = runner.invoke(
         cli.app,
         [
             "dossier",
@@ -217,7 +217,46 @@ def test_dossier_citation_and_frame_commands_send_only_requested_fields(tmp_path
             str(config_path),
         ],
     )
+    assert cite_preview.exit_code == 0
+    assert "Preview: dossier_cite_artifact" in cite_preview.output
+    assert "- crew_id: crew_0001" in cite_preview.output
+    assert "- artifact_id: artifact_ledger_rubric" in cite_preview.output
+    assert frame_preview.exit_code == 0
+    assert "Preview: dossier_update_framing" in frame_preview.output
+    assert "- crew_id: crew_0001" in frame_preview.output
+    assert "- evidence_ids: ['fragment_1']" in frame_preview.output
+    assert "- weaknesses: No direct witness." in frame_preview.output
+    assert clients == []
 
+    cite = runner.invoke(
+        cli.app,
+        [
+            "dossier",
+            "cite-artifact",
+            "artifact_ledger_rubric",
+            "--claim",
+            "The ledger contradicts the lot card.",
+            "--quote",
+            "The last hand is later.",
+            "--confirm",
+            "--config",
+            str(config_path),
+        ],
+    )
+    frame = runner.invoke(
+        cli.app,
+        [
+            "dossier",
+            "frame",
+            "--evidence-id",
+            "fragment_1",
+            "--weaknesses",
+            "No direct witness.",
+            "--confirm",
+            "--config",
+            str(config_path),
+        ],
+    )
     assert cite.exit_code == 0
     assert frame.exit_code == 0
     assert clients[0].calls == [

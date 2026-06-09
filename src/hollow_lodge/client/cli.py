@@ -1585,11 +1585,25 @@ def dossier_cite_artifact(
     claim: str = typer.Option(..., "--claim", help="Claim supported by the artifact."),
     quote: str = typer.Option(..., "--quote", help="Short quoted support from the artifact."),
     crew_id: str | None = typer.Option(None, "--crew-id", help="Crew id; defaults to active crew."),
+    confirm: bool = typer.Option(False, "--confirm", help="Cite the artifact on the server."),
     config: Path = typer.Option(DEFAULT_CONFIG_PATH, "--config", help="Local config path."),
 ) -> None:
     """Cite an artifact directly in the crew proof dossier."""
     current = load_config(config)
     target_crew_id = _target_crew_id(current, crew_id)
+    if not confirm:
+        packet = build_mutation_result_packet(
+            operation="dossier_cite_artifact",
+            confirmed=False,
+            preview_fields={
+                "crew_id": target_crew_id,
+                "artifact_id": artifact_id,
+                "claim": claim,
+                "quote": quote,
+            },
+        )
+        _echo_packet(packet, as_json=False)
+        return
     response = _api_from_config(current).cite_artifact_in_dossier(
         crew_id=target_crew_id,
         artifact_id=artifact_id,
@@ -1612,6 +1626,7 @@ def dossier_frame(
         help="Known provenance concerns.",
     ),
     crew_id: str | None = typer.Option(None, "--crew-id", help="Crew id; defaults to active crew."),
+    confirm: bool = typer.Option(False, "--confirm", help="Update dossier framing on the server."),
     config: Path = typer.Option(DEFAULT_CONFIG_PATH, "--config", help="Local config path."),
 ) -> None:
     """Update supplied dossier framing fields."""
@@ -1625,6 +1640,25 @@ def dossier_frame(
         raise typer.BadParameter("at least one framing field is required")
     current = load_config(config)
     target_crew_id = _target_crew_id(current, crew_id)
+    if not confirm:
+        preview: dict[str, object] = {"crew_id": target_crew_id}
+        if claim is not None:
+            preview["claim"] = claim
+        if evidence_id is not None:
+            preview["evidence_ids"] = evidence_id
+        if reasoning is not None:
+            preview["reasoning"] = reasoning
+        if weaknesses is not None:
+            preview["weaknesses"] = weaknesses
+        if provenance_concerns is not None:
+            preview["provenance_concerns"] = provenance_concerns
+        packet = build_mutation_result_packet(
+            operation="dossier_update_framing",
+            confirmed=False,
+            preview_fields=preview,
+        )
+        _echo_packet(packet, as_json=False)
+        return
     response = _api_from_config(current).update_dossier_framing(
         crew_id=target_crew_id,
         claim=claim,

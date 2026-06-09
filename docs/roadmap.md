@@ -3959,6 +3959,28 @@ Expected verification:
 - `pytest tests/client/test_cli_commands.py tests/client/test_action_cli.py tests/client/test_codex_session.py tests/client/test_render_packets.py tests/test_mcp_server.py tests/server/test_proof_routes.py -q`
 - `pytest -q`
 
+### Slice 163: CLI Dossier Citation And Framing Confirmation Guard
+
+Status: completed.
+
+Bring proof-dossier citation and framing edits under the same preview/confirm
+contract used by Codex session dossier tools. `hollow-lodge dossier
+cite-artifact` now renders a no-mutation `dossier_cite_artifact` preview by
+default, showing the target crew, artifact, claim, and quote. `hollow-lodge
+dossier frame` now renders a no-mutation `dossier_update_framing` preview by
+default, showing only the supplied framing fields. Both commands submit to the
+server only when rerun with `--confirm`.
+
+This protects proof packet shaping from accidental shell mutations while
+preserving the existing confirmed API calls, active-crew routing, field
+selection, and idempotency keys.
+
+Expected verification:
+
+- `pytest tests/client/test_dossier_cli.py::test_dossier_citation_and_frame_commands_send_only_requested_fields tests/client/test_cli_commands.py::test_dossier_artifact_citation_and_frame_commands_use_active_crew -q`
+- `pytest tests/client/test_dossier_cli.py tests/client/test_cli_commands.py tests/client/test_codex_session.py tests/client/test_render_packets.py tests/test_mcp_server.py tests/server/test_proof_routes.py tests/server/test_packet_lead.py -q`
+- `pytest -q`
+
 ## Completion Standard
 
 Each slice must:

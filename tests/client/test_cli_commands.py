@@ -3882,6 +3882,50 @@ def test_dossier_artifact_citation_and_frame_commands_use_active_crew(tmp_path, 
         ),
     )
 
+    cite_preview = runner.invoke(
+        cli.app,
+        [
+            "dossier",
+            "cite-artifact",
+            "artifact_ledger_rubric",
+            "--claim",
+            "The ledger contradicts the lot card.",
+            "--quote",
+            "The last hand is later.",
+            "--config",
+            str(config_path),
+        ],
+    )
+    frame_preview = runner.invoke(
+        cli.app,
+        [
+            "dossier",
+            "frame",
+            "--claim",
+            "The relic is false.",
+            "--evidence-id",
+            "fragment_1",
+            "--evidence-id",
+            "artifact_ledger_rubric",
+            "--reasoning",
+            "The records disagree.",
+            "--provenance-concerns",
+            "Copied hand.",
+            "--config",
+            str(config_path),
+        ],
+    )
+
+    assert cite_preview.exit_code == 0
+    assert "Preview: dossier_cite_artifact" in cite_preview.output
+    assert "- crew_id: crew_0001" in cite_preview.output
+    assert "- artifact_id: artifact_ledger_rubric" in cite_preview.output
+    assert frame_preview.exit_code == 0
+    assert "Preview: dossier_update_framing" in frame_preview.output
+    assert "- crew_id: crew_0001" in frame_preview.output
+    assert "- evidence_ids: ['fragment_1', 'artifact_ledger_rubric']" in frame_preview.output
+    assert created_clients == []
+
     cite_result = runner.invoke(
         cli.app,
         [
@@ -3892,6 +3936,7 @@ def test_dossier_artifact_citation_and_frame_commands_use_active_crew(tmp_path, 
             "The ledger contradicts the lot card.",
             "--quote",
             "The last hand is later.",
+            "--confirm",
             "--config",
             str(config_path),
         ],
@@ -3911,6 +3956,7 @@ def test_dossier_artifact_citation_and_frame_commands_use_active_crew(tmp_path, 
             "The records disagree.",
             "--provenance-concerns",
             "Copied hand.",
+            "--confirm",
             "--config",
             str(config_path),
         ],
