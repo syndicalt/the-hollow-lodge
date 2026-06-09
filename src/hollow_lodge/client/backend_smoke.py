@@ -133,6 +133,11 @@ def validate_backend_diagnostics(
         errors.append(
             f"expected event-log backend {expected_event_backend}, got {event_backend}"
         )
+    if require_postgres_event_log_guard and event_backend != "postgres":
+        errors.append(
+            "Postgres event-log guard is enabled but event-log backend is "
+            f"{event_backend}"
+        )
     event_status = event_log.get("status")
     if event_status not in {"available", "not_created"}:
         errors.append(f"event log status is {event_status}")
@@ -177,6 +182,11 @@ def validate_backend_diagnostics(
     backend = projection.get("backend")
     if backend != expected_backend:
         errors.append(f"expected projection backend {expected_backend}, got {backend}")
+    if require_postgres_projection_guard and backend != "postgres":
+        errors.append(
+            "Postgres projection guard is enabled but projection backend is "
+            f"{backend}"
+        )
 
     status = projection.get("status")
     lag = _optional_int(projection.get("lag"))

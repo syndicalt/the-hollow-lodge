@@ -277,6 +277,84 @@ def test_backend_smoke_rejects_disabled_required_storage_guards():
     assert "Postgres projection startup guard is not enabled" in message
 
 
+def test_backend_smoke_rejects_event_log_guard_with_non_postgres_backend():
+    smoke = _load_smoke_module()
+
+    try:
+        smoke.validate_backend_diagnostics(
+            {
+                "data": {
+                    "event_log": {
+                        "backend": "jsonl",
+                        "status": "available",
+                        "event_count": 3,
+                    },
+                    "projection_db": {
+                        "backend": "postgres",
+                        "status": "available",
+                        "lag": 0,
+                    },
+                    "storage_guards": {
+                        "require_postgres_event_log": True,
+                        "require_postgres_projection": True,
+                    },
+                }
+            },
+            expected_backend="postgres",
+            expected_event_backend="jsonl",
+            require_postgres_event_log_guard=True,
+            require_postgres_projection_guard=True,
+        )
+    except RuntimeError as exc:
+        message = str(exc)
+    else:
+        raise AssertionError("event-log guard with non-Postgres backend should fail")
+
+    assert (
+        "Postgres event-log guard is enabled but event-log backend is jsonl"
+        in message
+    )
+
+
+def test_backend_smoke_rejects_projection_guard_with_non_postgres_backend():
+    smoke = _load_smoke_module()
+
+    try:
+        smoke.validate_backend_diagnostics(
+            {
+                "data": {
+                    "event_log": {
+                        "backend": "postgres",
+                        "status": "available",
+                        "event_count": 3,
+                    },
+                    "projection_db": {
+                        "backend": "sqlite",
+                        "status": "available",
+                        "lag": 0,
+                    },
+                    "storage_guards": {
+                        "require_postgres_event_log": True,
+                        "require_postgres_projection": True,
+                    },
+                }
+            },
+            expected_backend="sqlite",
+            expected_event_backend="postgres",
+            require_postgres_event_log_guard=True,
+            require_postgres_projection_guard=True,
+        )
+    except RuntimeError as exc:
+        message = str(exc)
+    else:
+        raise AssertionError("projection guard with non-Postgres backend should fail")
+
+    assert (
+        "Postgres projection guard is enabled but projection backend is sqlite"
+        in message
+    )
+
+
 def test_backend_smoke_accepts_event_log_manifest_chain_head(tmp_path):
     smoke = _load_smoke_module()
     store = JsonlEventStore(tmp_path / "server-events.jsonl")

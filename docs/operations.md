@@ -367,7 +367,8 @@ also fails unless `/diagnostics.data.projection_refresh.status` is `ok`; failure
 messages include only the safe refresh context and exception type. When
 `--require-postgres-event-log-guard` or
 `--require-postgres-projection-guard` is set, the smoke also fails unless
-`/diagnostics` reports the corresponding startup guard as enabled.
+`/diagnostics` reports the corresponding startup guard as enabled and the
+guarded backend is actually `postgres`.
 
 Rollback for a projection-only cutover is to remove
 `HOLLOW_LODGE_REQUIRE_POSTGRES_PROJECTION`,

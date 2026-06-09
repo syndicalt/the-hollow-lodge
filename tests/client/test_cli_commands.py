@@ -1808,6 +1808,7 @@ def test_admin_backend_smoke_command_verifies_required_storage_guards(monkeypatc
     class GuardedStorageApi(FakeApi):
         def diagnostics(self):
             payload = super().diagnostics()
+            payload["data"]["event_log"]["backend"] = "postgres"
             payload["data"]["storage_guards"] = {
                 "require_postgres_event_log": True,
                 "require_postgres_projection": True,
@@ -1827,15 +1828,53 @@ def test_admin_backend_smoke_command_verifies_required_storage_guards(monkeypatc
             "--expected-backend",
             "postgres",
             "--expected-event-backend",
-            "jsonl",
+            "postgres",
             "--require-postgres-event-log-guard",
             "--require-postgres-projection-guard",
         ],
     )
 
     assert result.exit_code == 0
-    assert "backend readiness ok: event=jsonl" in result.output
+    assert "backend readiness ok: event=postgres" in result.output
     assert "secret" not in result.output
+
+
+def test_admin_backend_smoke_command_rejects_event_log_guard_backend_mismatch(
+    monkeypatch,
+):
+    class GuardedJsonlApi(FakeApi):
+        def diagnostics(self):
+            payload = super().diagnostics()
+            payload["data"]["storage_guards"] = {
+                "require_postgres_event_log": True,
+                "require_postgres_projection": True,
+            }
+            return payload
+
+    monkeypatch.setattr(cli, "HollowLodgeApi", GuardedJsonlApi)
+    runner = CliRunner()
+
+    result = runner.invoke(
+        cli.app,
+        [
+            "admin",
+            "backend-smoke",
+            "--server",
+            "http://testserver",
+            "--expected-backend",
+            "postgres",
+            "--expected-event-backend",
+            "jsonl",
+            "--require-postgres-event-log-guard",
+            "--require-postgres-projection-guard",
+        ],
+    )
+
+    assert result.exit_code != 0
+    assert (
+        "Postgres event-log guard is enabled but event-log backend is jsonl"
+        in result.output
+    )
 
 
 def test_admin_backend_smoke_command_rejects_disabled_event_log_guard(monkeypatch):

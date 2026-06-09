@@ -2708,6 +2708,29 @@ Expected verification:
 - `pytest tests/eventlog/test_postgres_store.py tests/eventlog/test_jsonl_store.py tests/server/test_event_sync.py tests/client/test_cli_commands.py tests/e2e/test_projection_backend_smoke.py -q`
 - `pytest -q`
 
+### Slice 107: Storage Guard Backend Consistency Smoke
+
+Status: completed.
+
+Tighten production database cutover evidence so readiness smoke fails closed on
+inconsistent storage diagnostics. When
+`--require-postgres-event-log-guard` is set, backend smoke now requires both
+`/diagnostics.data.storage_guards.require_postgres_event_log=true` and
+`/diagnostics.data.event_log.backend=postgres`. When
+`--require-postgres-projection-guard` is set, it requires both the projection
+guard flag and `data.projection_db.backend=postgres`.
+
+This keeps guard-required smoke runs from accepting contradictory diagnostics
+such as a JSONL event backend with the Postgres event-log guard supposedly
+enabled, or a SQLite projection backend with the Postgres projection guard
+supposedly enabled.
+
+Expected verification:
+
+- `pytest tests/e2e/test_projection_backend_smoke.py::test_backend_smoke_rejects_event_log_guard_with_non_postgres_backend tests/e2e/test_projection_backend_smoke.py::test_backend_smoke_rejects_projection_guard_with_non_postgres_backend tests/client/test_cli_commands.py::test_admin_backend_smoke_command_verifies_required_storage_guards tests/client/test_cli_commands.py::test_admin_backend_smoke_command_rejects_event_log_guard_backend_mismatch -q`
+- `pytest tests/e2e/test_projection_backend_smoke.py tests/client/test_cli_commands.py tests/server/test_app_config.py -q`
+- `pytest -q`
+
 ## Completion Standard
 
 Each slice must:
