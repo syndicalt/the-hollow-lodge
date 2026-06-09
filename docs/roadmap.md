@@ -3659,6 +3659,27 @@ Expected verification:
 - `pytest tests/client/test_cli_commands.py tests/client/test_installer_script.py tests/client/test_codex_mcp_config.py tests/client/test_local_log.py tests/client/test_codex_session.py -q`
 - `pytest -q`
 
+### Slice 149: Doctor Server Override Consistency
+
+Status: completed.
+
+Harden the installed-client readiness gate for custom or staging servers. When
+operators or players pass `hollow-lodge doctor --server <url>`, the health
+check, saved-auth validation, inbox readiness, visible-event sync, and Codex
+inbox render smoke now all use the same resolved server URL instead of mixing
+the override for health with the saved config server for authenticated checks.
+
+This prevents `doctor --strict` from accidentally proving readiness against
+two different servers and keeps custom-server onboarding diagnostics honest.
+The player identity, token, active crew, and local config path remain unchanged;
+only the server endpoint used for the readiness probes is overridden.
+
+Expected verification:
+
+- `pytest tests/client/test_cli_commands.py::test_doctor_server_override_applies_to_registered_readiness_checks -q`
+- `pytest tests/client/test_cli_commands.py tests/client/test_installer_script.py tests/client/test_codex_mcp_config.py tests/client/test_local_log.py tests/client/test_codex_session.py -q`
+- `pytest -q`
+
 ## Completion Standard
 
 Each slice must:

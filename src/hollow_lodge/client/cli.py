@@ -238,17 +238,18 @@ def doctor(
     codex_inbox_render_status: str | None = None
 
     if registered_config is not None:
+        readiness_config = registered_config.model_copy(update={"server_url": resolved_server})
         display_name = registered_config.display_name or "-"
         active_crew = registered_config.active_crew_id or "-"
         typer.echo(
             f"player: registered {registered_config.player_id} "
             f"display={display_name} active_crew={active_crew}"
         )
-        auth_status = _player_auth_status(registered_config)
-        inbox_status = _player_inbox_status(registered_config)
-        event_sync_status = _player_event_sync_status(registered_config, local_log)
+        auth_status = _player_auth_status(readiness_config)
+        inbox_status = _player_inbox_status(readiness_config)
+        event_sync_status = _player_event_sync_status(readiness_config, local_log)
         codex_inbox_render_status = _codex_inbox_render_status(
-            registered_config,
+            readiness_config,
             config,
             local_log,
         )

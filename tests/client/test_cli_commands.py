@@ -898,6 +898,66 @@ def test_doctor_reports_registered_player_and_mcp_without_secret_material(
     assert "No public claims until lock." in local_log_path.read_text(encoding="utf-8")
 
 
+def test_doctor_server_override_applies_to_registered_readiness_checks(
+    tmp_path,
+    monkeypatch,
+):
+    runner = CliRunner()
+    created_clients: list[FakeApi] = []
+
+    def fake_client(**kwargs):
+        client = FakeApi(**kwargs)
+        created_clients.append(client)
+        return client
+
+    monkeypatch.setattr(cli, "HollowLodgeApi", fake_client)
+    monkeypatch.setattr(cli.shutil, "which", lambda command: f"/bin/{command}")
+    config_path = tmp_path / "config.json"
+    codex_config = tmp_path / "codex.toml"
+    codex_config.write_text(
+        '[mcp_servers."the-hollow-lodge"]\ncommand = "hollow-lodge-mcp"\n',
+        encoding="utf-8",
+    )
+    save_config(
+        config_path,
+        ClientConfig(
+            server_url="http://saved-server",
+            player_id="player_0001",
+            token="secret-token",
+            display_name="Ada",
+            active_crew_id="crew_0001",
+        ),
+    )
+
+    result = runner.invoke(
+        cli.app,
+        [
+            "doctor",
+            "--server",
+            "http://override-server",
+            "--config",
+            str(config_path),
+            "--onboarding-state",
+            str(tmp_path / "missing-onboarding.json"),
+            "--codex-config",
+            str(codex_config),
+            "--local-log",
+            str(tmp_path / "local.jsonl"),
+        ],
+    )
+
+    assert result.exit_code == 0
+    assert "server: ok http://override-server" in result.output
+    assert [client.server_url for client in created_clients] == [
+        "http://override-server",
+        "http://override-server",
+        "http://override-server",
+        "http://override-server",
+        "http://override-server",
+    ]
+    assert "http://saved-server" not in result.output
+
+
 def test_doctor_strict_passes_for_registered_ready_install(tmp_path, monkeypatch):
     runner = CliRunner()
 
