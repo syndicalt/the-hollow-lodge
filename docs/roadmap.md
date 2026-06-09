@@ -323,6 +323,10 @@ Status:
   player- and crew-visible activity from SQLite when fresh, preserving
   `since_sequence` sync semantics and post-join full-sync recovery while
   keeping server-only and deny-all events out of the activity read model.
+- Feature-flagged crew legacy projection reads completed: crew-board legacy can
+  read safe retention, rumor, counterintelligence, deal-conduct, completed
+  contract, and future-opportunity context from SQLite when fresh, while stale
+  state falls back to the existing event-log projection path.
 - Deferred: deeper death/legacy inheritance, additional long-term unlock paths,
   and migrating heavier campaign reads onto the projection database.
 
@@ -1294,6 +1298,30 @@ Expected verification:
 
 - `pytest tests/server/test_event_sync.py::test_visible_events_route_reads_fresh_projection_when_enabled tests/server/test_event_sync.py::test_visible_events_projection_honors_since_sequence tests/server/test_event_sync.py::test_visible_events_projection_full_sync_recovers_crew_events_after_join tests/server/test_event_sync.py::test_visible_events_route_falls_back_when_projection_is_stale -q`
 - `pytest tests/server/test_event_sync.py tests/server/test_projection_store.py tests/server/test_chat_routes.py tests/client/test_local_log.py tests/client/test_codex_session.py tests/client/test_render_packets.py tests/test_mcp_server.py -q`
+- `pytest -q`
+
+### Slice 49: Feature-Flagged Crew Legacy Projection Reads
+
+Status: completed.
+
+Move the crew-board legacy block onto the SQLite projection layer without
+moving legacy authority. The projection store now materializes one safe
+`crew_legacy` payload per crew from the existing `crew_legacy_from_contracts`
+projection, using unlock-aware active contracts, participant-scoped deal rows,
+and visible event-derived rumor/counterintelligence data. The stored payload
+excludes raw artifact IDs, soft terms, private chat bodies, hidden truth, and
+server-only source details because it persists only the already-shaped legacy
+surface. `/crews/{crew_id}/board` reads this payload when
+`HOLLOW_LODGE_CREW_LEGACY_PROJECTION_READS=1`, the projection is available,
+and lag is zero; stale, missing, or unreadable projection state falls back to
+the existing event-log projection path. Action mutations now refresh
+projections best-effort after successful writes so rumor response and
+escalation legacy can stay fresh under the read-model flag.
+
+Expected verification:
+
+- `pytest tests/server/test_projection_store.py::test_crew_board_reads_fresh_projected_crew_legacy_when_enabled tests/server/test_projection_store.py::test_crew_board_falls_back_when_projected_crew_legacy_is_stale tests/server/test_projection_store.py::test_projection_store_materializes_crew_legacy_without_private_deal_terms -q`
+- `pytest tests/server/test_projection_store.py tests/server/test_crew_routes.py tests/server/test_crew_legacy_projection.py tests/server/test_action_routes.py tests/server/test_deal_routes.py tests/server/test_contract_seed.py tests/server/test_phase_resolution.py tests/client/test_render_packets.py tests/test_mcp_server.py -q`
 - `pytest -q`
 
 ## Completion Standard

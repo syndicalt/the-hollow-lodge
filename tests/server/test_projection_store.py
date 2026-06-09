@@ -5,6 +5,7 @@ from fastapi.testclient import TestClient
 
 from hollow_lodge.domain.deals import deal_rows_from_events
 from hollow_lodge.domain.events import EventVisibility
+import hollow_lodge.server.routes_crews as routes_crews
 from hollow_lodge.server.app import create_app
 from hollow_lodge.server.projections import (
     contract_board_from_events,
@@ -1046,6 +1047,183 @@ def test_projection_store_materializes_visible_deals_without_bystander_terms(tmp
         ada["player_id"],
         crew_ids=[gilt["crew_id"]],
     ) == deal_rows_from_events(client.app.state.event_store.read())
+
+
+def test_crew_board_reads_fresh_projected_crew_legacy_when_enabled(
+    tmp_path,
+    monkeypatch,
+):
+    monkeypatch.setenv("HOLLOW_LODGE_ADMIN_TOKEN", "admin-secret")
+    monkeypatch.setenv("HOLLOW_LODGE_CREW_LEGACY_PROJECTION_READS", "1")
+    client = TestClient(create_app(data_dir=tmp_path, invite_codes=["a"]))
+    ada = register(client, "a", "Ada")
+    activated = client.post(
+        "/contracts/admin/activate",
+        headers={
+            "Idempotency-Key": "activate-ash-window",
+            "X-Hollow-Lodge-Admin-Token": "admin-secret",
+        },
+        json={"seed": "tests/fixtures/ash_window_contract.json"},
+    )
+    crew = create_crew(client, ada["token"], "crew-create-gilt", "The Gilt Knives")
+    action = submit_action(
+        client,
+        ada,
+        crew,
+        "action-ledger",
+        "Inspect the red ledger timestamp for forged provenance.",
+    )
+    claim = set_claim(
+        client,
+        ada,
+        crew,
+        "claim-ledger",
+        "The finger is a false relic with forged provenance.",
+    )
+    resolved = client.post(
+        "/contracts/contract_false_finger/phases/auction-preview/lock",
+        headers=command_auth(ada["token"], "phase-lock"),
+        json={"hours_elapsed": 6},
+    )
+    original_read = client.app.state.projection_store.read_crew_legacy
+    calls = {"count": 0}
+
+    def tracked_read_crew_legacy(crew_id: str):
+        calls["count"] += 1
+        return original_read(crew_id)
+
+    client.app.state.projection_store.read_crew_legacy = tracked_read_crew_legacy
+    monkeypatch.setattr(
+        routes_crews,
+        "crew_legacy_from_contracts",
+        lambda **kwargs: (_ for _ in ()).throw(
+            AssertionError("fresh crew legacy projection should be used")
+        ),
+    )
+
+    response = client.get(f"/crews/{crew['crew_id']}/board", headers=auth(ada["token"]))
+    diagnostics = client.get("/diagnostics").json()["data"]["projection_db"]
+    body = response.json()
+    future = {
+        opportunity["contract_id"]: opportunity
+        for opportunity in body["legacy"]["future_opportunities"]
+    }
+    ash = {
+        contract["contract_id"]: contract
+        for contract in body["active_contracts"]
+    }["contract_ash_window"]
+
+    assert activated.status_code == 201
+    assert action["status"] == "submitted"
+    assert claim["claim"] == "The finger is a false relic with forged provenance."
+    assert resolved.status_code == 200
+    assert response.status_code == 200
+    assert diagnostics["lag"] == 0
+    assert diagnostics["crew_legacy_count"] == 1
+    assert calls["count"] == 1
+    assert body["legacy"]["reputation"] == 2
+    assert body["legacy"]["heat"] == 1
+    assert body["legacy"]["completed_contracts"] == [
+        {
+            "contract_id": "contract_false_finger",
+            "title": "The Saint's False Finger",
+            "phase": "Auction Preview",
+            "standing": "Strong lead",
+            "score": 70,
+            "outcome": "strong_lead",
+        }
+    ]
+    assert ash["crew_modifiers"] == future["contract_ash_window"]["modifiers"]
+
+
+def test_crew_board_falls_back_when_projected_crew_legacy_is_stale(
+    tmp_path,
+    monkeypatch,
+):
+    monkeypatch.setenv("HOLLOW_LODGE_CREW_LEGACY_PROJECTION_READS", "1")
+    client = TestClient(create_app(data_dir=tmp_path, invite_codes=["a"]))
+    ada = register(client, "a", "Ada")
+    crew = create_crew(client, ada["token"], "crew-create-gilt", "The Gilt Knives")
+    out_of_band_contract = STARTER_CONTRACT.model_copy(
+        update={"contract_id": "contract_out_of_band", "title": "Out Of Band"}
+    )
+    client.app.state.event_store.append_command(
+        event_type="contract.board.published",
+        actor_id="server",
+        visibility=EventVisibility.public(),
+        payload=out_of_band_contract.model_dump(mode="json"),
+        idempotency_key="out-of-band-contract",
+    )
+
+    def fail_if_projection_read(crew_id: str):
+        raise AssertionError("stale crew legacy projection should not be used")
+
+    client.app.state.projection_store.read_crew_legacy = fail_if_projection_read
+
+    response = client.get(f"/crews/{crew['crew_id']}/board", headers=auth(ada["token"]))
+
+    assert response.status_code == 200
+    assert response.json()["legacy"]["crew_id"] == crew["crew_id"]
+    assert response.json()["legacy"]["reputation"] == 0
+
+
+def test_projection_store_materializes_crew_legacy_without_private_deal_terms(
+    tmp_path,
+    monkeypatch,
+):
+    monkeypatch.setenv("HOLLOW_LODGE_ADMIN_TOKEN", "admin-secret")
+    client = TestClient(create_app(data_dir=tmp_path, invite_codes=["a", "b"]))
+    ada = register(client, "a", "Ada")
+    bela = register(client, "b", "Bela")
+    client.post(
+        "/contracts/admin/activate",
+        headers={
+            "Idempotency-Key": "activate-ash-window",
+            "X-Hollow-Lodge-Admin-Token": "admin-secret",
+        },
+        json={"seed": "tests/fixtures/ash_window_contract.json"},
+    )
+    gilt = create_crew(client, ada["token"], "crew-create-gilt", "The Gilt Knives")
+    moth = create_crew(client, bela["token"], "crew-create-moth", "The Moth Choir")
+    client.app.state.artifact_service.grant_artifact_access(
+        artifact_id="artifact_chapel_debt_mark",
+        actor_id="server",
+        player_ids=[],
+        crew_ids=[moth["crew_id"]],
+        reason="test setup",
+        idempotency_key="grant-chapel",
+    )
+    proposed = client.post(
+        "/deals",
+        headers=command_auth(ada["token"], "deal-propose"),
+        json=proposed_deal_payload(gilt, moth),
+    )
+    accepted = client.post(
+        f"/deals/{proposed.json()['deal_id']}/accept",
+        headers=command_auth(bela["token"], "deal-accept"),
+    )
+
+    legacy = client.app.state.projection_store.read_crew_legacy(gilt["crew_id"])
+    with sqlite3.connect(tmp_path / "server-projections.sqlite3") as connection:
+        rows = connection.execute(
+            "select crew_id, payload_json from crew_legacy order by crew_id"
+        ).fetchall()
+
+    assert proposed.status_code == 201
+    assert accepted.status_code == 200
+    assert legacy["deal_conduct"] == {
+        "score": 2,
+        "fulfilled_count": 1,
+        "canceled_count": 0,
+        "declined_count": 0,
+        "open_count": 0,
+        "reliability": "reliable_escrow_partner",
+    }
+    assert any(row[0] == gilt["crew_id"] for row in rows)
+    stored_text = "\n".join(row[1] for row in rows)
+    assert "artifact_chapel_debt_mark" not in stored_text
+    assert "artifact_ledger_rubric" not in stored_text
+    assert "Do not cite us." not in stored_text
 
 
 def test_projection_store_materializes_visible_artifacts_without_hidden_fields(tmp_path):

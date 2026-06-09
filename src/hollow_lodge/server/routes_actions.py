@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import logging
 from typing import Literal
 
 from pydantic import BaseModel, ConfigDict, Field
@@ -12,6 +13,7 @@ from hollow_lodge.server.services import ActionService
 
 
 router = APIRouter(prefix="/actions", tags=["actions"])
+logger = logging.getLogger(__name__)
 
 
 class SubmitActionRequest(BaseModel):
@@ -38,7 +40,7 @@ def submit_action(
     player: Player = Depends(current_player),
 ):
     try:
-        return _action_service(request).submit_action(
+        result = _action_service(request).submit_action(
             player_id=player.player_id,
             crew_id=payload.crew_id,
             intent=payload.intent,
@@ -49,6 +51,8 @@ def submit_action(
             rumor_escalation_mode=payload.rumor_escalation_mode,
             idempotency_key=idempotency_key,
         )
+        _refresh_projection_store(request)
+        return result
     except KeyError as exc:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="rumor not found") from exc
     except PermissionError as exc:
@@ -66,12 +70,14 @@ def edit_action(
     player: Player = Depends(current_player),
 ):
     try:
-        return _action_service(request).edit_action(
+        result = _action_service(request).edit_action(
             action_id=action_id,
             player_id=player.player_id,
             intent=payload.intent,
             idempotency_key=idempotency_key,
         )
+        _refresh_projection_store(request)
+        return result
     except KeyError as exc:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="action not found") from exc
     except ValueError as exc:
@@ -86,11 +92,13 @@ def cancel_action(
     player: Player = Depends(current_player),
 ):
     try:
-        return _action_service(request).cancel_action(
+        result = _action_service(request).cancel_action(
             action_id=action_id,
             player_id=player.player_id,
             idempotency_key=idempotency_key,
         )
+        _refresh_projection_store(request)
+        return result
     except KeyError as exc:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="action not found") from exc
     except ValueError as exc:
@@ -113,3 +121,13 @@ def _action_service(request: Request) -> ActionService:
             request.app.state.artifact_service,
         )
     return request.app.state.action_service
+
+
+def _refresh_projection_store(request: Request) -> None:
+    if hasattr(request.app.state, "projection_store"):
+        try:
+            request.app.state.projection_store.rebuild(
+                request.app.state.event_store.read()
+            )
+        except Exception:
+            logger.exception("failed to refresh action projection")

@@ -12,6 +12,7 @@ from hollow_lodge.server.auth import current_player
 from hollow_lodge.server.pending_decisions import pending_decisions_for_player
 from hollow_lodge.server.projected_artifacts import projected_visible_artifacts
 from hollow_lodge.server.projected_deals import projected_visible_deals
+from hollow_lodge.server.projected_legacy import projected_crew_legacy
 from hollow_lodge.server.runtime_services import ensure_deal_service
 from hollow_lodge.server.rumors import visible_rumors_for_crew
 from hollow_lodge.server.projections import (
@@ -122,11 +123,11 @@ def crew_board(
         _crew_board_contract(contract)
         for contract in active_contracts
     ]
-    legacy = crew_legacy_from_contracts(
+    legacy = _crew_legacy_for_board(
+        request,
         crew_id=crew_id,
         contracts=active_contracts,
         deals=deals,
-        events=request.app.state.event_store.read(),
     )
     apply_crew_modifiers_to_contracts(
         contracts=shaped_contracts,
@@ -268,6 +269,24 @@ def _crew_board_dossier(dossier: dict) -> dict:
         for contribution in dossier.get("member_contributions", [])
     ]
     return shaped
+
+
+def _crew_legacy_for_board(
+    request: Request,
+    *,
+    crew_id: str,
+    contracts: list[dict],
+    deals: list[dict],
+) -> dict:
+    projected = projected_crew_legacy(request, crew_id)
+    if projected is not None:
+        return projected
+    return crew_legacy_from_contracts(
+        crew_id=crew_id,
+        contracts=contracts,
+        deals=deals,
+        events=request.app.state.event_store.read(),
+    )
 
 
 def _contract_service(request: Request) -> ContractService:

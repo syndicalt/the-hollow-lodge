@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from copy import deepcopy
 import json
 import sqlite3
 from pathlib import Path
@@ -8,9 +9,12 @@ from typing import Any
 from hollow_lodge.domain.deals import deal_rows_from_events
 from hollow_lodge.domain.events import GameEvent
 from hollow_lodge.server.projections import (
+    apply_contract_unlock_status,
     artifact_visibility_from_events,
     contract_board_from_events,
+    crew_legacy_from_contracts,
     crew_summaries_from_events,
+    unlocked_actionable_contracts,
 )
 
 
@@ -27,6 +31,12 @@ class SqliteProjectionStore:
         crew_summaries = crew_summaries_from_events(events)
         artifact_visibility = artifact_visibility_from_events(events)
         deals = deal_rows_from_events(events)
+        crew_legacies = _crew_legacies_from_projection_inputs(
+            crew_ids=crew_summaries.keys(),
+            contracts=board["contracts"],
+            deals=deals,
+            events=events,
+        )
         visible_events = [
             event
             for event in events
@@ -42,6 +52,7 @@ class SqliteProjectionStore:
             connection.execute("delete from artifact_scoped_surface")
             connection.execute("delete from deal_surface")
             connection.execute("delete from visible_event_surface")
+            connection.execute("delete from crew_legacy")
             for contract in board["contracts"]:
                 connection.execute(
                     """
@@ -162,6 +173,21 @@ class SqliteProjectionStore:
                         last_sequence,
                     ),
                 )
+            for crew_id, legacy in crew_legacies.items():
+                connection.execute(
+                    """
+                    insert into crew_legacy (
+                        crew_id,
+                        payload_json,
+                        updated_sequence
+                    ) values (?, ?, ?)
+                    """,
+                    (
+                        crew_id,
+                        json.dumps(legacy, sort_keys=True, separators=(",", ":")),
+                        last_sequence,
+                    ),
+                )
             for event in visible_events:
                 payload = event.model_dump(mode="json")
                 connection.execute(
@@ -193,6 +219,7 @@ class SqliteProjectionStore:
             self._set_meta(connection, "contract_count", str(len(board["contracts"])))
             self._set_meta(connection, "crew_count", str(len(crew_summaries)))
             self._set_meta(connection, "deal_count", str(len(deals)))
+            self._set_meta(connection, "crew_legacy_count", str(len(crew_legacies)))
             self._set_meta(connection, "visible_event_count", str(len(visible_events)))
             self._set_meta(
                 connection,
@@ -231,6 +258,7 @@ class SqliteProjectionStore:
                 "contract_count": 0,
                 "crew_count": 0,
                 "deal_count": 0,
+                "crew_legacy_count": 0,
                 "visible_event_count": 0,
                 "public_artifact_count": 0,
                 "scoped_artifact_count": 0,
@@ -249,6 +277,9 @@ class SqliteProjectionStore:
                 ).fetchone()[0]
                 deal_count = connection.execute(
                     "select count(*) from deal_surface"
+                ).fetchone()[0]
+                crew_legacy_count = connection.execute(
+                    "select count(*) from crew_legacy"
                 ).fetchone()[0]
                 visible_event_count = connection.execute(
                     "select count(*) from visible_event_surface"
@@ -272,6 +303,7 @@ class SqliteProjectionStore:
                 "contract_count": 0,
                 "crew_count": 0,
                 "deal_count": 0,
+                "crew_legacy_count": 0,
                 "visible_event_count": 0,
                 "public_artifact_count": 0,
                 "scoped_artifact_count": 0,
@@ -294,6 +326,9 @@ class SqliteProjectionStore:
             "contract_count": int(meta.get("contract_count", str(contract_count))),
             "crew_count": int(meta.get("crew_count", str(crew_count))),
             "deal_count": int(meta.get("deal_count", str(deal_count))),
+            "crew_legacy_count": int(
+                meta.get("crew_legacy_count", str(crew_legacy_count))
+            ),
             "visible_event_count": int(
                 meta.get("visible_event_count", str(visible_event_count))
             ),
@@ -324,6 +359,17 @@ class SqliteProjectionStore:
             self._ensure_schema(connection)
             row = connection.execute(
                 "select payload_json from crew_summary where crew_id = ?",
+                (crew_id,),
+            ).fetchone()
+        if row is None:
+            raise KeyError(crew_id)
+        return json.loads(row[0])
+
+    def read_crew_legacy(self, crew_id: str) -> dict[str, Any]:
+        with sqlite3.connect(self.path) as connection:
+            self._ensure_schema(connection)
+            row = connection.execute(
+                "select payload_json from crew_legacy where crew_id = ?",
                 (crew_id,),
             ).fetchone()
         if row is None:
@@ -472,6 +518,15 @@ class SqliteProjectionStore:
         )
         connection.execute(
             """
+            create table if not exists crew_legacy (
+                crew_id text primary key,
+                payload_json text not null,
+                updated_sequence integer not null
+            )
+            """
+        )
+        connection.execute(
+            """
             create table if not exists artifact_surface (
                 artifact_id text primary key,
                 contract_id text not null,
@@ -575,3 +630,37 @@ def _event_is_player_projectable(event: GameEvent) -> bool:
         entry.kind in {"public", "player", "crew"}
         for entry in event.visibility.entries
     )
+
+
+def _crew_legacies_from_projection_inputs(
+    *,
+    crew_ids: Any,
+    contracts: list[dict[str, Any]],
+    deals: list[dict[str, Any]],
+    events: list[GameEvent],
+) -> dict[str, dict[str, Any]]:
+    legacies: dict[str, dict[str, Any]] = {}
+    for crew_id in sorted(str(candidate) for candidate in crew_ids):
+        crew_deals = [
+            deal
+            for deal in deals
+            if crew_id in {deal.get("proposer_crew_id"), deal.get("recipient_crew_id")}
+        ]
+        crew_contracts = [
+            deepcopy(contract)
+            for contract in contracts
+            if contract.get("lifecycle_status", "active") != "archived"
+        ]
+        apply_contract_unlock_status(
+            contracts=crew_contracts,
+            crew_ids=[crew_id],
+            events=events,
+            deals_by_crew={crew_id: crew_deals},
+        )
+        legacies[crew_id] = crew_legacy_from_contracts(
+            crew_id=crew_id,
+            contracts=unlocked_actionable_contracts(crew_contracts),
+            deals=crew_deals,
+            events=events,
+        )
+    return legacies
