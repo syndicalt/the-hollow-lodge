@@ -4527,6 +4527,31 @@ Expected verification:
 - `pytest tests/e2e/test_mcp_codex_play_loop.py tests/test_mcp_server.py tests/client/test_codex_session.py tests/client/test_render_packets.py tests/server/test_proof_routes.py tests/server/test_packet_lead.py tests/server/test_phase_resolution.py -q`
 - `pytest -q`
 
+### Slice 187: Actual MCP Artifact Discovery Proof Gate
+
+Status: completed.
+
+Extend the real MCP-boundary play loop so players discover and inspect source
+material inside Codex before using artifact ids in chat, deals, or dossiers.
+The actual MCP e2e now calls `render_artifacts`, `render_artifact`, and
+`inspect_artifact` preview/confirm before the brokered chat step.
+
+The proof verifies that `render_artifacts` exposes only the compact visible
+artifact graph and not source text, `render_artifact` exposes the selected
+artifact's player-visible source material, and `inspect_artifact` preserves
+preview/confirm semantics while returning a shaped mutation result. Because
+confirmed artifact inspection writes a visible `artifact.inspected` event, the
+e2e also asserts the shifted conversation event sequence and activity summary
+count. Direct MCP wrapper tests now cover `render_artifacts` and
+`render_artifact`, and the public MCP schema guard includes both render tools
+so local path override parameters remain private implementation details.
+
+Expected verification:
+
+- `pytest tests/e2e/test_mcp_codex_play_loop.py tests/test_mcp_server.py -q`
+- `pytest tests/e2e/test_mcp_codex_play_loop.py tests/test_mcp_server.py tests/client/test_artifact_render.py tests/client/test_codex_session.py tests/client/test_render_packets.py tests/server/test_artifact_routes.py tests/server/test_artifact_projections.py tests/e2e/test_artifact_game_loop.py -q`
+- `pytest -q`
+
 ## Completion Standard
 
 Each slice must:

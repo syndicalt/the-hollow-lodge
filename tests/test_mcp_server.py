@@ -95,6 +95,73 @@ def test_render_profile_mcp_call_returns_text_and_structured_packet(monkeypatch)
     assert result.structuredContent["suggested_prompts"] == ["Open inbox"]
 
 
+def test_render_artifacts_mcp_call_returns_text_and_structured_packet(monkeypatch):
+    packet = RenderPacket(
+        surface="artifact_graph",
+        player_markdown="Known Artifacts\n\n- Red Ledger Rubric",
+        agent_context={
+            "artifact_graph": {
+                "contract_id": "multiple",
+                "artifacts": [{"artifact_id": "artifact_ledger_rubric"}],
+                "edges": [],
+            }
+        },
+    )
+
+    class StubSession:
+        def render_artifacts(self) -> RenderPacket:
+            return packet
+
+    monkeypatch.setattr(mcp_server, "_session", lambda: StubSession())
+
+    result = asyncio.run(mcp_server.mcp.call_tool("render_artifacts", {}))
+
+    assert isinstance(result, CallToolResult)
+    assert result.content[0].text == packet.player_markdown
+    assert result.structuredContent["surface"] == "artifact_graph"
+    assert (
+        result.structuredContent["agent_context"]["artifact_graph"]["artifacts"][0][
+            "artifact_id"
+        ]
+        == "artifact_ledger_rubric"
+    )
+
+
+def test_render_artifact_mcp_call_returns_text_and_structured_packet(monkeypatch):
+    packet = RenderPacket(
+        surface="artifact",
+        player_markdown="Artifact: Red Ledger Rubric",
+        agent_context={
+            "artifact": {
+                "artifact_id": "artifact_ledger_rubric",
+                "title": "Red Ledger Rubric",
+            }
+        },
+    )
+
+    class StubSession:
+        def render_artifact(self, artifact_id: str) -> RenderPacket:
+            assert artifact_id == "artifact_ledger_rubric"
+            return packet
+
+    monkeypatch.setattr(mcp_server, "_session", lambda: StubSession())
+
+    result = asyncio.run(
+        mcp_server.mcp.call_tool(
+            "render_artifact",
+            {"artifact_id": "artifact_ledger_rubric"},
+        )
+    )
+
+    assert isinstance(result, CallToolResult)
+    assert result.content[0].text == packet.player_markdown
+    assert result.structuredContent["surface"] == "artifact"
+    assert (
+        result.structuredContent["agent_context"]["artifact"]["artifact_id"]
+        == "artifact_ledger_rubric"
+    )
+
+
 def test_render_deals_mcp_call_returns_text_and_structured_packet(monkeypatch):
     packet = RenderPacket(
         surface="deals",
@@ -880,6 +947,8 @@ def test_public_mcp_tools_do_not_expose_local_path_overrides():
         "render_contract_board",
         "render_crew_board",
         "render_dossier",
+        "render_artifacts",
+        "render_artifact",
         "render_activity",
         "render_activity_delta",
         "render_crew_activity",
@@ -941,6 +1010,7 @@ def test_mutating_mcp_tools_require_confirm_argument():
 
     assert "note" in tools["dossier_contribute"].inputSchema["required"]
     assert "evidence_ids" in tools["dossier_contribute"].inputSchema["required"]
+    assert "artifact_id" in tools["render_artifact"].inputSchema["required"]
     assert "artifact_id" in tools["inspect_artifact"].inputSchema["required"]
     assert "fragment_id" in tools["render_proof_fragment"].inputSchema["required"]
     assert "fragment_id" in tools["check_provenance"].inputSchema["required"]

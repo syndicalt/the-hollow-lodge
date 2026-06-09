@@ -130,6 +130,106 @@ def test_player_can_progress_contract_through_actual_mcp_tools(tmp_path, monkeyp
     assert landing["agent_context"]["summary_counts"]["active_contracts"] == 1
     assert "What Now: Ada Corelumen" in landing["player_markdown"]
 
+    artifacts = _assert_packet(_call_tool("render_artifacts"), surface="artifact_graph")
+    artifact_graph = artifacts["agent_context"]["artifact_graph"]
+    assert artifact_graph["contract_id"] == "multiple"
+    assert artifact_graph["artifacts"] == [
+        {
+            "artifact_id": "artifact_lot_card",
+            "contract_id": "contract_false_finger",
+            "title": "Auction Lot Card",
+            "kind": "lot_card",
+            "public_summary": (
+                "A vellum card attributes the reliquary finger to Saint Aint."
+            ),
+            "visible_flags": ["public-lot"],
+            "proof_lanes": ["provenance", "leverage"],
+            "phase_relevance": ["Auction Preview"],
+            "copy_policy": "copyable",
+        },
+        {
+            "artifact_id": "artifact_ledger_rubric",
+            "contract_id": "contract_false_finger",
+            "title": "Red Ledger Rubric",
+            "kind": "ledger",
+            "public_summary": (
+                "A copied rubric marks three prior owners in an unfamiliar hand."
+            ),
+            "visible_flags": ["copied-hand"],
+            "proof_lanes": ["provenance", "material"],
+            "phase_relevance": ["Auction Preview"],
+            "copy_policy": "copyable",
+        },
+    ]
+    assert artifact_graph["edges"] == [
+        {
+            "source_id": "artifact_lot_card",
+            "target_id": "artifact_ledger_rubric",
+            "relation": "contradicts",
+            "public_summary": (
+                "The public lot card and copied ledger disagree on custody."
+            ),
+        }
+    ]
+    assert "Known Artifacts" in artifacts["player_markdown"]
+    assert "Red Ledger Rubric" in artifacts["player_markdown"]
+    assert "Rubric copy: Armitage" not in artifacts["player_markdown"]
+
+    artifact_detail = _assert_packet(
+        _call_tool("render_artifact", {"artifact_id": "artifact_ledger_rubric"}),
+        surface="artifact",
+    )
+    assert artifact_detail["agent_context"]["artifact"] == {
+        **artifact_graph["artifacts"][1],
+        "full_text": (
+            "Rubric copy: Armitage, then Venn, then a chapel debt mark. The last "
+            "hand is redder and later than the binding."
+        ),
+        "source_chain": ["archive:lot-card"],
+    }
+    assert "Artifact: Red Ledger Rubric" in artifact_detail["player_markdown"]
+    assert "Source: Rubric copy: Armitage" in (
+        artifact_detail["player_markdown"]
+    )
+
+    artifact_inspect_preview = _assert_packet(
+        _call_tool(
+            "inspect_artifact",
+            {"artifact_id": "artifact_ledger_rubric", "confirm": False},
+        ),
+        surface="mutation",
+    )
+    assert artifact_inspect_preview["agent_context"] == {
+        "operation": "inspect_artifact",
+        "mutation": False,
+        "confirmed": False,
+        "preview": {"artifact_id": "artifact_ledger_rubric"},
+    }
+    assert "No server mutation was submitted." in (
+        artifact_inspect_preview["player_markdown"]
+    )
+
+    artifact_inspect_confirm = _assert_packet(
+        _call_tool(
+            "inspect_artifact",
+            {"artifact_id": "artifact_ledger_rubric", "confirm": True},
+        ),
+        surface="mutation",
+    )
+    assert artifact_inspect_confirm["agent_context"] == {
+        "operation": "inspect_artifact",
+        "mutation": True,
+        "confirmed": True,
+        "result": {
+            "artifact_id": "artifact_ledger_rubric",
+            "title": "Red Ledger Rubric",
+            "kind": "ledger",
+            "public_summary": (
+                "A copied rubric marks three prior owners in an unfamiliar hand."
+            ),
+        },
+    }
+
     message_preview = _assert_packet(
         _call_tool(
             "send_message",
@@ -188,8 +288,8 @@ def test_player_can_progress_contract_through_actual_mcp_tools(tmp_path, monkeyp
     assert conversation == {
         "conversation_id": f"{crew['crew_id']}:{moth['crew_id']}",
         "message_count": 1,
-        "first_sequence": 10,
-        "last_sequence": 10,
+        "first_sequence": 11,
+        "last_sequence": 11,
         "last_sender_player_id": ada["player_id"],
         "last_body": "We can trade ledger leverage before the auction closes.",
         "participant_ids": [crew["crew_id"], moth["crew_id"], ada["player_id"]],
@@ -212,7 +312,7 @@ def test_player_can_progress_contract_through_actual_mcp_tools(tmp_path, monkeyp
         "message_count": 1,
         "messages": [
             {
-                "sequence": 10,
+                "sequence": 11,
                 "message_id": "msg_000001",
                 "sender_player_id": ada["player_id"],
                 "sender_crew_id": crew["crew_id"],
@@ -223,7 +323,7 @@ def test_player_can_progress_contract_through_actual_mcp_tools(tmp_path, monkeyp
         ],
     }
     assert f"Conversation: {conversation['conversation_id']}" in thread["player_markdown"]
-    assert "- 10 player_0001: We can trade ledger leverage" in (
+    assert "- 11 player_0001: We can trade ledger leverage" in (
         thread["player_markdown"]
     )
 
@@ -687,6 +787,7 @@ def test_player_can_progress_contract_through_actual_mcp_tools(tmp_path, monkeyp
     assert f"- {crew['crew_id']}: Strong lead (94)" in contract_board["player_markdown"]
 
     activity = _assert_packet(_call_tool("render_activity"), surface="activity")
+    assert activity["agent_context"]["event_type_counts"]["artifact.inspected"] == 1
     assert activity["agent_context"]["event_type_counts"]["action.submitted"] == 1
     assert activity["agent_context"]["event_type_counts"]["contract.phase.resolved"] == 1
     assert "phase result:" in activity["player_markdown"]
@@ -695,6 +796,10 @@ def test_player_can_progress_contract_through_actual_mcp_tools(tmp_path, monkeyp
         str(packet)
         for packet in (
             landing,
+            artifacts,
+            artifact_detail,
+            artifact_inspect_preview,
+            artifact_inspect_confirm,
             message_preview,
             message_confirm,
             conversations,
