@@ -43,6 +43,25 @@ def _create_crew(
     return response.json()
 
 
+def _write_config(
+    config_path,
+    *,
+    player: dict[str, str],
+    active_crew_id: str,
+    display_name: str,
+) -> None:
+    save_config(
+        config_path,
+        ClientConfig(
+            server_url="http://testserver",
+            player_id=player["player_id"],
+            token=player["token"],
+            active_crew_id=active_crew_id,
+            display_name=display_name,
+        ),
+    )
+
+
 def _call_tool(name: str, arguments: dict[str, Any] | None = None):
     return asyncio.run(mcp_server.mcp.call_tool(name, arguments or {}))
 
@@ -75,15 +94,11 @@ def test_player_can_progress_contract_through_actual_mcp_tools(tmp_path, monkeyp
 
     config_path = tmp_path / "config.json"
     local_log_path = tmp_path / "local.jsonl"
-    save_config(
+    _write_config(
         config_path,
-        ClientConfig(
-            server_url="http://testserver",
-            player_id=ada["player_id"],
-            token=ada["token"],
-            active_crew_id=crew["crew_id"],
-            display_name="Ada Corelumen",
-        ),
+        player=ada,
+        active_crew_id=crew["crew_id"],
+        display_name="Ada Corelumen",
     )
     monkeypatch.setattr(mcp_server, "DEFAULT_CONFIG_PATH", config_path)
     monkeypatch.setattr(mcp_server, "DEFAULT_LOCAL_LOG_PATH", local_log_path)
@@ -204,6 +219,135 @@ def test_player_can_progress_contract_through_actual_mcp_tools(tmp_path, monkeyp
     assert f"Conversation: {conversation['conversation_id']}" in thread["player_markdown"]
     assert "- 10 player_0001: We can trade ledger leverage" in (
         thread["player_markdown"]
+    )
+
+    client.app.state.artifact_service.grant_artifact_access(
+        artifact_id="artifact_chapel_debt_mark",
+        actor_id="server",
+        player_ids=[],
+        crew_ids=[moth["crew_id"]],
+        reason="mcp escrow setup",
+        idempotency_key="mcp-grant-chapel",
+    )
+    deal_preview = _assert_packet(
+        _call_tool(
+            "propose_deal",
+            {
+                "recipient_crew_id": moth["crew_id"],
+                "proposer_crew_id": crew["crew_id"],
+                "offered_artifact_ids": ["artifact_ledger_rubric"],
+                "requested_artifact_ids": ["artifact_chapel_debt_mark"],
+                "soft_terms": ["Do not cite the Gilt crew before lock."],
+                "expires_phase": "Auction Preview",
+                "confirm": False,
+            },
+        ),
+        surface="mutation",
+    )
+    assert deal_preview["agent_context"] == {
+        "operation": "propose_deal",
+        "mutation": False,
+        "confirmed": False,
+        "preview": {
+            "contract_id": "contract_false_finger",
+            "proposer_crew_id": crew["crew_id"],
+            "recipient_crew_id": moth["crew_id"],
+            "offered_artifact_ids": ["artifact_ledger_rubric"],
+            "requested_artifact_ids": ["artifact_chapel_debt_mark"],
+            "soft_terms": ["Do not cite the Gilt crew before lock."],
+            "expires_phase": "Auction Preview",
+        },
+    }
+    assert "No server mutation was submitted." in deal_preview["player_markdown"]
+
+    deal_confirm = _assert_packet(
+        _call_tool(
+            "propose_deal",
+            {
+                "recipient_crew_id": moth["crew_id"],
+                "proposer_crew_id": crew["crew_id"],
+                "offered_artifact_ids": ["artifact_ledger_rubric"],
+                "requested_artifact_ids": ["artifact_chapel_debt_mark"],
+                "soft_terms": ["Do not cite the Gilt crew before lock."],
+                "expires_phase": "Auction Preview",
+                "confirm": True,
+            },
+        ),
+        surface="mutation",
+    )
+    assert deal_confirm["agent_context"]["operation"] == "propose_deal"
+    assert deal_confirm["agent_context"]["mutation"] is True
+    assert deal_confirm["agent_context"]["confirmed"] is True
+    proposed_deal = deal_confirm["agent_context"]["result"]
+    assert proposed_deal["deal_id"] == "deal_000001"
+    assert proposed_deal["status"] == "proposed"
+    assert proposed_deal["proposer_crew_id"] == crew["crew_id"]
+    assert proposed_deal["recipient_crew_id"] == moth["crew_id"]
+
+    ada_deals = _assert_packet(_call_tool("render_deals"), surface="deals")
+    assert ada_deals["agent_context"]["deals"] == [proposed_deal]
+    assert "deal_000001 proposed" in ada_deals["player_markdown"]
+
+    _write_config(
+        config_path,
+        player=bela,
+        active_crew_id=moth["crew_id"],
+        display_name="Bela Moth",
+    )
+    moth_inbox = _assert_packet(_call_tool("render_inbox"), surface="inbox")
+    incoming_deals = [
+        decision
+        for decision in moth_inbox["agent_context"]["pending_decisions"]
+        if decision["kind"] == "incoming_deal"
+    ]
+    assert incoming_deals == [
+        {
+            "kind": "incoming_deal",
+            "label": "Incoming deal needs response",
+            "description": "Deal deal_000001 from crew_0001 needs a response.",
+            "crew_id": moth["crew_id"],
+            "contract_id": "contract_false_finger",
+            "deal_id": "deal_000001",
+        }
+    ]
+    assert "Incoming deal needs response" in moth_inbox["player_markdown"]
+
+    deal_accept_preview = _assert_packet(
+        _call_tool("preview_deal_acceptance", {"deal_id": "deal_000001"}),
+        surface="deal_preview",
+    )
+    assert deal_accept_preview["agent_context"]["deal"]["deal_id"] == "deal_000001"
+    assert deal_accept_preview["agent_context"]["viewer_side"] == "recipient"
+    assert deal_accept_preview["agent_context"]["gives_artifact_ids"] == [
+        "artifact_chapel_debt_mark"
+    ]
+    assert deal_accept_preview["agent_context"]["receives_artifact_ids"] == [
+        "artifact_ledger_rubric"
+    ]
+    assert "This preview does not accept the deal." in (
+        deal_accept_preview["player_markdown"]
+    )
+    deal_accept_confirm = _assert_packet(
+        _call_tool("accept_deal", {"deal_id": "deal_000001", "confirm": True}),
+        surface="mutation",
+    )
+    assert deal_accept_confirm["agent_context"]["operation"] == "accept_deal"
+    assert deal_accept_confirm["agent_context"]["mutation"] is True
+    fulfilled_deal = deal_accept_confirm["agent_context"]["result"]
+    assert fulfilled_deal["deal_id"] == "deal_000001"
+    assert fulfilled_deal["status"] == "fulfilled"
+    assert fulfilled_deal["proposer_received_artifact_ids"] == [
+        "artifact_chapel_debt_mark.dealcopy.deal_000001.crew_0001.2"
+    ]
+    assert fulfilled_deal["recipient_received_artifact_ids"] == [
+        "artifact_ledger_rubric.dealcopy.deal_000001.crew_0002.1"
+    ]
+
+    _write_config(
+        config_path,
+        player=ada,
+        active_crew_id=crew["crew_id"],
+        display_name="Ada Corelumen",
     )
 
     action_preview = _assert_packet(
@@ -357,6 +501,12 @@ def test_player_can_progress_contract_through_actual_mcp_tools(tmp_path, monkeyp
             message_confirm,
             conversations,
             thread,
+            deal_preview,
+            deal_confirm,
+            ada_deals,
+            moth_inbox,
+            deal_accept_preview,
+            deal_accept_confirm,
             crew_board,
             contract_board,
             activity,

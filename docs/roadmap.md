@@ -4477,6 +4477,29 @@ Expected verification:
 - `pytest tests/e2e/test_mcp_codex_play_loop.py tests/test_mcp_server.py tests/client/test_codex_session.py tests/client/test_render_packets.py tests/server/test_chat_routes.py -q`
 - `pytest -q`
 
+### Slice 185: Actual MCP Escrow Deal Proof Gate
+
+Status: completed.
+
+Extend the real MCP-boundary play loop from brokered chat into escrowed
+artifact swaps. The e2e now uses actual `mcp.call_tool` calls for
+`propose_deal`, `render_deals`, `render_inbox`, `preview_deal_acceptance`, and
+`accept_deal`, switching the configured player from Ada to Bela for recipient
+acceptance and then back to Ada for the rest of the contract loop.
+
+The proof verifies deal proposal preview/confirm semantics, participant-visible
+deal rendering, recipient inbox pending-decision shape, read-only acceptance
+preview from the recipient side, and fulfilled escrow copy ids for both crews.
+The existing MCP packet leakage guard now covers deal previews, deal lists,
+inbox decisions, and fulfilled-deal mutation output alongside chat, contract,
+crew-board, and activity packets.
+
+Expected verification:
+
+- `pytest tests/e2e/test_mcp_codex_play_loop.py -q`
+- `pytest tests/e2e/test_mcp_codex_play_loop.py tests/test_mcp_server.py tests/client/test_codex_session.py tests/client/test_render_packets.py tests/server/test_deal_routes.py tests/e2e/test_escrowed_artifact_deals.py -q`
+- `pytest -q`
+
 ## Completion Standard
 
 Each slice must:
