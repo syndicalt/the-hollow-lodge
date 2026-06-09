@@ -59,6 +59,32 @@ Only the projection database moves to Postgres. The Eventloom JSONL log remains
 authoritative. `/diagnostics` reports the active projection backend and redacts
 the configured Postgres password before returning operational status.
 
+Before any projection backend cutover, verify the current backend:
+
+```sh
+python scripts/smoke_projection_backend.py \
+  --server-url https://server.thehollowlodge.com \
+  --expected-backend sqlite
+```
+
+After configuring `HOLLOW_LODGE_PROJECTION_DATABASE_URL` and redeploying the
+server, verify the new backend:
+
+```sh
+python scripts/smoke_projection_backend.py \
+  --server-url https://server.thehollowlodge.com \
+  --expected-backend postgres
+```
+
+The smoke fails if `/health` is not ok, the projection backend is not the
+expected backend, projection status is not `available`, projection lag is not
+zero, or diagnostics expose an unredacted database URL password.
+
+Rollback is to remove `HOLLOW_LODGE_PROJECTION_DATABASE_URL` from the server
+service and redeploy. The server will return to
+`$HOLLOW_LODGE_DATA_DIR/server-projections.sqlite3`; the authoritative event
+log remains unchanged through the cutover and rollback.
+
 ## Access Requests
 
 Players without an invite request access during onboarding:

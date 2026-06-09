@@ -1449,6 +1449,24 @@ Expected verification:
 - `pytest tests/server/test_projection_store.py tests/server/test_app_config.py -q`
 - `pytest -q`
 
+### Slice 56: Projection Backend Cutover Smoke
+
+Status: completed.
+
+Add an operational smoke for safely cutting projection reads between SQLite and
+Postgres. `scripts/smoke_projection_backend.py` checks hosted `/health` and
+`/diagnostics`, verifies the expected projection backend, requires
+`available` status and zero lag, and fails if diagnostics expose an unredacted
+database URL password. The operations runbook now includes pre-cutover,
+post-cutover, and rollback commands. This keeps the Eventloom JSONL authority
+boundary intact while making database backend changes auditable.
+
+Expected verification:
+
+- `pytest tests/e2e/test_projection_backend_smoke.py -q`
+- `python scripts/smoke_projection_backend.py --server-url https://server.thehollowlodge.com --expected-backend sqlite`
+- `pytest -q`
+
 ## Completion Standard
 
 Each slice must:
