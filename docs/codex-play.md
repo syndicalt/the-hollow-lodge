@@ -38,6 +38,10 @@ After onboarding, run the local readiness check:
 hollow-lodge doctor
 ```
 
+Use `hollow-lodge doctor --strict` for scripted clean-install checks after a
+player has registered. Strict mode prints the same redacted report and exits
+non-zero for pending onboarding or any failed readiness line.
+
 For a registered player, `doctor` should verify saved auth, server
 reachability, inbox readiness, local event-sync cache writes, Codex inbox render
 packet construction, MCP config registration, and `hollow-lodge-mcp` command

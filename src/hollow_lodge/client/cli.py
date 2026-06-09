@@ -207,6 +207,11 @@ def doctor(
         "--local-log",
         help="Local perspective event log path used by Codex render surfaces.",
     ),
+    strict: bool = typer.Option(
+        False,
+        "--strict",
+        help="Exit non-zero unless the installed client is fully ready to play.",
+    ),
 ) -> None:
     """Check local install, onboarding, MCP, and server reachability."""
     registered_config: ClientConfig | None = None
@@ -224,7 +229,13 @@ def doctor(
     )
 
     typer.echo(f"cli: The Hollow Lodge {__version__}")
-    typer.echo(f"server: {_server_health_status(resolved_server)} {resolved_server}")
+    server_status = _server_health_status(resolved_server)
+    typer.echo(f"server: {server_status} {resolved_server}")
+
+    auth_status: str | None = None
+    inbox_status: str | None = None
+    event_sync_status: str | None = None
+    codex_inbox_render_status: str | None = None
 
     if registered_config is not None:
         display_name = registered_config.display_name or "-"
@@ -233,13 +244,18 @@ def doctor(
             f"player: registered {registered_config.player_id} "
             f"display={display_name} active_crew={active_crew}"
         )
-        typer.echo(f"auth: {_player_auth_status(registered_config)}")
-        typer.echo(f"inbox: {_player_inbox_status(registered_config)}")
-        typer.echo(f"event sync: {_player_event_sync_status(registered_config, local_log)}")
-        typer.echo(
-            f"codex inbox render: "
-            f"{_codex_inbox_render_status(registered_config, config, local_log)}"
+        auth_status = _player_auth_status(registered_config)
+        inbox_status = _player_inbox_status(registered_config)
+        event_sync_status = _player_event_sync_status(registered_config, local_log)
+        codex_inbox_render_status = _codex_inbox_render_status(
+            registered_config,
+            config,
+            local_log,
         )
+        typer.echo(f"auth: {auth_status}")
+        typer.echo(f"inbox: {inbox_status}")
+        typer.echo(f"event sync: {event_sync_status}")
+        typer.echo(f"codex inbox render: {codex_inbox_render_status}")
     elif pending_config is not None:
         typer.echo(
             f"player: pending {pending_config.request_id} "
@@ -249,12 +265,31 @@ def doctor(
         typer.echo("player: not configured")
 
     mcp_status = "registered" if codex_mcp_server_registered(codex_config) else "missing"
+    mcp_config_command_status = codex_mcp_server_command_status(codex_config)
+    mcp_command_status = _command_status("hollow-lodge-mcp")
     typer.echo(f"mcp: {mcp_status} {codex_config}")
     typer.echo(
         "mcp config command: "
-        f"{_mcp_config_command_status(codex_mcp_server_command_status(codex_config))}"
+        f"{_mcp_config_command_status(mcp_config_command_status)}"
     )
-    typer.echo(f"mcp command: {_command_status('hollow-lodge-mcp')} hollow-lodge-mcp")
+    typer.echo(f"mcp command: {mcp_command_status} hollow-lodge-mcp")
+
+    if strict:
+        ready = _doctor_strict_ready(
+            server_status=server_status,
+            registered_config=registered_config,
+            pending_config=pending_config,
+            auth_status=auth_status,
+            inbox_status=inbox_status,
+            event_sync_status=event_sync_status,
+            codex_inbox_render_status=codex_inbox_render_status,
+            mcp_status=mcp_status,
+            mcp_config_command_status=mcp_config_command_status,
+            mcp_command_status=mcp_command_status,
+        )
+        typer.echo(f"strict: {'pass' if ready else 'fail'}")
+        if not ready:
+            raise typer.Exit(1)
 
 
 @admin_app.command("invite-create")
@@ -1550,6 +1585,37 @@ def _codex_inbox_render_status(
     if packet.surface != "inbox":
         return "unexpected"
     return "ok surface=inbox"
+
+
+def _doctor_strict_ready(
+    *,
+    server_status: str,
+    registered_config: ClientConfig | None,
+    pending_config: OnboardingConfig | None,
+    auth_status: str | None,
+    inbox_status: str | None,
+    event_sync_status: str | None,
+    codex_inbox_render_status: str | None,
+    mcp_status: str,
+    mcp_config_command_status: str,
+    mcp_command_status: str,
+) -> bool:
+    return (
+        server_status == "ok"
+        and registered_config is not None
+        and pending_config is None
+        and _doctor_ok_status(auth_status)
+        and _doctor_ok_status(inbox_status)
+        and _doctor_ok_status(event_sync_status)
+        and _doctor_ok_status(codex_inbox_render_status)
+        and mcp_status == "registered"
+        and mcp_config_command_status == "ok"
+        and mcp_command_status == "available"
+    )
+
+
+def _doctor_ok_status(status: str | None) -> bool:
+    return status == "ok" or (status is not None and status.startswith("ok "))
 
 
 def _command_status(command: str) -> str:

@@ -898,6 +898,49 @@ def test_doctor_reports_registered_player_and_mcp_without_secret_material(
     assert "No public claims until lock." in local_log_path.read_text(encoding="utf-8")
 
 
+def test_doctor_strict_passes_for_registered_ready_install(tmp_path, monkeypatch):
+    runner = CliRunner()
+
+    monkeypatch.setattr(cli, "HollowLodgeApi", FakeApi)
+    monkeypatch.setattr(cli.shutil, "which", lambda command: f"/bin/{command}")
+    config_path = tmp_path / "config.json"
+    codex_config = tmp_path / "codex.toml"
+    codex_config.write_text(
+        '[mcp_servers."the-hollow-lodge"]\ncommand = "hollow-lodge-mcp"\n',
+        encoding="utf-8",
+    )
+    save_config(
+        config_path,
+        ClientConfig(
+            server_url="http://testserver",
+            player_id="player_0001",
+            token="secret-token",
+            display_name="Ada",
+            active_crew_id="crew_0001",
+        ),
+    )
+
+    result = runner.invoke(
+        cli.app,
+        [
+            "doctor",
+            "--strict",
+            "--config",
+            str(config_path),
+            "--onboarding-state",
+            str(tmp_path / "missing-onboarding.json"),
+            "--codex-config",
+            str(codex_config),
+            "--local-log",
+            str(tmp_path / "local.jsonl"),
+        ],
+    )
+
+    assert result.exit_code == 0
+    assert "strict: pass" in result.output
+    assert "secret-token" not in result.output
+
+
 def test_doctor_reports_pending_onboarding_without_contact(tmp_path, monkeypatch):
     runner = CliRunner()
     created_clients: list[FakeApi] = []
@@ -948,6 +991,42 @@ def test_doctor_reports_pending_onboarding_without_contact(tmp_path, monkeypatch
     assert created_clients[0].calls == [("health", {})]
 
 
+def test_doctor_strict_fails_for_pending_onboarding_without_contact(tmp_path, monkeypatch):
+    runner = CliRunner()
+
+    monkeypatch.setattr(cli, "HollowLodgeApi", FakeApi)
+    monkeypatch.setattr(cli.shutil, "which", lambda command: None)
+    onboarding_path = tmp_path / "onboarding.json"
+    onboarding_path.write_text(
+        (
+            '{"server_url":"http://pending-server","display_name":"Ada",'
+            '"contact":"ada@example.com","request_id":"key_request_0001",'
+            '"status":"pending"}\n'
+        ),
+        encoding="utf-8",
+    )
+
+    result = runner.invoke(
+        cli.app,
+        [
+            "doctor",
+            "--strict",
+            "--config",
+            str(tmp_path / "missing-config.json"),
+            "--onboarding-state",
+            str(onboarding_path),
+            "--codex-config",
+            str(tmp_path / "missing-codex.toml"),
+        ],
+    )
+
+    assert result.exit_code == 1
+    assert "player: pending key_request_0001 status=pending display=Ada" in result.output
+    assert "strict: fail" in result.output
+    assert "auth:" not in result.output
+    assert "ada@example.com" not in result.output
+
+
 def test_doctor_reports_unconfigured_install_and_unreachable_server(tmp_path, monkeypatch):
     runner = CliRunner()
 
@@ -986,6 +1065,58 @@ def test_doctor_reports_unconfigured_install_and_unreachable_server(tmp_path, mo
     assert "mcp: missing" in result.output
     assert "mcp config command: missing" in result.output
     assert "mcp command: missing hollow-lodge-mcp" in result.output
+    assert "secret-token" not in result.output
+
+
+def test_doctor_strict_fails_for_registered_auth_failure_without_leaking_error(
+    tmp_path,
+    monkeypatch,
+):
+    runner = CliRunner()
+
+    class FailingAuthApi(FakeApi):
+        def me(self):
+            self.calls.append(("me", {}))
+            raise RuntimeError("auth failed for secret-token")
+
+    monkeypatch.setattr(cli, "HollowLodgeApi", FailingAuthApi)
+    monkeypatch.setattr(cli.shutil, "which", lambda command: f"/bin/{command}")
+    config_path = tmp_path / "config.json"
+    codex_config = tmp_path / "codex.toml"
+    codex_config.write_text(
+        '[mcp_servers."the-hollow-lodge"]\ncommand = "hollow-lodge-mcp"\n',
+        encoding="utf-8",
+    )
+    save_config(
+        config_path,
+        ClientConfig(
+            server_url="http://testserver",
+            player_id="player_0001",
+            token="secret-token",
+            display_name="Ada",
+            active_crew_id=None,
+        ),
+    )
+
+    result = runner.invoke(
+        cli.app,
+        [
+            "doctor",
+            "--strict",
+            "--config",
+            str(config_path),
+            "--onboarding-state",
+            str(tmp_path / "missing-onboarding.json"),
+            "--codex-config",
+            str(codex_config),
+            "--local-log",
+            str(tmp_path / "local.jsonl"),
+        ],
+    )
+
+    assert result.exit_code == 1
+    assert "auth: failed" in result.output
+    assert "strict: fail" in result.output
     assert "secret-token" not in result.output
 
 

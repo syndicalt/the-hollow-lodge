@@ -28,6 +28,8 @@ request an access key.
 After onboarding, run `hollow-lodge doctor` to verify server reachability,
 saved auth, inbox readiness, Codex MCP registration, and Codex inbox render
 readiness without printing token or gameplay payload details.
+Use `hollow-lodge doctor --strict` in automation when a registered player must
+be fully ready to play; pending or incomplete installs exit non-zero.
 
 Operational deployment, access approval, and event-log backup commands are in
 [docs/operations.md](docs/operations.md).

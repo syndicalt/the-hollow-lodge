@@ -45,13 +45,17 @@ def test_operations_docs_describe_current_doctor_readiness_checks():
     assert "inbox readiness" in operations
     assert "local event-sync cache" in operations
     assert "Codex inbox render readiness" in operations
+    assert "hollow-lodge doctor --strict" in operations
+    assert "exits non-zero unless a registered player is fully ready" in operations
     assert "saved auth, inbox readiness, Codex MCP registration" in readme
+    assert "doctor --strict" in readme
 
 
 def test_codex_play_guide_describes_doctor_and_mcp_render_readiness():
     guide = Path("docs/codex-play.md").read_text(encoding="utf-8")
 
     assert "hollow-lodge doctor" in guide
+    assert "hollow-lodge doctor --strict" in guide
     assert "saved auth" in guide
     assert "local event-sync cache" in guide
     assert "codex inbox render: ok surface=inbox" in guide

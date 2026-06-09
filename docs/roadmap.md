@@ -3570,6 +3570,30 @@ Expected verification:
 - `pytest tests/client/test_installer_script.py -q`
 - `pytest -q`
 
+### Slice 145: Strict Doctor Automation Gate
+
+Status: completed.
+
+Add an automation-friendly strict mode to `hollow-lodge doctor`. The default
+doctor command remains a redacted human-readable report, but
+`hollow-lodge doctor --strict` now exits non-zero unless a registered player is
+fully ready to play through Codex: server health is ok, saved auth matches the
+configured player, inbox readiness succeeds, visible-event sync succeeds,
+Codex inbox render packet construction succeeds, MCP config is registered with
+the expected command, and `hollow-lodge-mcp` is available on `PATH`.
+
+Strict mode still prints the same bounded report. It does not expose bearer
+tokens, invite codes, server error text, event bodies, player markdown, agent
+context, or gameplay payload details. Pending onboarding and unconfigured
+installs fail strict mode while preserving the normal zero-exit diagnostic
+behavior without `--strict`.
+
+Expected verification:
+
+- `pytest tests/client/test_cli_commands.py::test_doctor_strict_passes_for_registered_ready_install tests/client/test_cli_commands.py::test_doctor_strict_fails_for_pending_onboarding_without_contact tests/client/test_cli_commands.py::test_doctor_strict_fails_for_registered_auth_failure_without_leaking_error -q`
+- `pytest tests/client/test_cli_commands.py tests/client/test_installer_script.py tests/client/test_codex_mcp_config.py tests/client/test_local_log.py tests/client/test_codex_session.py -q`
+- `pytest -q`
+
 ## Completion Standard
 
 Each slice must:
