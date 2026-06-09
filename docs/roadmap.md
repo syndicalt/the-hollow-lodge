@@ -3137,6 +3137,31 @@ Expected verification:
 - `pytest tests/client/test_render_packets.py tests/client/test_codex_session.py tests/test_mcp_server.py -q`
 - `pytest -q`
 
+### Slice 125: Codex Backend Readiness Check
+
+Status: completed.
+
+Move the production smoke verdict into the Codex-native surface. The new
+`CodexGameSession.check_backend_readiness` method runs the same health check
+and `validate_backend_diagnostics` path used by
+`hollow-lodge admin backend-smoke`; the MCP `check_backend_readiness` tool
+returns a read-only `backend_readiness` packet instead of requiring a shell
+command.
+
+The tool defaults to the full `production_postgres` invariant and supports the
+same intentional maintenance freeze posture through
+`require_maintenance_read_only`. Failed readiness returns a visible, bounded
+failure packet rather than a tool exception, so the player and local agent can
+reason about drift inside Codex. The packet reports only sanitized backends,
+lag, guard state, refresh state, maintenance posture, and validation failures;
+it excludes raw database URLs, paths, and failure payload details.
+
+Expected verification:
+
+- `pytest tests/client/test_render_packets.py::test_backend_readiness_packet_renders_safe_pass_summary tests/client/test_render_packets.py::test_backend_readiness_packet_renders_bounded_failure_summary tests/client/test_codex_session.py::test_codex_session_checks_backend_readiness_with_production_preset tests/client/test_codex_session.py::test_codex_session_backend_readiness_returns_failure_packet tests/test_mcp_server.py::test_check_backend_readiness_mcp_call_returns_text_and_structured_packet tests/test_mcp_server.py::test_public_mcp_tools_do_not_expose_local_path_overrides -q`
+- `pytest tests/client/test_render_packets.py tests/client/test_codex_session.py tests/test_mcp_server.py -q`
+- `pytest -q`
+
 ## Completion Standard
 
 Each slice must:

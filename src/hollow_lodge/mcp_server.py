@@ -131,6 +131,25 @@ def render_backend_status() -> CallToolResult:
 
 
 @mcp.tool()
+def check_backend_readiness(
+    production_postgres: bool = True,
+    expected_backend: str | None = None,
+    expected_event_backend: str | None = None,
+    expected_operational_backend: str | None = None,
+    require_maintenance_read_only: bool = False,
+) -> CallToolResult:
+    return packet_response(
+        _session().check_backend_readiness(
+            production_postgres=production_postgres,
+            expected_backend=expected_backend,
+            expected_event_backend=expected_event_backend,
+            expected_operational_backend=expected_operational_backend,
+            require_maintenance_read_only=require_maintenance_read_only,
+        )
+    )
+
+
+@mcp.tool()
 def send_message(
     scope: str,
     body: str,

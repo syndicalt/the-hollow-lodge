@@ -1,5 +1,6 @@
 from hollow_lodge.client import render_packets
 from hollow_lodge.client.render_packets import (
+    build_backend_readiness_packet,
     build_backend_status_packet,
     build_mutation_result_packet,
     build_contract_board_packet,
@@ -358,6 +359,90 @@ def test_backend_status_packet_renders_safe_database_and_oracle_posture():
         "backend": "postgres",
         "database_url_env": "HOLLOW_LODGE_OPERATIONAL_DATABASE_URL",
     }
+
+
+def test_backend_readiness_packet_renders_safe_pass_summary():
+    packet = build_backend_readiness_packet(
+        {
+            "ok": True,
+            "mode": "production_postgres",
+            "result": {
+                "event_log": {
+                    "backend": "postgres",
+                    "status": "available",
+                    "event_count": 42,
+                    "last_sequence": 42,
+                    "database_url": "postgresql://user:secret@host:5432/hollow_lodge",
+                },
+                "projection": {
+                    "backend": "postgres",
+                    "status": "available",
+                    "lag": 0,
+                    "last_sequence": 42,
+                    "authoritative_last_sequence": 42,
+                    "schema_version": 7,
+                },
+                "projection_refresh": {
+                    "status": "ok",
+                    "last_context": "startup",
+                    "last_success_sequence": 42,
+                    "last_failure": {"message": "password=secret"},
+                },
+                "storage_guards": {
+                    "require_postgres_event_log": True,
+                    "require_postgres_projection": True,
+                    "require_postgres_operational": True,
+                },
+                "maintenance": {"read_only": False},
+                "identity_replay_store": {
+                    "backend": "postgres",
+                    "database_url": "postgresql://user:secret@host:5432/hollow_lodge",
+                },
+            },
+        }
+    )
+
+    assert packet.surface == "backend_readiness"
+    assert "Backend Readiness: pass (production_postgres)" in packet.player_markdown
+    assert "- event log: postgres (available; events 42)" in packet.player_markdown
+    assert "- projection: postgres (available; lag 0)" in packet.player_markdown
+    assert "- operational replay: postgres" in packet.player_markdown
+    assert "secret" not in packet.player_markdown
+    assert "postgresql://" not in packet.player_markdown
+    assert "secret" not in str(packet.agent_context)
+    assert "postgresql://" not in str(packet.agent_context)
+    assert packet.agent_context["backend_readiness"]["ok"] is True
+
+
+def test_backend_readiness_packet_renders_bounded_failure_summary():
+    packet = build_backend_readiness_packet(
+        {
+            "ok": False,
+            "mode": "production_postgres",
+            "errors": [
+                "Postgres operational startup guard is not enabled",
+                "projection refresh status is failed; expected ok",
+            ],
+            "result": {
+                "identity_replay_store": {
+                    "backend": "jsonl-sidecar",
+                    "database_url": "postgresql://user:secret@host:5432/hollow_lodge",
+                }
+            },
+        }
+    )
+
+    assert packet.surface == "backend_readiness"
+    assert "Backend Readiness: fail (production_postgres)" in packet.player_markdown
+    assert "- Postgres operational startup guard is not enabled" in packet.player_markdown
+    assert "- projection refresh status is failed; expected ok" in packet.player_markdown
+    assert "secret" not in packet.player_markdown
+    assert "postgresql://" not in packet.player_markdown
+    assert packet.agent_context["backend_readiness"]["ok"] is False
+    assert packet.agent_context["backend_readiness"]["errors"] == [
+        "Postgres operational startup guard is not enabled",
+        "projection refresh status is failed; expected ok",
+    ]
 
 
 def test_contract_board_packet_renders_archived_lifecycle_status():

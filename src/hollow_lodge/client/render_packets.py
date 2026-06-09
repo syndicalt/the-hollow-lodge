@@ -30,6 +30,7 @@ class RenderPacket(BaseModel):
         "conversations",
         "thread",
         "backend_status",
+        "backend_readiness",
         "mutation",
     ]
     player_markdown: str = Field(min_length=1)
@@ -304,6 +305,60 @@ def _shape_backend_status(diagnostics: dict[str, Any]) -> dict[str, Any]:
     }
 
 
+def _shape_backend_readiness_result(result: dict[str, Any] | None) -> dict[str, Any]:
+    if not isinstance(result, dict):
+        return {}
+    return {
+        "event_log": _shape_backend_section(
+            result.get("event_log"),
+            (
+                "backend",
+                "status",
+                "event_count",
+                "last_sequence",
+                "event_hash_chain_sha256",
+            ),
+        ),
+        "projection": _shape_backend_section(
+            result.get("projection"),
+            (
+                "backend",
+                "status",
+                "lag",
+                "last_sequence",
+                "authoritative_last_sequence",
+                "schema_version",
+                "schema_migration_count",
+                "latest_schema_migration",
+            ),
+        ),
+        "projection_reads": _shape_backend_section(
+            result.get("projection_reads"),
+            ("surfaces",),
+        ),
+        "storage_guards": _shape_backend_section(
+            result.get("storage_guards"),
+            (
+                "require_postgres_event_log",
+                "require_postgres_projection",
+                "require_postgres_operational",
+            ),
+        ),
+        "projection_refresh": _shape_backend_section(
+            result.get("projection_refresh"),
+            ("status", "last_context", "last_success_sequence", "failure_count"),
+        ),
+        "maintenance": _shape_backend_section(
+            result.get("maintenance"),
+            ("read_only", "env"),
+        ),
+        "identity_replay_store": _shape_backend_section(
+            result.get("identity_replay_store"),
+            ("backend", "database_url_env"),
+        ),
+    }
+
+
 def _backend_value(status: dict[str, Any], section: str, key: str, default: str = "unknown") -> Any:
     value = status.get(section, {}).get(key)
     if value is None:
@@ -317,6 +372,10 @@ def _render_guard_value(enabled: Any) -> str:
     if enabled is False:
         return "off"
     return "unknown"
+
+
+def _bounded_readiness_errors(errors: list[str] | tuple[str, ...] | None) -> list[str]:
+    return [str(error)[:240] for error in list(errors or [])[:8]]
 
 
 def _shape_deal(deal: dict[str, Any]) -> dict[str, Any]:
@@ -1359,6 +1418,67 @@ def build_backend_status_packet(diagnostics: dict[str, Any]) -> RenderPacket:
         },
         suggested_prompts=[
             "Run production backend smoke",
+            "Review operational docs",
+            "Open activity delta",
+        ],
+    )
+
+
+def build_backend_readiness_packet(payload: dict[str, Any]) -> RenderPacket:
+    ok = payload.get("ok") is True
+    mode = str(payload.get("mode", "custom"))
+    result = _shape_backend_readiness_result(payload.get("result"))
+    errors = _bounded_readiness_errors(payload.get("errors"))
+    if ok:
+        lines = [
+            f"Backend Readiness: pass ({mode})",
+            "",
+            "Storage:",
+            (
+                f"- event log: {_backend_value(result, 'event_log', 'backend')} "
+                f"({_backend_value(result, 'event_log', 'status')}; "
+                f"events {_backend_value(result, 'event_log', 'event_count')})"
+            ),
+            (
+                f"- projection: {_backend_value(result, 'projection', 'backend')} "
+                f"({_backend_value(result, 'projection', 'status')}; "
+                f"lag {_backend_value(result, 'projection', 'lag')})"
+            ),
+            (
+                "- operational replay: "
+                f"{_backend_value(result, 'identity_replay_store', 'backend')}"
+            ),
+            "",
+            "Runtime:",
+            (
+                "- projection refresh: "
+                f"{_backend_value(result, 'projection_refresh', 'status')}"
+            ),
+            (
+                "- maintenance read-only: "
+                f"{_backend_value(result, 'maintenance', 'read_only')}"
+            ),
+        ]
+    else:
+        lines = [f"Backend Readiness: fail ({mode})", "", "Failures:"]
+        if errors:
+            lines.extend(f"- {error}" for error in errors)
+        else:
+            lines.append("- readiness check failed without a detailed reason")
+    return RenderPacket(
+        surface="backend_readiness",
+        player_markdown="\n".join(lines),
+        agent_context={
+            "backend_readiness": {
+                "ok": ok,
+                "mode": mode,
+                "errors": errors,
+                "result": result,
+            },
+            "mutation": False,
+        },
+        suggested_prompts=[
+            "Render backend status",
             "Review operational docs",
             "Open activity delta",
         ],

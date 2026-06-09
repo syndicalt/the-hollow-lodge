@@ -8,6 +8,10 @@ from hollow_lodge.client.artifact_render import (
     build_artifact_graph_packet,
     build_artifact_packet,
 )
+from hollow_lodge.client.backend_smoke import (
+    resolve_backend_smoke_options,
+    validate_backend_diagnostics,
+)
 from hollow_lodge.client.config import ClientConfig, load_config, save_config
 from hollow_lodge.client.local_log import LocalEventLog
 from hollow_lodge.client.paths import DEFAULT_CONFIG_PATH, DEFAULT_LOCAL_LOG_PATH
@@ -15,6 +19,7 @@ from hollow_lodge.client.render_packets import (
     RenderPacket,
     build_activity_delta_packet,
     build_activity_summary_packet,
+    build_backend_readiness_packet,
     build_backend_status_packet,
     build_conversations_packet,
     build_deal_acceptance_preview_packet,
@@ -151,6 +156,53 @@ class CodexGameSession:
 
     def render_backend_status(self) -> RenderPacket:
         return build_backend_status_packet(self.api.diagnostics())
+
+    def check_backend_readiness(
+        self,
+        *,
+        production_postgres: bool = True,
+        expected_backend: str | None = None,
+        expected_event_backend: str | None = None,
+        expected_operational_backend: str | None = None,
+        require_maintenance_read_only: bool = False,
+    ) -> RenderPacket:
+        mode = "production_postgres" if production_postgres else "custom"
+        try:
+            smoke_options = resolve_backend_smoke_options(
+                production_postgres=production_postgres,
+                expected_backend=expected_backend,
+                expected_event_backend=expected_event_backend,
+                expected_operational_backend=expected_operational_backend,
+                require_maintenance_read_only=require_maintenance_read_only,
+            )
+            health = self.api.health()
+            if health != {"status": "ok"}:
+                return build_backend_readiness_packet(
+                    {
+                        "ok": False,
+                        "mode": mode,
+                        "errors": ["server health check did not return ok"],
+                    }
+                )
+            result = validate_backend_diagnostics(
+                self.api.diagnostics(),
+                **smoke_options,
+            )
+        except RuntimeError as exc:
+            return build_backend_readiness_packet(
+                {
+                    "ok": False,
+                    "mode": mode,
+                    "errors": str(exc).split("; "),
+                }
+            )
+        return build_backend_readiness_packet(
+            {
+                "ok": True,
+                "mode": mode,
+                "result": result,
+            }
+        )
 
     def send_message(
         self,

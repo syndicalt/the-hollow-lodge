@@ -144,6 +144,43 @@ def test_render_backend_status_mcp_call_returns_text_and_structured_packet(monke
     )
 
 
+def test_check_backend_readiness_mcp_call_returns_text_and_structured_packet(monkeypatch):
+    packet = RenderPacket(
+        surface="backend_readiness",
+        player_markdown="Backend Readiness: pass (production_postgres)",
+        agent_context={
+            "backend_readiness": {"ok": True, "mode": "production_postgres"},
+            "mutation": False,
+        },
+    )
+
+    class StubSession:
+        def check_backend_readiness(
+            self,
+            *,
+            production_postgres: bool = True,
+            expected_backend: str | None = None,
+            expected_event_backend: str | None = None,
+            expected_operational_backend: str | None = None,
+            require_maintenance_read_only: bool = False,
+        ) -> RenderPacket:
+            assert production_postgres is True
+            assert expected_backend is None
+            assert expected_event_backend is None
+            assert expected_operational_backend is None
+            assert require_maintenance_read_only is False
+            return packet
+
+    monkeypatch.setattr(mcp_server, "_session", lambda: StubSession())
+
+    result = asyncio.run(mcp_server.mcp.call_tool("check_backend_readiness", {}))
+
+    assert isinstance(result, CallToolResult)
+    assert result.content[0].text == packet.player_markdown
+    assert result.structuredContent["surface"] == "backend_readiness"
+    assert result.structuredContent["agent_context"]["backend_readiness"]["ok"] is True
+
+
 def test_render_dossier_mcp_call_returns_text_and_structured_packet(monkeypatch):
     packet = RenderPacket(
         surface="dossier",
@@ -621,6 +658,7 @@ def test_public_mcp_tools_do_not_expose_local_path_overrides():
         "render_conversations",
         "render_thread",
         "render_backend_status",
+        "check_backend_readiness",
         "send_message",
         "render_deals",
         "preview_deal_acceptance",

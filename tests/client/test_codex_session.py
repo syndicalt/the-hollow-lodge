@@ -3,6 +3,11 @@ import sys
 
 import pytest
 
+from hollow_lodge.client.backend_smoke import (
+    CURRENT_PROJECTION_READ_SURFACES,
+    CURRENT_PROJECTION_SCHEMA_MIGRATION_COUNT,
+    CURRENT_PROJECTION_SCHEMA_VERSION,
+)
 from hollow_lodge.client.codex_session import CodexGameSession
 from hollow_lodge.client.config import ClientConfig, load_config, save_config
 
@@ -78,6 +83,10 @@ class FakeApi:
                 },
             }
         ]
+
+    def health(self):
+        self.calls.append("health")
+        return {"status": "ok"}
 
     def send_direct_message(
         self,
@@ -314,6 +323,14 @@ class FakeApi:
                     "lag": 0,
                     "last_sequence": 12,
                     "authoritative_last_sequence": 12,
+                    "schema_version": CURRENT_PROJECTION_SCHEMA_VERSION,
+                    "schema_migration_count": CURRENT_PROJECTION_SCHEMA_MIGRATION_COUNT,
+                    "latest_schema_migration": CURRENT_PROJECTION_SCHEMA_VERSION,
+                },
+                "projection_reads": {
+                    "surfaces": {
+                        surface: True for surface in CURRENT_PROJECTION_READ_SURFACES
+                    }
                 },
                 "projection_refresh": {
                     "status": "ok",
@@ -767,6 +784,52 @@ def test_codex_session_renders_backend_status_without_event_sync(tmp_path):
         "backend": "postgres"
     }
     assert not log_path.exists()
+
+
+def test_codex_session_checks_backend_readiness_with_production_preset(tmp_path):
+    config_path = tmp_path / "config.json"
+    log_path = tmp_path / "local.jsonl"
+    fake_api = FakeApi()
+    save_config(
+        config_path,
+        ClientConfig(server_url="http://testserver", player_id="player_0001", token="token"),
+    )
+    session = CodexGameSession(config_path=config_path, local_log_path=log_path, api=fake_api)
+
+    packet = session.check_backend_readiness()
+
+    assert fake_api.calls == ["health", "diagnostics"]
+    assert packet.surface == "backend_readiness"
+    assert "Backend Readiness: pass (production_postgres)" in packet.player_markdown
+    assert packet.agent_context["backend_readiness"]["ok"] is True
+    assert not log_path.exists()
+
+
+def test_codex_session_backend_readiness_returns_failure_packet(tmp_path):
+    class DriftedApi(FakeApi):
+        def diagnostics(self):
+            payload = super().diagnostics()
+            payload["data"]["storage_guards"][
+                "require_postgres_operational"
+            ] = False
+            return payload
+
+    config_path = tmp_path / "config.json"
+    log_path = tmp_path / "local.jsonl"
+    fake_api = DriftedApi()
+    save_config(
+        config_path,
+        ClientConfig(server_url="http://testserver", player_id="player_0001", token="token"),
+    )
+    session = CodexGameSession(config_path=config_path, local_log_path=log_path, api=fake_api)
+
+    packet = session.check_backend_readiness()
+
+    assert fake_api.calls == ["health", "diagnostics"]
+    assert packet.surface == "backend_readiness"
+    assert "Backend Readiness: fail (production_postgres)" in packet.player_markdown
+    assert "Postgres operational startup guard is not enabled" in packet.player_markdown
+    assert packet.agent_context["backend_readiness"]["ok"] is False
 
 
 def test_codex_session_uses_active_crew_for_crew_board(tmp_path):
