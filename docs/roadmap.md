@@ -302,6 +302,10 @@ Status:
   metadata can read from SQLite when the projection is fresh, while crew
   membership checks, dossiers, artifacts, deals, rumors, pending decisions, and
   legacy calculations remain authoritative and visibility-scoped.
+- Feature-flagged artifact visibility projection reads completed: `/artifacts`
+  can read safe public and scoped artifact surfaces from SQLite when fresh,
+  while artifact inspection, transfer authorization, full text, hidden flags,
+  unlock rules, and server-only graph internals remain outside the read model.
 - Deferred: deeper death/legacy inheritance, additional long-term unlock paths,
   and migrating heavier campaign reads onto the projection database.
 
@@ -1165,6 +1169,29 @@ Expected verification:
 
 - `pytest tests/server/test_projection_store.py::test_crew_board_reads_fresh_projected_crew_summary_when_enabled tests/server/test_projection_store.py::test_crew_board_falls_back_when_projected_crew_summary_is_stale tests/server/test_projection_store.py::test_crew_creation_still_succeeds_when_projection_refresh_fails -q`
 - `pytest tests/server/test_projection_store.py tests/server/test_crew_routes.py tests/server/test_contract_seed.py tests/server/test_phase_resolution.py tests/server/test_app_config.py tests/client/test_render_packets.py tests/client/test_contract_board.py tests/test_mcp_server.py -q`
+- `pytest -q`
+
+### Slice 44: Feature-Flagged Artifact Visibility Projection Reads
+
+Status: completed.
+
+Move the player-visible artifact list onto the SQLite projection path without
+moving artifact authority. The projection store now materializes only safe
+artifact surfaces and safe visible edges: public graph artifacts, public graph
+edges whose endpoints are public, and scoped artifact copy or access surfaces
+with their event visibility. It does not persist artifact full text, hidden
+flags, unlock rules, server-only graph internals, or hidden truth. When
+`HOLLOW_LODGE_ARTIFACT_PROJECTION_READS=1` is set, `/artifacts` reads from
+SQLite only if the projection is available and has zero lag. Stale, missing, or
+unreadable projection state falls back to `ArtifactService`. Identity
+registration and artifact transfer refresh projections best-effort after their
+authoritative event writes, while artifact inspection and transfer
+authorization remain service-backed.
+
+Expected verification:
+
+- `pytest tests/server/test_projection_store.py::test_artifact_route_reads_fresh_projected_visible_artifacts_when_enabled tests/server/test_projection_store.py::test_artifact_route_falls_back_when_projection_is_stale tests/server/test_projection_store.py::test_artifact_projection_reads_player_and_crew_scoped_surfaces tests/server/test_projection_store.py::test_artifact_transfer_refreshes_projection_for_flagged_reads tests/server/test_projection_store.py::test_projection_store_materializes_visible_artifacts_without_hidden_fields -q`
+- `pytest tests/server/test_projection_store.py tests/server/test_artifact_routes.py tests/server/test_artifact_projections.py tests/server/test_artifact_transfer.py tests/server/test_contract_seed.py tests/server/test_phase_resolution.py tests/server/test_crew_routes.py tests/server/test_deal_routes.py tests/client/test_render_packets.py tests/client/test_contract_board.py tests/test_mcp_server.py -q`
 - `pytest -q`
 
 ## Completion Standard

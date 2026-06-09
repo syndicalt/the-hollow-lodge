@@ -3,8 +3,13 @@ from __future__ import annotations
 from typing import Any
 
 from hollow_lodge.domain.contracts import Campaign, Contract
+from hollow_lodge.domain.artifact_graph import ArtifactGraph
 from hollow_lodge.domain.crews import Crew
 from hollow_lodge.domain.events import GameEvent
+from hollow_lodge.server.artifact_seed import (
+    STARTER_ARTIFACT_GRAPH,
+    STARTER_PUBLIC_ARTIFACT_IDS,
+)
 from hollow_lodge.server.contract_seed import ContractUnlockRequirement
 
 
@@ -80,6 +85,75 @@ def crew_summaries_from_events(events: list[GameEvent]) -> dict[str, dict[str, A
         }
         for crew_id, crew in sorted(crews.items())
     }
+
+
+def artifact_visibility_from_events(events: list[GameEvent]) -> dict[str, Any]:
+    graphs = _seeded_artifact_graphs(events)
+    public_artifact_ids: set[str] = set()
+    artifacts_by_id: dict[str, dict[str, Any]] = {}
+    edges_by_key: dict[tuple[str, str, str], dict[str, Any]] = {}
+    scoped_surfaces: list[dict[str, Any]] = []
+
+    for graph, graph_public_ids in graphs.values():
+        visible_ids = set(graph_public_ids)
+        public_artifact_ids.update(visible_ids)
+        graph_slice = graph.visible_slice(visible_ids)
+        for artifact in graph_slice["artifacts"]:
+            artifacts_by_id[artifact["artifact_id"]] = artifact
+        for edge in graph_slice["edges"]:
+            edges_by_key[(edge["source_id"], edge["target_id"], edge["relation"])] = edge
+
+    for event in events:
+        if event.type == "artifact.access.granted":
+            scoped_surfaces.append(
+                {
+                    "artifact_id": event.payload["artifact_id"],
+                    "surface": event.payload["surface"],
+                    "visibility": event.visibility.model_dump(mode="json"),
+                }
+            )
+        elif event.type in {"artifact.transferred", "artifact.deal_copied"}:
+            surface = event.payload["surface"]
+            scoped_surfaces.append(
+                {
+                    "artifact_id": surface["artifact_id"],
+                    "surface": surface,
+                    "visibility": event.visibility.model_dump(mode="json"),
+                }
+            )
+
+    return {
+        "public_artifacts": artifacts_by_id,
+        "public_edges": edges_by_key,
+        "scoped_surfaces": scoped_surfaces,
+    }
+
+
+def _seeded_artifact_graphs(
+    events: list[GameEvent],
+) -> dict[str, tuple[ArtifactGraph, tuple[str, ...]]]:
+    graphs: dict[str, tuple[ArtifactGraph, tuple[str, ...]]] = {
+        STARTER_ARTIFACT_GRAPH.contract_id: (
+            STARTER_ARTIFACT_GRAPH,
+            tuple(STARTER_PUBLIC_ARTIFACT_IDS),
+        )
+    }
+    for event in events:
+        if event.type != "artifact.graph.seeded":
+            continue
+        payload = event.payload
+        if "graph" in payload:
+            graph = ArtifactGraph.model_validate(payload["graph"])
+            public_artifact_ids = tuple(payload.get("public_artifact_ids", ()))
+        else:
+            graph = ArtifactGraph.model_validate(payload)
+            public_artifact_ids = (
+                tuple(STARTER_PUBLIC_ARTIFACT_IDS)
+                if graph.contract_id == STARTER_ARTIFACT_GRAPH.contract_id
+                else ()
+            )
+        graphs[graph.contract_id] = (graph, public_artifact_ids)
+    return graphs
 
 
 def apply_contract_unlock_status(

@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import logging
 import os
 import secrets
 
@@ -12,6 +13,7 @@ from hollow_lodge.server.auth import current_player
 
 
 router = APIRouter(prefix="/identity", tags=["identity"])
+logger = logging.getLogger(__name__)
 
 
 class RegisterRequest(BaseModel):
@@ -105,6 +107,7 @@ def register(
             display_name=payload.display_name,
             idempotency_key=idempotency_key,
         )
+        _refresh_projection_store(request)
     except ValueError as exc:
         message = str(exc)
         if message in {
@@ -119,6 +122,16 @@ def register(
         display_name=player.display_name,
         token=token,
     )
+
+
+def _refresh_projection_store(request: Request) -> None:
+    if hasattr(request.app.state, "projection_store"):
+        try:
+            request.app.state.projection_store.rebuild(
+                request.app.state.event_store.read()
+            )
+        except Exception:
+            logger.exception("failed to refresh projection store after identity mutation")
 
 
 @router.post(

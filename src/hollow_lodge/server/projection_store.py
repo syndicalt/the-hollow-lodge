@@ -7,6 +7,7 @@ from typing import Any
 
 from hollow_lodge.domain.events import GameEvent
 from hollow_lodge.server.projections import (
+    artifact_visibility_from_events,
     contract_board_from_events,
     crew_summaries_from_events,
 )
@@ -23,11 +24,15 @@ class SqliteProjectionStore:
         self.path.parent.mkdir(parents=True, exist_ok=True)
         board = contract_board_from_events(events)
         crew_summaries = crew_summaries_from_events(events)
+        artifact_visibility = artifact_visibility_from_events(events)
         last_sequence = events[-1].sequence if events else 0
         with sqlite3.connect(self.path) as connection:
             self._ensure_schema(connection)
             connection.execute("delete from contract_board")
             connection.execute("delete from crew_summary")
+            connection.execute("delete from artifact_surface")
+            connection.execute("delete from artifact_edge")
+            connection.execute("delete from artifact_scoped_surface")
             for contract in board["contracts"]:
                 connection.execute(
                     """
@@ -66,10 +71,81 @@ class SqliteProjectionStore:
                         last_sequence,
                     ),
                 )
+            for artifact_id, artifact in artifact_visibility["public_artifacts"].items():
+                connection.execute(
+                    """
+                    insert into artifact_surface (
+                        artifact_id,
+                        contract_id,
+                        payload_json,
+                        updated_sequence
+                    ) values (?, ?, ?, ?)
+                    """,
+                    (
+                        artifact_id,
+                        artifact["contract_id"],
+                        json.dumps(artifact, sort_keys=True, separators=(",", ":")),
+                        last_sequence,
+                    ),
+                )
+            for edge in artifact_visibility["public_edges"].values():
+                connection.execute(
+                    """
+                    insert into artifact_edge (
+                        source_id,
+                        target_id,
+                        relation,
+                        payload_json,
+                        updated_sequence
+                    ) values (?, ?, ?, ?, ?)
+                    """,
+                    (
+                        edge["source_id"],
+                        edge["target_id"],
+                        edge["relation"],
+                        json.dumps(edge, sort_keys=True, separators=(",", ":")),
+                        last_sequence,
+                    ),
+                )
+            for scoped in artifact_visibility["scoped_surfaces"]:
+                connection.execute(
+                    """
+                    insert into artifact_scoped_surface (
+                        artifact_id,
+                        payload_json,
+                        visibility_json,
+                        updated_sequence
+                    ) values (?, ?, ?, ?)
+                    """,
+                    (
+                        scoped["artifact_id"],
+                        json.dumps(
+                            scoped["surface"],
+                            sort_keys=True,
+                            separators=(",", ":"),
+                        ),
+                        json.dumps(
+                            scoped["visibility"],
+                            sort_keys=True,
+                            separators=(",", ":"),
+                        ),
+                        last_sequence,
+                    ),
+                )
             self._set_meta(connection, "schema_version", SCHEMA_VERSION)
             self._set_meta(connection, "last_sequence", str(last_sequence))
             self._set_meta(connection, "contract_count", str(len(board["contracts"])))
             self._set_meta(connection, "crew_count", str(len(crew_summaries)))
+            self._set_meta(
+                connection,
+                "public_artifact_count",
+                str(len(artifact_visibility["public_artifacts"])),
+            )
+            self._set_meta(
+                connection,
+                "scoped_artifact_count",
+                str(len(artifact_visibility["scoped_surfaces"])),
+            )
             self._set_meta(
                 connection,
                 "campaign_json",
@@ -96,6 +172,8 @@ class SqliteProjectionStore:
                 "lag": authoritative,
                 "contract_count": 0,
                 "crew_count": 0,
+                "public_artifact_count": 0,
+                "scoped_artifact_count": 0,
             }
         try:
             with sqlite3.connect(self.path) as connection:
@@ -109,6 +187,12 @@ class SqliteProjectionStore:
                 crew_count = connection.execute(
                     "select count(*) from crew_summary"
                 ).fetchone()[0]
+                public_artifact_count = connection.execute(
+                    "select count(*) from artifact_surface"
+                ).fetchone()[0]
+                scoped_artifact_count = connection.execute(
+                    "select count(*) from artifact_scoped_surface"
+                ).fetchone()[0]
         except sqlite3.DatabaseError:
             authoritative = authoritative_last_sequence or 0
             return {
@@ -121,6 +205,8 @@ class SqliteProjectionStore:
                 "lag": authoritative,
                 "contract_count": 0,
                 "crew_count": 0,
+                "public_artifact_count": 0,
+                "scoped_artifact_count": 0,
             }
         last_sequence = int(meta.get("last_sequence", "0"))
         authoritative = (
@@ -139,6 +225,12 @@ class SqliteProjectionStore:
             "lag": lag,
             "contract_count": int(meta.get("contract_count", str(contract_count))),
             "crew_count": int(meta.get("crew_count", str(crew_count))),
+            "public_artifact_count": int(
+                meta.get("public_artifact_count", str(public_artifact_count))
+            ),
+            "scoped_artifact_count": int(
+                meta.get("scoped_artifact_count", str(scoped_artifact_count))
+            ),
         }
 
     def read_contract_board(self) -> dict[str, Any]:
@@ -165,6 +257,51 @@ class SqliteProjectionStore:
         if row is None:
             raise KeyError(crew_id)
         return json.loads(row[0])
+
+    def read_visible_artifacts(
+        self,
+        player_id: str,
+        *,
+        crew_ids: list[str] | tuple[str, ...] = (),
+    ) -> dict[str, Any]:
+        principals = {("player", player_id)}
+        principals.update(("crew", crew_id) for crew_id in crew_ids)
+        with sqlite3.connect(self.path) as connection:
+            self._ensure_schema(connection)
+            artifact_rows = connection.execute(
+                "select payload_json from artifact_surface order by artifact_id"
+            ).fetchall()
+            edge_rows = connection.execute(
+                """
+                select payload_json
+                from artifact_edge
+                order by source_id, target_id, relation
+                """
+            ).fetchall()
+            scoped_rows = connection.execute(
+                """
+                select artifact_id, payload_json, visibility_json
+                from artifact_scoped_surface
+                order by artifact_id
+                """
+            ).fetchall()
+        artifacts_by_id = {
+            json.loads(row[0])["artifact_id"]: json.loads(row[0])
+            for row in artifact_rows
+        }
+        for _, payload_json, visibility_json in scoped_rows:
+            visibility = json.loads(visibility_json)
+            if _visibility_matches(visibility, principals):
+                artifact = json.loads(payload_json)
+                artifacts_by_id[artifact["artifact_id"]] = artifact
+        return {
+            "contract_id": "multiple",
+            "artifacts": [
+                artifacts_by_id[artifact_id]
+                for artifact_id in sorted(artifacts_by_id)
+            ],
+            "edges": [json.loads(row[0]) for row in edge_rows],
+        }
 
     def _ensure_schema(self, connection: sqlite3.Connection) -> None:
         connection.execute(
@@ -203,6 +340,38 @@ class SqliteProjectionStore:
             )
             """
         )
+        connection.execute(
+            """
+            create table if not exists artifact_surface (
+                artifact_id text primary key,
+                contract_id text not null,
+                payload_json text not null,
+                updated_sequence integer not null
+            )
+            """
+        )
+        connection.execute(
+            """
+            create table if not exists artifact_edge (
+                source_id text not null,
+                target_id text not null,
+                relation text not null,
+                payload_json text not null,
+                updated_sequence integer not null,
+                primary key (source_id, target_id, relation)
+            )
+            """
+        )
+        connection.execute(
+            """
+            create table if not exists artifact_scoped_surface (
+                artifact_id text primary key,
+                payload_json text not null,
+                visibility_json text not null,
+                updated_sequence integer not null
+            )
+            """
+        )
 
     def _set_meta(self, connection: sqlite3.Connection, key: str, value: str) -> None:
         connection.execute(
@@ -213,3 +382,17 @@ class SqliteProjectionStore:
             """,
             (key, value),
         )
+
+
+def _visibility_matches(
+    visibility: dict[str, Any],
+    principals: set[tuple[str, str]],
+) -> bool:
+    for entry in visibility.get("principals", visibility.get("entries", [])):
+        kind = entry.get("kind")
+        principal_id = entry.get("id")
+        if kind == "public":
+            return True
+        if principal_id is not None and (kind, principal_id) in principals:
+            return True
+    return False

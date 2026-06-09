@@ -444,6 +444,192 @@ def test_projection_store_materializes_crew_summaries_without_join_codes(tmp_pat
     )
 
 
+def test_artifact_route_reads_fresh_projected_visible_artifacts_when_enabled(
+    tmp_path,
+    monkeypatch,
+):
+    monkeypatch.setenv("HOLLOW_LODGE_ARTIFACT_PROJECTION_READS", "1")
+    client = TestClient(create_app(data_dir=tmp_path, invite_codes=["a"]))
+    ada = register(client, "a", "Ada")
+    original_read = client.app.state.projection_store.read_visible_artifacts
+    calls = {"count": 0}
+
+    def tracked_read_visible_artifacts(player_id: str, crew_ids=()):
+        calls["count"] += 1
+        return original_read(player_id, crew_ids=crew_ids)
+
+    client.app.state.projection_store.read_visible_artifacts = tracked_read_visible_artifacts
+    client.app.state.artifact_service.visible_artifacts_for_player = (
+        lambda player_id, crew_ids=(): (_ for _ in ()).throw(
+            AssertionError("fresh artifact projection should be used")
+        )
+    )
+
+    response = client.get("/artifacts", headers=auth(ada["token"]))
+
+    assert response.status_code == 200
+    assert calls["count"] == 1
+    assert {
+        artifact["artifact_id"]
+        for artifact in response.json()["artifacts"]
+    } == {"artifact_lot_card", "artifact_ledger_rubric"}
+    assert response.json()["edges"] == [
+        {
+            "source_id": "artifact_lot_card",
+            "target_id": "artifact_ledger_rubric",
+            "relation": "contradicts",
+            "public_summary": "The public lot card and copied ledger disagree on custody.",
+        }
+    ]
+    assert "full_text" not in response.text
+    assert "hidden_flags" not in response.text
+    assert "ink-after-binding" not in response.text
+
+
+def test_artifact_route_falls_back_when_projection_is_stale(tmp_path, monkeypatch):
+    monkeypatch.setenv("HOLLOW_LODGE_ARTIFACT_PROJECTION_READS", "1")
+    client = TestClient(create_app(data_dir=tmp_path, invite_codes=["a"]))
+    ada = register(client, "a", "Ada")
+    out_of_band_contract = STARTER_CONTRACT.model_copy(
+        update={"contract_id": "contract_out_of_band", "title": "Out Of Band"}
+    )
+    client.app.state.event_store.append_command(
+        event_type="contract.board.published",
+        actor_id="server",
+        visibility=EventVisibility.public(),
+        payload=out_of_band_contract.model_dump(mode="json"),
+        idempotency_key="out-of-band-contract",
+    )
+
+    def fail_if_projection_read(player_id: str, crew_ids=()):
+        raise AssertionError("stale artifact projection should not be used")
+
+    client.app.state.projection_store.read_visible_artifacts = fail_if_projection_read
+
+    response = client.get("/artifacts", headers=auth(ada["token"]))
+
+    assert response.status_code == 200
+    assert {
+        artifact["artifact_id"]
+        for artifact in response.json()["artifacts"]
+    } == {"artifact_lot_card", "artifact_ledger_rubric"}
+
+
+def test_artifact_projection_reads_player_and_crew_scoped_surfaces(
+    tmp_path,
+    monkeypatch,
+):
+    monkeypatch.setenv("HOLLOW_LODGE_ARTIFACT_PROJECTION_READS", "1")
+    client = TestClient(create_app(data_dir=tmp_path, invite_codes=["a", "b"]))
+    ada = register(client, "a", "Ada")
+    grace = register(client, "b", "Grace")
+    crew = create_crew(client, ada["token"], "crew-create-gilt", "The Gilt Knives")
+    client.post(
+        f"/crews/{crew['crew_id']}/join",
+        headers=command_auth(grace["token"], "crew-join-grace"),
+        json={"join_code": crew["join_code"]},
+    )
+    client.app.state.artifact_service.grant_artifact_access(
+        artifact_id="artifact_chapel_debt_mark",
+        actor_id="server",
+        player_ids=[],
+        crew_ids=[crew["crew_id"]],
+        reason="projection test",
+        idempotency_key="grant-chapel-to-crew",
+    )
+    client.app.state.projection_store.rebuild(client.app.state.event_store.read())
+    client.app.state.artifact_service.visible_artifacts_for_player = (
+        lambda player_id, crew_ids=(): (_ for _ in ()).throw(
+            AssertionError("fresh scoped artifact projection should be used")
+        )
+    )
+
+    ada_response = client.get("/artifacts", headers=auth(ada["token"]))
+    grace_response = client.get("/artifacts", headers=auth(grace["token"]))
+
+    assert ada_response.status_code == 200
+    assert grace_response.status_code == 200
+    assert "artifact_chapel_debt_mark" in {
+        artifact["artifact_id"]
+        for artifact in ada_response.json()["artifacts"]
+    }
+    assert "artifact_chapel_debt_mark" in {
+        artifact["artifact_id"]
+        for artifact in grace_response.json()["artifacts"]
+    }
+    assert "full_text" not in ada_response.text
+    assert "hidden_flags" not in ada_response.text
+
+
+def test_artifact_transfer_refreshes_projection_for_flagged_reads(
+    tmp_path,
+    monkeypatch,
+):
+    monkeypatch.setenv("HOLLOW_LODGE_ARTIFACT_PROJECTION_READS", "1")
+    client = TestClient(create_app(data_dir=tmp_path, invite_codes=["a", "b"]))
+    ada = register(client, "a", "Ada")
+    grace = register(client, "b", "Grace")
+
+    transferred = client.post(
+        "/artifacts/artifact_lot_card/transfer",
+        headers=command_auth(ada["token"], "transfer-lot-card"),
+        json={"recipient_player_id": grace["player_id"]},
+    )
+    original_read = client.app.state.projection_store.read_visible_artifacts
+    calls = {"count": 0}
+
+    def tracked_read_visible_artifacts(player_id: str, crew_ids=()):
+        calls["count"] += 1
+        return original_read(player_id, crew_ids=crew_ids)
+
+    client.app.state.projection_store.read_visible_artifacts = tracked_read_visible_artifacts
+    client.app.state.artifact_service.visible_artifacts_for_player = (
+        lambda player_id, crew_ids=(): (_ for _ in ()).throw(
+            AssertionError("fresh artifact projection should be used after transfer")
+        )
+    )
+
+    response = client.get("/artifacts", headers=auth(grace["token"]))
+    copy_ids = [
+        artifact["artifact_id"]
+        for artifact in response.json()["artifacts"]
+        if artifact.get("is_copy")
+    ]
+
+    assert transferred.status_code == 201
+    assert response.status_code == 200
+    assert calls["count"] == 1
+    assert copy_ids == ["artifact_lot_card.copy.player_0002.1"]
+
+
+def test_projection_store_materializes_visible_artifacts_without_hidden_fields(tmp_path):
+    client = TestClient(create_app(data_dir=tmp_path, invite_codes=["a"]))
+    ada = register(client, "a", "Ada")
+
+    projected = client.app.state.projection_store.read_visible_artifacts(
+        ada["player_id"],
+        crew_ids=(),
+    )
+    with sqlite3.connect(tmp_path / "server-projections.sqlite3") as connection:
+        public_rows = connection.execute(
+            "select artifact_id, payload_json from artifact_surface order by artifact_id"
+        ).fetchall()
+
+    assert {
+        artifact["artifact_id"]
+        for artifact in projected["artifacts"]
+    } == {"artifact_lot_card", "artifact_ledger_rubric"}
+    assert [row[0] for row in public_rows] == [
+        "artifact_ledger_rubric",
+        "artifact_lot_card",
+    ]
+    stored_text = "\n".join(row[1] for row in public_rows)
+    assert "full_text" not in stored_text
+    assert "hidden_flags" not in stored_text
+    assert "ink-after-binding" not in stored_text
+    assert "saint-bone forgery" not in stored_text
+
+
 def test_projection_store_rebuilds_after_new_public_contract_event(tmp_path, monkeypatch):
     client = TestClient(create_app(data_dir=tmp_path, invite_codes=["a"]))
     out_of_band_contract = STARTER_CONTRACT.model_copy(
