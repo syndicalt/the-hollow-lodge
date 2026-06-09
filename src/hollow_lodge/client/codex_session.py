@@ -17,6 +17,7 @@ from hollow_lodge.client.render_packets import (
     build_deal_acceptance_preview_packet,
     build_deals_packet,
     build_contract_board_packet,
+    build_crew_activity_packet,
     build_crew_board_packet,
     build_dossier_packet,
     build_inbox_packet,
@@ -105,6 +106,14 @@ class CodexGameSession:
     def render_activity(self) -> RenderPacket:
         self.sync()
         return build_activity_summary_packet(self._visible_server_events())
+
+    def render_crew_activity(self, crew_id: str | None = None) -> RenderPacket:
+        self.sync()
+        target_crew_id = self._target_crew_id(crew_id)
+        return build_crew_activity_packet(
+            self._visible_server_events(),
+            crew_id=target_crew_id,
+        )
 
     def render_thread(self, conversation_id: str) -> RenderPacket:
         self.sync()

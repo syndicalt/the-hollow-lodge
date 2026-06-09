@@ -1506,6 +1506,26 @@ Expected verification:
 - `pytest tests/e2e/test_full_game_loop_with_escrow.py tests/e2e/test_codex_render_surfaces.py tests/client/test_codex_session.py tests/test_mcp_server.py -q`
 - `pytest -q`
 
+### Slice 59: Crew-Scoped Activity Timeline
+
+Status: completed.
+
+Add the first Milestone 2 coordination surface for asking what changed for a
+specific crew. The render layer now builds a `crew_activity` packet from
+already-visible events, including only events that explicitly name the active
+crew through safe payload fields, chat endpoints, deal parties, actions,
+dossiers, standings, legacy deltas, or crew visibility principals. The Codex
+session and MCP server expose `render_crew_activity`, using the active crew by
+default while still accepting an explicit crew id. The full-loop smoke now
+renders crew activity alongside final `what_now` and global activity packets.
+
+Expected verification:
+
+- `pytest tests/client/test_render_packets.py::test_crew_activity_packet_filters_visible_events_to_named_crew_without_hidden_fields tests/client/test_codex_session.py::test_codex_session_renders_crew_activity_with_active_crew tests/test_mcp_server.py::test_render_crew_activity_mcp_call_returns_text_and_structured_packet -q`
+- `pytest tests/e2e/test_full_game_loop_with_escrow.py -q`
+- `pytest tests/client/test_render_packets.py tests/client/test_codex_session.py tests/test_mcp_server.py tests/e2e/test_full_game_loop_with_escrow.py -q`
+- `pytest -q`
+
 ## Completion Standard
 
 Each slice must:

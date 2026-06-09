@@ -25,6 +25,7 @@ class RenderPacket(BaseModel):
         "artifact",
         "artifact_graph",
         "activity",
+        "crew_activity",
         "thread",
         "mutation",
     ]
@@ -761,6 +762,98 @@ def build_activity_summary_packet(
             "Open a conversation thread",
             "Review inbox",
             "Open the contract board",
+        ],
+    )
+
+
+def _payload_mentions_crew(payload: dict[str, Any], crew_id: str) -> bool:
+    for key in (
+        "crew_id",
+        "sender_crew_id",
+        "recipient_crew_id",
+        "proposer_crew_id",
+        "candidate_crew_id",
+    ):
+        if payload.get(key) == crew_id:
+            return True
+    for key in (
+        "crew_ids",
+        "recipient_crew_ids",
+        "suspected_crew_ids",
+        "affected_crew_ids",
+    ):
+        if crew_id in payload.get(key, []):
+            return True
+    for key in ("action", "deal", "dossier", "surface", "result"):
+        value = payload.get(key)
+        if isinstance(value, dict) and _payload_mentions_crew(value, crew_id):
+            return True
+    reveal = payload.get("reveal", {})
+    if isinstance(reveal, dict):
+        for standing in reveal.get("standings", []):
+            if isinstance(standing, dict) and standing.get("crew_id") == crew_id:
+                return True
+    return False
+
+
+def _event_visibility_mentions_crew(event: dict[str, Any], crew_id: str) -> bool:
+    for principal in event.get("visibility", {}).get("principals", []):
+        if principal.get("kind") == "crew" and principal.get("id") == crew_id:
+            return True
+        if principal.get("kind") == "crew" and principal.get("crew_id") == crew_id:
+            return True
+    return False
+
+
+def event_matches_crew_activity(event: dict[str, Any], crew_id: str) -> bool:
+    return _payload_mentions_crew(
+        event.get("payload", {}),
+        crew_id,
+    ) or _event_visibility_mentions_crew(event, crew_id)
+
+
+def build_crew_activity_packet(
+    events: list[dict[str, Any]],
+    *,
+    crew_id: str,
+    recent_limit: int = 10,
+) -> RenderPacket:
+    visible_events = sorted(events, key=lambda event: int(event["sequence"]))
+    crew_events = [
+        event
+        for event in visible_events
+        if event_matches_crew_activity(event, crew_id)
+    ]
+    recent_events = crew_events[-recent_limit:]
+    lines = [f"Crew activity: {crew_id}"]
+    if recent_events:
+        lines.extend(f"- {_render_activity_event(event)}" for event in recent_events)
+    else:
+        lines.append("- no visible crew activity")
+    return RenderPacket(
+        surface="crew_activity",
+        player_markdown="\n".join(lines),
+        agent_context={
+            "crew_id": crew_id,
+            "visible_event_count": len(visible_events),
+            "crew_event_count": len(crew_events),
+            "skipped_visible_event_count": len(visible_events) - len(crew_events),
+            "event_type_counts": dict(Counter(event["type"] for event in crew_events)),
+            "recent_events": [
+                _shape_activity_event(event)
+                for event in recent_events
+            ],
+            "mutation": False,
+        },
+        suggested_prompts=[
+            "Open crew board",
+            "Review inbox",
+            "Open a conversation thread",
+        ],
+        actions=[
+            RenderAction(label="Open crew board", intent="render_crew_board"),
+            RenderAction(label="Review inbox", intent="render_inbox"),
+            RenderAction(label="Review recent activity", intent="render_activity"),
         ],
     )
 

@@ -34,6 +34,7 @@ def test_full_game_loop_with_escrow_trade(tmp_path):
         "dossier",
         "what_now",
         "contract_board",
+        "crew_activity",
         "activity",
     ]
     assert "Acceptance preview:" in "\n".join(result["lines"])
@@ -47,6 +48,9 @@ def test_full_game_loop_with_escrow_trade(tmp_path):
         == 1
     )
     assert result["final_what_now"]["agent_context"]["mutation"] is False
+    assert result["final_crew_activity"]["surface"] == "crew_activity"
+    assert result["final_crew_activity"]["agent_context"]["crew_id"] == "crew_0001"
+    assert result["final_crew_activity"]["agent_context"]["crew_event_count"] > 0
     assert result["final_activity"]["agent_context"]["visible_event_count"] > 0
     assert result["timeline"] == [
         "deal.proposed",

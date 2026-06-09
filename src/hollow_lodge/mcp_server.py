@@ -97,6 +97,13 @@ def render_activity() -> CallToolResult:
 
 
 @mcp.tool()
+def render_crew_activity(
+    crew_id: str | None = None,
+) -> CallToolResult:
+    return packet_response(_session().render_crew_activity(crew_id=crew_id))
+
+
+@mcp.tool()
 def render_thread(conversation_id: str) -> CallToolResult:
     return packet_response(_session().render_thread(conversation_id))
 

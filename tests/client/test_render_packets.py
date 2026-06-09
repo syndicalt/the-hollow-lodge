@@ -1921,6 +1921,84 @@ def test_activity_summary_packet_shapes_visible_events_without_server_only_field
     ]
 
 
+def test_crew_activity_packet_filters_visible_events_to_named_crew_without_hidden_fields():
+    assert hasattr(render_packets, "build_crew_activity_packet")
+    packet = render_packets.build_crew_activity_packet(
+        [
+            {
+                "origin": "server",
+                "sequence": 1,
+                "type": "chat.message.created",
+                "payload": {
+                    "message_id": "msg_1",
+                    "sender_player_id": "player_0001",
+                    "sender_crew_id": "crew_0001",
+                    "recipient_crew_id": "crew_0002",
+                    "body": "The bell moved.",
+                    "server_only_note": "hidden",
+                },
+            },
+            {
+                "origin": "server",
+                "sequence": 2,
+                "type": "action.submitted",
+                "payload": {
+                    "action": {
+                        "action_id": "action_000001",
+                        "crew_id": "crew_0001",
+                        "intent": "Inspect the ledger hand.",
+                        "server_notes": "hidden",
+                    }
+                },
+            },
+            {
+                "origin": "server",
+                "sequence": 3,
+                "type": "contract.phase.resolved",
+                "payload": {
+                    "reveal": {
+                        "standings": [
+                            {
+                                "crew_id": "crew_0001",
+                                "standing": "Strong lead",
+                                "score": 82,
+                                "hidden_tiebreaker": "server-only",
+                            }
+                        ]
+                    }
+                },
+            },
+            {
+                "origin": "server",
+                "sequence": 4,
+                "type": "chat.message.created",
+                "payload": {
+                    "message_id": "msg_2",
+                    "sender_player_id": "player_0004",
+                    "sender_crew_id": "crew_9999",
+                    "recipient_crew_id": "crew_8888",
+                    "body": "Not your crew.",
+                },
+            },
+        ],
+        crew_id="crew_0001",
+    )
+
+    assert packet.surface == "crew_activity"
+    assert "Crew activity: crew_0001" in packet.player_markdown
+    assert "1 chat player_0001: The bell moved." in packet.player_markdown
+    assert "2 action action_000001: Inspect the ledger hand." in packet.player_markdown
+    assert "3 phase result: crew_0001 Strong lead 82" in packet.player_markdown
+    assert "Not your crew" not in packet.player_markdown
+    assert "hidden" not in packet.player_markdown
+    assert packet.agent_context["crew_id"] == "crew_0001"
+    assert packet.agent_context["visible_event_count"] == 4
+    assert packet.agent_context["crew_event_count"] == 3
+    assert packet.agent_context["skipped_visible_event_count"] == 1
+    assert packet.agent_context["mutation"] is False
+    assert "hidden" not in str(packet.agent_context)
+
+
 def test_thread_packet_matches_cli_conversation_logic_and_omits_hidden_fields():
     events = [
         {

@@ -168,6 +168,7 @@ def run_mock(data_dir: str) -> dict[str, Any]:
     )
     final_what_now_packet = ada_session.render_what_now()
     final_contract_packet = ada_session.render_contract_board()
+    final_crew_activity_packet = ada_session.render_crew_activity()
     final_activity_packet = ada_session.render_activity()
     codex_packets = [
         initial_contract_packet,
@@ -179,6 +180,7 @@ def run_mock(data_dir: str) -> dict[str, Any]:
         final_dossier_packet,
         final_what_now_packet,
         final_contract_packet,
+        final_crew_activity_packet,
         final_activity_packet,
     ]
 
@@ -219,6 +221,8 @@ def run_mock(data_dir: str) -> dict[str, Any]:
         final_what_now_packet.player_markdown,
         "final contract board:",
         final_contract_packet.player_markdown,
+        "final crew activity:",
+        final_crew_activity_packet.player_markdown,
         "final activity:",
         final_activity_packet.player_markdown,
         f"escrow timeline: {' -> '.join(timeline)}",
@@ -231,6 +235,7 @@ def run_mock(data_dir: str) -> dict[str, Any]:
         "timeline": timeline,
         "codex_packets": [packet.surface for packet in codex_packets],
         "final_what_now": final_what_now_packet.model_dump(mode="json"),
+        "final_crew_activity": final_crew_activity_packet.model_dump(mode="json"),
         "final_activity": final_activity_packet.model_dump(mode="json"),
         "lines": lines,
     }

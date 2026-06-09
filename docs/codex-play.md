@@ -68,7 +68,8 @@ When a player says "what's happening" or starts a play session:
 3. If there are pending decisions or incoming fragments, call `render_inbox`.
 4. If proof, heat, packet lead, or crew status matters, call `render_crew_board`
    or `render_dossier`.
-5. Summarize the most important visible changes and offer 2-4 concrete next
+5. If the player asks what changed for the crew, call `render_crew_activity`.
+6. Summarize the most important visible changes and offer 2-4 concrete next
    actions.
 
 ## Visibility

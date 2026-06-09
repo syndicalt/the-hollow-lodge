@@ -465,7 +465,11 @@ def test_codex_session_refreshes_missing_display_name(tmp_path):
     )
     fake_api = IdentityApi()
 
-    session = CodexGameSession(config_path=config_path, local_log_path=log_path, api=fake_api)
+    session = CodexGameSession(
+        config_path=config_path,
+        local_log_path=log_path,
+        api=fake_api,
+    )
     packet = session.render_inbox()
 
     assert fake_api.calls == ["me", "visible_events", "inbox"]
@@ -694,6 +698,31 @@ def test_codex_session_renders_activity_from_synced_visible_events(tmp_path):
     assert "hidden" not in packet.player_markdown
     assert packet.agent_context["visible_event_count"] == 1
     assert packet.agent_context["recent_events"][0]["message"]["message_id"] == "msg_1"
+
+
+def test_codex_session_renders_crew_activity_with_active_crew(tmp_path):
+    config_path = tmp_path / "config.json"
+    log_path = tmp_path / "local.jsonl"
+    fake_api = FakeApi()
+    save_config(
+        config_path,
+        ClientConfig(
+            server_url="http://testserver",
+            player_id="player_0001",
+            token="token",
+            active_crew_id="crew_0001",
+        ),
+    )
+    session = CodexGameSession(config_path=config_path, local_log_path=log_path, api=fake_api)
+
+    packet = session.render_crew_activity()
+
+    assert packet.surface == "crew_activity"
+    assert fake_api.calls == ["visible_events"]
+    assert "Crew activity: crew_0001" in packet.player_markdown
+    assert packet.agent_context["crew_id"] == "crew_0001"
+    assert packet.agent_context["crew_event_count"] == 1
+    assert "hidden" not in packet.player_markdown
 
 
 def test_codex_session_renders_thread_with_cli_compatible_matching(tmp_path):

@@ -166,6 +166,33 @@ def test_render_activity_mcp_call_returns_text_and_structured_packet(monkeypatch
     assert result.structuredContent["agent_context"]["visible_event_count"] == 1
 
 
+def test_render_crew_activity_mcp_call_returns_text_and_structured_packet(monkeypatch):
+    packet = RenderPacket(
+        surface="crew_activity",
+        player_markdown="Crew activity: crew_0001\n- 1 chat player_0002: The bell moved.",
+        agent_context={"crew_id": "crew_0001", "crew_event_count": 1},
+    )
+
+    class StubSession:
+        def render_crew_activity(self, crew_id: str | None = None) -> RenderPacket:
+            assert crew_id == "crew_0001"
+            return packet
+
+    monkeypatch.setattr(mcp_server, "_session", lambda: StubSession())
+
+    result = asyncio.run(
+        mcp_server.mcp.call_tool(
+            "render_crew_activity",
+            {"crew_id": "crew_0001"},
+        )
+    )
+
+    assert isinstance(result, CallToolResult)
+    assert result.content[0].text == packet.player_markdown
+    assert result.structuredContent["surface"] == "crew_activity"
+    assert result.structuredContent["agent_context"]["crew_id"] == "crew_0001"
+
+
 def test_render_thread_mcp_call_returns_matching_thread_packet(monkeypatch):
     packet = RenderPacket(
         surface="thread",
@@ -316,6 +343,7 @@ def test_public_mcp_tools_do_not_expose_local_path_overrides():
         "render_crew_board",
         "render_dossier",
         "render_activity",
+        "render_crew_activity",
         "render_thread",
         "render_deals",
         "preview_deal_acceptance",
