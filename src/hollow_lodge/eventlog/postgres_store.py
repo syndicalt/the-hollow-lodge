@@ -14,6 +14,7 @@ from hollow_lodge.eventlog.jsonl_store import (
     IntegrityReport,
     _command_fingerprint,
     _find_idempotent,
+    event_hash_chain_digest,
     validate_event_chain,
 )
 from hollow_lodge.eventlog.visibility import Principal, filter_visible_events
@@ -174,6 +175,9 @@ class PostgresEventStore(EventStore):
                     limit 1
                     """
                 ).fetchone()
+                events = self._read_unlocked(connection)
+                validate_event_chain(events)
+                chain_digest = event_hash_chain_digest(events)
         except Exception:
             return {
                 "backend": self.backend,
@@ -184,6 +188,7 @@ class PostgresEventStore(EventStore):
                 "event_count": 0,
                 "last_sequence": None,
                 "last_event_hash": None,
+                "event_hash_chain_sha256": None,
             }
         last_sequence = int(last_row[0]) if last_row is not None else None
         last_event_hash = str(last_row[1]) if last_row is not None else None
@@ -196,6 +201,7 @@ class PostgresEventStore(EventStore):
             "event_count": int(count),
             "last_sequence": last_sequence,
             "last_event_hash": last_event_hash,
+            "event_hash_chain_sha256": chain_digest,
         }
 
     def import_events(self, events: list[GameEvent]) -> IntegrityReport:

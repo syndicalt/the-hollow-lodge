@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import hashlib
 import json
 import threading
 from abc import ABC, abstractmethod
@@ -49,6 +50,19 @@ def validate_event_chain(events: list[GameEvent]) -> None:
             raise EventLogIntegrityError(f"invalid event hash at sequence {event.sequence}")
         previous_hash = event.event_hash
         expected_sequence += 1
+
+
+def event_hash_chain_digest(events: Iterable[GameEvent]) -> str:
+    chain_rows = [
+        {
+            "sequence": event.sequence,
+            "event_id": event.event_id,
+            "event_hash": event.event_hash,
+            "previous_hash": event.previous_hash,
+        }
+        for event in events
+    ]
+    return hashlib.sha256(canonical_json_bytes(chain_rows)).hexdigest()
 
 
 class EventStore(ABC):
@@ -229,6 +243,7 @@ class JsonlEventStore(EventStore):
             "last_event_hash": (
                 last_event.event_hash if last_event is not None else None
             ),
+            "event_hash_chain_sha256": event_hash_chain_digest(events),
         }
 
     def import_events(self, events: list[GameEvent]) -> IntegrityReport:

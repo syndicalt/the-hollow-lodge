@@ -1732,6 +1732,9 @@ def test_admin_backend_smoke_command_verifies_event_log_manifest(
             payload["data"]["event_log"]["event_count"] = 1
             payload["data"]["event_log"]["last_sequence"] = 1
             payload["data"]["event_log"]["last_event_hash"] = event.event_hash
+            payload["data"]["event_log"]["event_hash_chain_sha256"] = json.loads(
+                manifest.read_text(encoding="utf-8")
+            )["event_hash_chain_sha256"]
             payload["data"]["projection_db"]["last_sequence"] = 1
             payload["data"]["projection_db"]["authoritative_last_sequence"] = 1
             return payload

@@ -91,6 +91,7 @@ def test_backend_smoke_accepts_event_and_projection_backends():
                     "event_count": 23,
                     "last_sequence": 23,
                     "last_event_hash": "event-hash-23",
+                    "event_hash_chain_sha256": "chain-digest-23",
                 },
                 "projection_db": {
                     "backend": "postgres",
@@ -139,6 +140,7 @@ def test_backend_smoke_accepts_event_and_projection_backends():
         "event_count": 23,
         "last_sequence": 23,
         "last_event_hash": "event-hash-23",
+        "event_hash_chain_sha256": "chain-digest-23",
     }
     assert result["projection"]["backend"] == "postgres"
     assert result["projection"]["lag"] == 0
@@ -304,6 +306,7 @@ def test_backend_smoke_accepts_event_log_manifest_chain_head(tmp_path):
                     "event_count": 1,
                     "last_sequence": 1,
                     "last_event_hash": event.event_hash,
+                    "event_hash_chain_sha256": manifest["event_hash_chain_sha256"],
                 },
                 "projection_db": {
                     "backend": "postgres",
@@ -321,6 +324,65 @@ def test_backend_smoke_accepts_event_log_manifest_chain_head(tmp_path):
     )
 
     assert result["event_log"]["last_event_hash"] == event.event_hash
+    assert (
+        result["event_log"]["event_hash_chain_sha256"]
+        == manifest["event_hash_chain_sha256"]
+    )
+
+
+def test_backend_smoke_rejects_event_log_manifest_chain_digest_mismatch(tmp_path):
+    smoke = _load_smoke_module()
+    store = JsonlEventStore(tmp_path / "server-events.jsonl")
+    event = store.append(
+        event_type="contract.seeded",
+        actor_id="server",
+        visibility=EventVisibility.server_only(),
+        payload={"contract_id": "contract_false_finger"},
+    )
+    source = tmp_path / "export.json"
+    source.write_text(
+        json.dumps(
+            {"events": [row.model_dump(mode="json") for row in store.read()]},
+            sort_keys=True,
+        ),
+        encoding="utf-8",
+    )
+    manifest = create_event_log_manifest(source)
+
+    try:
+        smoke.validate_backend_diagnostics(
+            {
+                "data": {
+                    "event_log": {
+                        "backend": "postgres",
+                        "database_url": "postgresql://event:***@host:5432/db",
+                        "status": "available",
+                        "event_count": 1,
+                        "last_sequence": 1,
+                        "last_event_hash": event.event_hash,
+                        "event_hash_chain_sha256": "different-digest",
+                    },
+                    "projection_db": {
+                        "backend": "postgres",
+                        "database_url": "postgresql://projection:***@host:5432/db",
+                        "status": "available",
+                        "lag": 0,
+                    },
+                },
+            },
+            expected_backend="postgres",
+            expected_event_backend="postgres",
+            event_log_manifest=manifest,
+        )
+    except RuntimeError as exc:
+        message = str(exc)
+    else:
+        raise AssertionError("manifest chain digest mismatch should fail")
+
+    assert (
+        "event log event_hash_chain_sha256 does not match manifest "
+        "event_hash_chain_sha256"
+    ) in message
 
 
 def test_backend_smoke_rejects_event_log_manifest_chain_head_mismatch(tmp_path):

@@ -61,6 +61,7 @@ def test_diagnostics_reports_safe_operational_status(tmp_path, monkeypatch):
     assert body["data"]["event_log"]["event_count"] == 0
     assert body["data"]["event_log"]["last_sequence"] is None
     assert body["data"]["event_log"]["last_event_hash"] is None
+    assert len(body["data"]["event_log"]["event_hash_chain_sha256"]) == 64
     assert body["data"]["storage_guards"] == {
         "require_postgres_event_log": False,
         "require_postgres_projection": False,
@@ -98,6 +99,7 @@ def test_diagnostics_reports_existing_event_log(tmp_path):
     assert event_log_diagnostics["event_count"] > 0
     assert event_log_diagnostics["last_sequence"] == event_log_diagnostics["event_count"]
     assert isinstance(event_log_diagnostics["last_event_hash"], str)
+    assert len(event_log_diagnostics["event_hash_chain_sha256"]) == 64
 
 
 def test_projection_store_defaults_to_sqlite_backend(tmp_path):

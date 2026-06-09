@@ -192,8 +192,9 @@ python scripts/smoke_projection_backend.py \
 ```
 
 `--event-log-manifest` compares the hosted event-log diagnostics with the
-backup manifest's event count, last sequence, and last event hash. This proves
-the deployed authoritative backend is at the expected Eventloom chain head
+backup manifest's event count, last sequence, last event hash, and
+`event_hash_chain_sha256` digest. This proves the deployed authoritative
+backend is at the expected Eventloom chain head and ordered hash-chain summary
 without exposing event payloads.
 
 After that smoke passes, set `HOLLOW_LODGE_REQUIRE_POSTGRES_EVENT_LOG=1` on

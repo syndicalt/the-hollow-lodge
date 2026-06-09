@@ -429,6 +429,10 @@ Status:
 - Hosted event-log manifest smoke completed: event-log diagnostics now include
   safe chain-head metadata, and repository/installed backend smoke commands can
   require that metadata to match an event-log backup manifest after cutover.
+- Hosted event-log chain digest smoke completed: event-log diagnostics now
+  expose the same content-safe `event_hash_chain_sha256` summary used by backup
+  manifests, and manifest-backed backend smoke requires the deployed digest to
+  match.
 - Storage guard readiness smoke completed: hosted readiness checks can now
   require `HOLLOW_LODGE_REQUIRE_POSTGRES_EVENT_LOG=1` and
   `HOLLOW_LODGE_REQUIRE_POSTGRES_PROJECTION=1` to be active in the deployed
@@ -2254,6 +2258,28 @@ Expected verification:
 
 - `pytest tests/e2e/test_projection_backend_smoke.py::test_backend_smoke_accepts_event_and_projection_backends tests/e2e/test_projection_backend_smoke.py::test_backend_smoke_rejects_failed_projection_refresh tests/client/test_cli_commands.py::test_admin_backend_smoke_command_reports_safe_backend_status tests/client/test_cli_commands.py::test_admin_backend_smoke_command_rejects_failed_projection_refresh -q`
 - `pytest tests/e2e/test_projection_backend_smoke.py tests/client/test_cli_commands.py tests/server/test_app_config.py -q`
+- `pytest -q`
+
+### Slice 90: Hosted Event Log Chain Digest Smoke
+
+Status: completed.
+
+Strengthen manifest-backed production storage cutover checks beyond event
+count, last sequence, and last event hash. JSONL and Postgres event-log
+diagnostics now expose the same content-safe `event_hash_chain_sha256` digest
+used by backup manifests. When `--event-log-manifest` is supplied,
+`scripts/smoke_projection_backend.py` and
+`hollow-lodge admin backend-smoke` require the hosted diagnostics digest to
+match the manifest digest before reporting readiness.
+
+The digest summarizes only sequence, event id, event hash, and previous hash
+rows. It does not expose payloads, actor IDs, visibility principals,
+idempotency keys, invite hashes, auth material, or raw event contents.
+
+Expected verification:
+
+- `pytest tests/eventlog/test_jsonl_store.py::test_jsonl_event_store_diagnostics_include_event_count tests/eventlog/test_postgres_store.py::test_postgres_event_store_diagnostics_redact_database_url tests/eventlog/test_postgres_store.py::test_postgres_event_store_diagnostics_include_chain_digest tests/e2e/test_projection_backend_smoke.py::test_backend_smoke_accepts_event_log_manifest_chain_head tests/e2e/test_projection_backend_smoke.py::test_backend_smoke_rejects_event_log_manifest_chain_digest_mismatch tests/client/test_cli_commands.py::test_admin_backend_smoke_command_verifies_event_log_manifest -q`
+- `pytest tests/eventlog tests/e2e/test_projection_backend_smoke.py tests/client/test_cli_commands.py tests/server/test_app_config.py -q`
 - `pytest -q`
 
 ## Completion Standard

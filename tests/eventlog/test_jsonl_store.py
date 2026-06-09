@@ -8,6 +8,7 @@ from hollow_lodge.eventlog.jsonl_store import (
     EventLogIntegrityError,
     IdempotencyConflictError,
     JsonlEventStore,
+    event_hash_chain_digest,
     rebuild_projection,
 )
 from hollow_lodge.eventlog.visibility import Principal
@@ -126,6 +127,7 @@ def test_jsonl_event_store_diagnostics_include_event_count(tmp_path):
     assert empty_diagnostics["event_count"] == 0
     assert empty_diagnostics["last_sequence"] is None
     assert empty_diagnostics["last_event_hash"] is None
+    assert empty_diagnostics["event_hash_chain_sha256"] == event_hash_chain_digest([])
     event = store.append(
         event_type="contract.seeded",
         actor_id="server",
@@ -140,6 +142,7 @@ def test_jsonl_event_store_diagnostics_include_event_count(tmp_path):
     assert diagnostics["event_count"] == 1
     assert diagnostics["last_sequence"] == 1
     assert diagnostics["last_event_hash"] == event.event_hash
+    assert diagnostics["event_hash_chain_sha256"] == event_hash_chain_digest([event])
 
 
 def test_jsonl_event_store_import_preserves_exported_chain(tmp_path):

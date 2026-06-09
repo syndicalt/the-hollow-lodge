@@ -8,6 +8,7 @@ from hollow_lodge.eventlog.jsonl_store import (
     EventLogIntegrityError,
     IdempotencyConflictError,
     JsonlEventStore,
+    event_hash_chain_digest,
 )
 from hollow_lodge.eventlog.postgres_store import PostgresEventStore
 from hollow_lodge.eventlog.visibility import Principal
@@ -129,8 +130,37 @@ def test_postgres_event_store_diagnostics_redact_database_url(monkeypatch):
         "event_count": 0,
         "last_sequence": None,
         "last_event_hash": None,
+        "event_hash_chain_sha256": event_hash_chain_digest([]),
     }
     assert "secret" not in str(diagnostics)
+
+
+def test_postgres_event_store_diagnostics_include_chain_digest(monkeypatch):
+    fake = FakePostgresConnector()
+    monkeypatch.setattr(PostgresEventStore, "_connect", lambda self: fake())
+    store = PostgresEventStore("postgresql://user:secret@example.com:5432/hollow_lodge")
+    first = store.append(
+        event_type="contract.seeded",
+        actor_id="server",
+        visibility=EventVisibility.server_only(),
+        payload={"contract_id": "contract_false_finger"},
+    )
+    second = store.append(
+        event_type="contract.board.published",
+        actor_id="server",
+        visibility=EventVisibility.crews(["crew_ember"]),
+        payload={"contract_id": "contract_false_finger"},
+    )
+
+    diagnostics = store.diagnostics()
+
+    assert diagnostics["event_count"] == 2
+    assert diagnostics["last_sequence"] == 2
+    assert diagnostics["last_event_hash"] == second.event_hash
+    assert diagnostics["event_hash_chain_sha256"] == event_hash_chain_digest(
+        [first, second]
+    )
+    assert "contract_false_finger" not in str(diagnostics)
 
 
 def test_app_selects_postgres_event_store_from_explicit_event_database_url(

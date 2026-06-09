@@ -1,16 +1,16 @@
 from __future__ import annotations
 
-import hashlib
 import json
 from pathlib import Path
 from typing import Any
 
 from pydantic import ValidationError
 
-from hollow_lodge.domain.events import GameEvent, canonical_json_bytes
+from hollow_lodge.domain.events import GameEvent
 from hollow_lodge.eventlog.jsonl_store import (
     EventLogIntegrityError,
     JsonlEventStore,
+    event_hash_chain_digest,
     validate_event_chain,
 )
 from hollow_lodge.eventlog.postgres_store import PostgresEventStore
@@ -131,16 +131,6 @@ def build_event_log_manifest(events: list[GameEvent]) -> dict[str, Any]:
         first_event_hash = None
         last_event_hash = None
         schema_versions = []
-    chain_rows = [
-        {
-            "sequence": event.sequence,
-            "event_id": event.event_id,
-            "event_hash": event.event_hash,
-            "previous_hash": event.previous_hash,
-        }
-        for event in events
-    ]
-    chain_digest = hashlib.sha256(canonical_json_bytes(chain_rows)).hexdigest()
     return {
         "manifest_type": MANIFEST_TYPE,
         "manifest_version": MANIFEST_VERSION,
@@ -152,7 +142,7 @@ def build_event_log_manifest(events: list[GameEvent]) -> dict[str, Any]:
         "first_event_hash": first_event_hash,
         "last_event_hash": last_event_hash,
         "schema_versions": schema_versions,
-        "event_hash_chain_sha256": chain_digest,
+        "event_hash_chain_sha256": event_hash_chain_digest(events),
     }
 
 

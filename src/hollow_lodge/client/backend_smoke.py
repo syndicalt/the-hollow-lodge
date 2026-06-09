@@ -136,6 +136,7 @@ def validate_backend_diagnostics(
     event_count = _optional_int(event_log.get("event_count"))
     event_last_sequence = _optional_int(event_log.get("last_sequence"))
     event_last_hash = _optional_str(event_log.get("last_event_hash"))
+    event_chain_digest = _optional_str(event_log.get("event_hash_chain_sha256"))
 
     event_database_url = str(event_log.get("database_url", ""))
     if database_url_exposes_password(event_database_url):
@@ -145,6 +146,9 @@ def validate_backend_diagnostics(
         expected_count = _optional_int(event_log_manifest.get("event_count"))
         expected_sequence = _optional_int(event_log_manifest.get("last_sequence"))
         expected_hash = _optional_str(event_log_manifest.get("last_event_hash"))
+        expected_chain_digest = _optional_str(
+            event_log_manifest.get("event_hash_chain_sha256")
+        )
         if event_count != expected_count:
             errors.append(
                 "event log event_count "
@@ -159,6 +163,11 @@ def validate_backend_diagnostics(
         if event_last_hash != expected_hash:
             errors.append(
                 "event log last_event_hash does not match manifest last_event_hash"
+            )
+        if event_chain_digest != expected_chain_digest:
+            errors.append(
+                "event log event_hash_chain_sha256 does not match manifest "
+                "event_hash_chain_sha256"
             )
 
     backend = projection.get("backend")
@@ -293,6 +302,7 @@ def validate_backend_diagnostics(
             "event_count": event_count,
             "last_sequence": event_last_sequence,
             "last_event_hash": event_last_hash,
+            "event_hash_chain_sha256": event_chain_digest,
         },
         "projection": {
             "backend": backend,
