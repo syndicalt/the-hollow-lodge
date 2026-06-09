@@ -7,10 +7,19 @@ import secrets
 from pydantic import BaseModel, Field
 from fastapi import APIRouter, Depends, Header, HTTPException, Request, status
 
+from hollow_lodge.domain.deals import deal_rows_from_events
 from hollow_lodge.domain.identity import Player
 from hollow_lodge.eventlog.jsonl_store import EventLogIntegrityError
 from hollow_lodge.server.auth import current_player
-from hollow_lodge.server.runtime_services import refresh_projection_store
+from hollow_lodge.server.projections import (
+    contract_board_from_events,
+    crew_legacy_from_contracts,
+)
+from hollow_lodge.server.projected_legacy import projected_crew_legacy
+from hollow_lodge.server.runtime_services import (
+    read_authoritative_events,
+    refresh_projection_store,
+)
 
 
 router = APIRouter(prefix="/identity", tags=["identity"])
@@ -101,6 +110,7 @@ class PlayerProfileCrewResponse(BaseModel):
     name: str
     member_count: int
     ready_for_full_contracts: bool
+    legacy: dict
 
 
 class PlayerProfileResponse(BaseModel):
@@ -361,14 +371,32 @@ def profile(
     player: Player = Depends(current_player),
 ) -> PlayerProfileResponse:
     crews = []
+    fallback_events = None
+    fallback_board = None
+    fallback_deals = None
     for crew_id in request.app.state.crew_service.crew_ids_for_player(player.player_id):
         crew = request.app.state.crew_service.summary(crew_id)
+        legacy = projected_crew_legacy(request, crew_id)
+        if legacy is None:
+            if fallback_events is None:
+                fallback_events = read_authoritative_events(request)
+                fallback_board = contract_board_from_events(fallback_events)
+                fallback_deals = deal_rows_from_events(fallback_events)
+            assert fallback_board is not None
+            assert fallback_deals is not None
+            legacy = crew_legacy_from_contracts(
+                crew_id=crew_id,
+                contracts=fallback_board["contracts"],
+                deals=fallback_deals,
+                events=fallback_events,
+            )
         crews.append(
             PlayerProfileCrewResponse(
                 crew_id=crew["crew_id"],
                 name=crew["name"],
                 member_count=crew["member_count"],
                 ready_for_full_contracts=crew["ready_for_full_contracts"],
+                legacy=legacy,
             )
         )
     return PlayerProfileResponse(

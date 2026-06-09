@@ -211,6 +211,13 @@ available only through the explicit provenance-check command. Stale or
 unavailable projections fall back to the authoritative Eventloom-derived proof
 service.
 
+Player profile crew history uses the crew-legacy projection when
+`HOLLOW_LODGE_CREW_LEGACY_PROJECTION_READS=1` is enabled and fresh. Stale or
+unavailable projections fall back to a request-scoped authoritative Eventloom
+read. The profile response includes only the already-shaped crew legacy
+snapshot and omits join codes, auth material, hidden sources, raw deal terms,
+and private evidence.
+
 Admin oracle audit reads can be enabled independently with
 `HOLLOW_LODGE_ORACLE_AUDIT_PROJECTION_READS=1`. The projection stores one
 server-only, redacted row for each `oracle.resolution.*` audit event: sequence,

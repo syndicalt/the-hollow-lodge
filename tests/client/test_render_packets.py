@@ -71,6 +71,24 @@ def test_profile_packet_renders_persistent_identity_and_crew_memberships_without
                     "name": "The Gilt Knives",
                     "member_count": 1,
                     "ready_for_full_contracts": False,
+                    "legacy": {
+                        "reputation": 2,
+                        "heat": 1,
+                        "favors": 1,
+                        "debts": 0,
+                        "scars": [],
+                        "completed_contracts": [
+                            {
+                                "contract_id": "contract_false_finger",
+                                "title": "The Saint's False Finger",
+                                "phase": "Auction Preview",
+                                "standing": "Strong lead",
+                                "score": 82,
+                                "outcome": "lead",
+                            }
+                        ],
+                        "hidden_source": "hidden",
+                    },
                     "join_code": "hidden-join",
                     "server_notes": "hidden",
                 }
@@ -84,6 +102,8 @@ def test_profile_packet_renders_persistent_identity_and_crew_memberships_without
     assert "Player ID: player_0001" in packet.player_markdown
     assert "Crews:" in packet.player_markdown
     assert "- The Gilt Knives (crew_0001): 1 member; starter-ready" in packet.player_markdown
+    assert "Legacy: reputation 2; heat 1; favors 1; debts 0" in packet.player_markdown
+    assert "- The Saint's False Finger: Strong lead (82)" in packet.player_markdown
     assert "hidden" not in packet.player_markdown
     assert packet.agent_context == {
         "player_id": "player_0001",
@@ -95,6 +115,48 @@ def test_profile_packet_renders_persistent_identity_and_crew_memberships_without
                 "name": "The Gilt Knives",
                 "member_count": 1,
                 "ready_for_full_contracts": False,
+                "legacy": {
+                    "reputation": 2,
+                    "heat": 1,
+                    "favors": 1,
+                    "debts": 0,
+                    "scars": [],
+                    "deal_conduct": {
+                        "score": 0,
+                        "reliability": "unproven",
+                        "fulfilled_count": 0,
+                        "canceled_count": 0,
+                        "declined_count": 0,
+                        "open_count": 0,
+                    },
+                    "counterintelligence": {
+                        "investigations_started": 0,
+                        "containments_started": 0,
+                        "heat_from_containment": 0,
+                    },
+                    "rumor_memory": {
+                        "verified_count": 0,
+                        "assessment_counts": {},
+                        "recent": [],
+                    },
+                    "rumor_escalation": {
+                        "contain_count": 0,
+                        "exploit_count": 0,
+                        "integrate_count": 0,
+                        "credible_count_total": 0,
+                    },
+                    "completed_contracts": [
+                        {
+                            "contract_id": "contract_false_finger",
+                            "title": "The Saint's False Finger",
+                            "phase": "Auction Preview",
+                            "standing": "Strong lead",
+                            "score": 82,
+                            "outcome": "lead",
+                        }
+                    ],
+                    "future_opportunities": [],
+                },
             }
         ],
     }

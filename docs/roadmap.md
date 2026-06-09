@@ -337,6 +337,10 @@ Status:
   render their identity and safe crew memberships through a player profile API
   and Codex/MCP surface without exposing tokens, invite material, token hashes,
   or join codes.
+- Profile crew legacy summaries completed: player profiles now include safe
+  per-crew legacy snapshots with reputation, heat, favors, debts, scars, and
+  completed-contract summaries, using projection-backed legacy reads when
+  enabled and fresh.
 - Explicit legacy-delta events completed: phase resolution now records
   sanitized public `crew.legacy.delta.recorded` events for each standing, and
   crew legacy projections prefer those auditable events while preserving
@@ -2772,6 +2776,30 @@ Expected verification:
 
 - `pytest tests/server/test_app_config.py::test_diagnostics_reports_safe_unavailable_event_log_on_unexpected_error tests/server/test_app_config.py::test_diagnostics_reports_safe_unavailable_projection_on_unexpected_error -q`
 - `pytest tests/server/test_app_config.py tests/server/test_projection_store.py tests/e2e/test_projection_backend_smoke.py tests/client/test_cli_commands.py -q`
+- `pytest -q`
+
+### Slice 110: Profile Crew Legacy Summaries
+
+Status: completed.
+
+Make the persistent player profile carry safe long-term crew history, not just
+identity and membership data. `/identity/profile` now includes one shaped
+`legacy` snapshot for each crew the player belongs to: reputation, heat,
+favors, debts, scars, deal conduct, counterintelligence, rumor memory, rumor
+escalation, completed contracts, and future opportunities. The endpoint uses
+the crew-legacy projection when `HOLLOW_LODGE_CREW_LEGACY_PROJECTION_READS=1`
+is enabled and fresh, then falls back to one request-scoped authoritative
+Eventloom read.
+
+The Codex/MCP profile render packet now shows a compact legacy line and
+completed-contract summaries per crew while keeping hidden source fields,
+join codes, token hashes, raw invite data, and private evidence out of both
+markdown and agent context.
+
+Expected verification:
+
+- `pytest tests/server/test_identity_routes.py::test_player_profile_returns_safe_crew_memberships_without_auth_material tests/server/test_identity_routes.py::test_player_profile_includes_safe_crew_legacy_without_hidden_sources tests/server/test_identity_routes.py::test_player_profile_reads_fresh_projected_crew_legacy_when_enabled tests/client/test_render_packets.py::test_profile_packet_renders_persistent_identity_and_crew_memberships_without_hidden_fields -q`
+- `pytest tests/server/test_identity_routes.py tests/server/test_crew_legacy_projection.py tests/server/test_projection_store.py tests/client/test_render_packets.py tests/client/test_codex_session.py tests/client/test_api.py tests/test_mcp_server.py -q`
 - `pytest -q`
 
 ## Completion Standard

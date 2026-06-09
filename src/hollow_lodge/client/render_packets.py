@@ -1331,7 +1331,7 @@ def _shape_crew(crew: dict[str, Any]) -> dict[str, Any]:
 
 
 def _shape_profile_crew(crew: dict[str, Any]) -> dict[str, Any]:
-    return {
+    shaped = {
         key: crew[key]
         for key in (
             "crew_id",
@@ -1341,6 +1341,9 @@ def _shape_profile_crew(crew: dict[str, Any]) -> dict[str, Any]:
         )
         if key in crew
     }
+    if "legacy" in crew:
+        shaped["legacy"] = _shape_crew_legacy(crew["legacy"])
+    return shaped
 
 
 def _shape_dossier_contribution(contribution: dict[str, Any]) -> dict[str, Any]:
@@ -1648,6 +1651,23 @@ def build_profile_packet(profile: dict[str, Any]) -> RenderPacket:
                 f"- {crew['name']} ({crew['crew_id']}): "
                 f"{crew['member_count']} {member_label}; {readiness}"
             )
+            legacy = crew.get("legacy")
+            if legacy:
+                lines.append(
+                    "  Legacy: "
+                    f"reputation {legacy['reputation']}; "
+                    f"heat {legacy['heat']}; "
+                    f"favors {legacy['favors']}; "
+                    f"debts {legacy['debts']}"
+                )
+                if legacy["completed_contracts"]:
+                    lines.extend(
+                        [
+                            f"  - {contract['title']}: "
+                            f"{contract['standing']} ({contract['score']})"
+                            for contract in legacy["completed_contracts"]
+                        ]
+                    )
     else:
         lines.append("- none")
 
