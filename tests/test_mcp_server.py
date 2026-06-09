@@ -162,12 +162,14 @@ def test_check_backend_readiness_mcp_call_returns_text_and_structured_packet(mon
             expected_backend: str | None = None,
             expected_event_backend: str | None = None,
             expected_operational_backend: str | None = None,
+            require_production_postgres_preset: bool = False,
             require_maintenance_read_only: bool = False,
         ) -> RenderPacket:
             assert production_postgres is True
             assert expected_backend is None
             assert expected_event_backend is None
             assert expected_operational_backend is None
+            assert require_production_postgres_preset is False
             assert require_maintenance_read_only is False
             return packet
 

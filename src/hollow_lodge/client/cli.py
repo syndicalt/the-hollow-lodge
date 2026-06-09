@@ -609,6 +609,11 @@ def admin_backend_smoke(
         "--require-postgres-operational-guard",
         help="Require the deployed server to enforce Postgres operational startup.",
     ),
+    require_production_postgres_preset: bool = typer.Option(
+        False,
+        "--require-production-postgres-preset",
+        help="Require the deployed server to enable HOLLOW_LODGE_PRODUCTION_POSTGRES.",
+    ),
     require_projection_refresh_ok: bool = typer.Option(
         False,
         "--require-projection-refresh-ok",
@@ -659,6 +664,7 @@ def admin_backend_smoke(
             require_postgres_event_log_guard=require_postgres_event_log_guard,
             require_postgres_projection_guard=require_postgres_projection_guard,
             require_postgres_operational_guard=require_postgres_operational_guard,
+            require_production_postgres_preset=require_production_postgres_preset,
             require_projection_refresh_ok=require_projection_refresh_ok,
             require_maintenance_read_only=require_maintenance_read_only,
             require_maintenance_read_write=require_maintenance_read_write,

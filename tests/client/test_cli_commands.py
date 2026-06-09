@@ -2183,6 +2183,51 @@ def test_admin_backend_smoke_command_rejects_disabled_operational_guard(monkeypa
     assert "operational:***" not in result.output
 
 
+def test_admin_backend_smoke_command_rejects_disabled_production_postgres_preset(
+    monkeypatch,
+):
+    class DisabledProductionPresetApi(FakeApi):
+        def diagnostics(self):
+            payload = super().diagnostics()
+            payload["data"]["event_log"]["backend"] = "postgres"
+            payload["data"]["identity_replay_store"] = {
+                "backend": "postgres",
+                "database_url": "postgresql://operational:***@host:5432/hollow_lodge",
+                "database_url_env": "HOLLOW_LODGE_OPERATIONAL_DATABASE_URL",
+            }
+            payload["data"]["storage_guards"] = {
+                "production_postgres": False,
+                "require_postgres_event_log": True,
+                "require_postgres_projection": True,
+                "require_postgres_operational": True,
+            }
+            return payload
+
+    monkeypatch.setattr(cli, "HollowLodgeApi", DisabledProductionPresetApi)
+    runner = CliRunner()
+
+    result = runner.invoke(
+        cli.app,
+        [
+            "admin",
+            "backend-smoke",
+            "--server",
+            "http://testserver",
+            "--expected-backend",
+            "postgres",
+            "--expected-event-backend",
+            "postgres",
+            "--expected-operational-backend",
+            "postgres",
+            "--require-production-postgres-preset",
+        ],
+    )
+
+    assert result.exit_code != 0
+    assert "production Postgres server preset is not enabled" in result.output
+    assert "operational:***" not in result.output
+
+
 def test_admin_backend_smoke_command_rejects_unredacted_database_url(monkeypatch):
     class UnsafeDiagnosticsApi(FakeApi):
         def diagnostics(self):

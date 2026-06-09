@@ -194,6 +194,7 @@ class CodexGameSession:
         expected_backend: str | None = None,
         expected_event_backend: str | None = None,
         expected_operational_backend: str | None = None,
+        require_production_postgres_preset: bool = False,
         require_maintenance_read_only: bool = False,
     ) -> RenderPacket:
         mode = "production_postgres" if production_postgres else "custom"
@@ -203,6 +204,7 @@ class CodexGameSession:
                 expected_backend=expected_backend,
                 expected_event_backend=expected_event_backend,
                 expected_operational_backend=expected_operational_backend,
+                require_production_postgres_preset=require_production_postgres_preset,
                 require_maintenance_read_only=require_maintenance_read_only,
             )
             health = self.api.health()

@@ -952,6 +952,33 @@ def test_codex_session_backend_readiness_returns_failure_packet(tmp_path):
     assert packet.agent_context["backend_readiness"]["ok"] is False
 
 
+def test_codex_session_backend_readiness_can_require_server_production_preset(tmp_path):
+    class PresetDisabledApi(FakeApi):
+        def diagnostics(self):
+            payload = super().diagnostics()
+            payload["data"]["storage_guards"]["production_postgres"] = False
+            return payload
+
+    config_path = tmp_path / "config.json"
+    log_path = tmp_path / "local.jsonl"
+    fake_api = PresetDisabledApi()
+    save_config(
+        config_path,
+        ClientConfig(server_url="http://testserver", player_id="player_0001", token="token"),
+    )
+    session = CodexGameSession(config_path=config_path, local_log_path=log_path, api=fake_api)
+
+    packet = session.check_backend_readiness(
+        require_production_postgres_preset=True,
+    )
+
+    assert fake_api.calls == ["health", "diagnostics"]
+    assert packet.surface == "backend_readiness"
+    assert "Backend Readiness: fail (production_postgres)" in packet.player_markdown
+    assert "production Postgres server preset is not enabled" in packet.player_markdown
+    assert packet.agent_context["backend_readiness"]["ok"] is False
+
+
 def test_codex_session_backend_readiness_returns_transport_failure_packet(tmp_path):
     class UnreachableApi(FakeApi):
         def health(self):

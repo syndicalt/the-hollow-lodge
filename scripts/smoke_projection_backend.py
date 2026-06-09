@@ -13,6 +13,15 @@ from hollow_lodge.client.backend_smoke import (
 )
 
 
+__all__ = [
+    "database_url_exposes_password",
+    "resolve_backend_smoke_options",
+    "run_backend_smoke",
+    "validate_backend_diagnostics",
+    "validate_projection_diagnostics",
+]
+
+
 def main() -> None:
     parser = argparse.ArgumentParser(
         description="Verify the deployed Hollow Lodge projection backend."
@@ -78,6 +87,11 @@ def main() -> None:
         help="Require the deployed server to enforce Postgres operational startup.",
     )
     parser.add_argument(
+        "--require-production-postgres-preset",
+        action="store_true",
+        help="Require the deployed server to enable HOLLOW_LODGE_PRODUCTION_POSTGRES.",
+    )
+    parser.add_argument(
         "--require-projection-refresh-ok",
         action="store_true",
         help="Require the latest projection refresh diagnostic status to be ok.",
@@ -120,6 +134,9 @@ def main() -> None:
             require_postgres_event_log_guard=args.require_postgres_event_log_guard,
             require_postgres_projection_guard=args.require_postgres_projection_guard,
             require_postgres_operational_guard=args.require_postgres_operational_guard,
+            require_production_postgres_preset=(
+                args.require_production_postgres_preset
+            ),
             require_projection_refresh_ok=args.require_projection_refresh_ok,
             require_maintenance_read_only=args.require_maintenance_read_only,
             require_maintenance_read_write=args.require_maintenance_read_write,
@@ -156,6 +173,7 @@ def run_smoke(
     require_postgres_event_log_guard: bool = False,
     require_postgres_projection_guard: bool = False,
     require_postgres_operational_guard: bool = False,
+    require_production_postgres_preset: bool = False,
     require_projection_refresh_ok: bool = False,
     require_maintenance_read_only: bool = False,
     require_maintenance_read_write: bool = False,
@@ -173,6 +191,7 @@ def run_smoke(
         require_postgres_event_log_guard=require_postgres_event_log_guard,
         require_postgres_projection_guard=require_postgres_projection_guard,
         require_postgres_operational_guard=require_postgres_operational_guard,
+        require_production_postgres_preset=require_production_postgres_preset,
         require_projection_refresh_ok=require_projection_refresh_ok,
         require_maintenance_read_only=require_maintenance_read_only,
         require_maintenance_read_write=require_maintenance_read_write,

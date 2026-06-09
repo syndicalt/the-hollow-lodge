@@ -440,6 +440,7 @@ Verify that the full production storage posture is enforced:
 hollow-lodge admin backend-smoke \
   --server https://server.thehollowlodge.com \
   --production-postgres \
+  --require-production-postgres-preset \
   --event-log-manifest backups/hollow-lodge-events.manifest.json
 ```
 

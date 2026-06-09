@@ -3323,6 +3323,27 @@ Expected verification:
 - `pytest tests/server/test_app_config.py tests/server/test_identity_routes.py tests/client/test_render_packets.py -q`
 - `pytest -q`
 
+### Slice 133: Backend Smoke Server Preset Gate
+
+Status: completed.
+
+Add an explicit backend-readiness gate for the server-side production Postgres
+preset. `scripts/smoke_projection_backend.py`, `hollow-lodge admin
+backend-smoke`, and Codex `check_backend_readiness` now accept
+`require_production_postgres_preset`, which requires
+`/diagnostics.data.storage_guards.production_postgres=true`.
+
+This keeps the existing `--production-postgres` bundle compatible with
+deployments that enforce equivalent individual guards, while giving operators a
+separate switch when they need to prove Railway is actually using
+`HOLLOW_LODGE_PRODUCTION_POSTGRES=1`.
+
+Expected verification:
+
+- `pytest tests/e2e/test_projection_backend_smoke.py::test_backend_smoke_rejects_missing_required_production_postgres_preset tests/e2e/test_projection_backend_smoke.py::test_run_smoke_production_postgres_preset_forwards_required_checks tests/client/test_cli_commands.py::test_admin_backend_smoke_command_rejects_disabled_production_postgres_preset tests/client/test_codex_session.py::test_codex_session_backend_readiness_can_require_server_production_preset tests/test_mcp_server.py::test_check_backend_readiness_mcp_call_returns_text_and_structured_packet -q`
+- `pytest tests/e2e/test_projection_backend_smoke.py tests/client/test_cli_commands.py tests/client/test_codex_session.py tests/test_mcp_server.py -q`
+- `pytest -q`
+
 ## Completion Standard
 
 Each slice must:

@@ -217,6 +217,7 @@ def test_run_smoke_production_postgres_preset_forwards_required_checks(monkeypat
             "require_postgres_event_log_guard": True,
             "require_postgres_projection_guard": True,
             "require_postgres_operational_guard": True,
+            "require_production_postgres_preset": False,
             "require_projection_refresh_ok": True,
             "require_maintenance_read_only": False,
             "require_maintenance_read_write": True,
@@ -674,6 +675,43 @@ def test_backend_smoke_rejects_disabled_required_storage_guards():
     assert "Postgres event-log startup guard is not enabled" in message
     assert "Postgres projection startup guard is not enabled" in message
     assert "Postgres operational startup guard is not enabled" in message
+
+
+def test_backend_smoke_rejects_missing_required_production_postgres_preset():
+    smoke = _load_smoke_module()
+
+    try:
+        smoke.validate_backend_diagnostics(
+            {
+                "data": {
+                    "event_log": {
+                        "backend": "postgres",
+                        "status": "available",
+                        "event_count": 3,
+                    },
+                    "projection_db": {
+                        "backend": "postgres",
+                        "status": "available",
+                        "lag": 0,
+                    },
+                    "storage_guards": {
+                        "production_postgres": False,
+                        "require_postgres_event_log": True,
+                        "require_postgres_projection": True,
+                        "require_postgres_operational": True,
+                    },
+                }
+            },
+            expected_backend="postgres",
+            expected_event_backend="postgres",
+            require_production_postgres_preset=True,
+        )
+    except RuntimeError as exc:
+        message = str(exc)
+    else:
+        raise AssertionError("disabled production preset should fail")
+
+    assert "production Postgres server preset is not enabled" in message
 
 
 def test_backend_smoke_rejects_event_log_guard_with_non_postgres_backend():
