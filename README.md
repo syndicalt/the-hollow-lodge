@@ -45,6 +45,9 @@ be fully ready to play; pending or incomplete installs exit non-zero.
 Operational deployment, access approval, and event-log backup commands are in
 [docs/operations.md](docs/operations.md).
 
+Contract story, artifact graph, and GM authoring guidance is in
+[docs/gm-guide.md](docs/gm-guide.md).
+
 ## Server Oracle
 
 The server defaults to deterministic resolution:
