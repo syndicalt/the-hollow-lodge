@@ -97,6 +97,66 @@ def test_health_response_stays_backward_compatible(tmp_path):
     assert response.json() == {"status": "ok"}
 
 
+def test_read_only_maintenance_allows_reads_and_blocks_mutations(
+    tmp_path,
+    monkeypatch,
+):
+    monkeypatch.setenv("HOLLOW_LODGE_MAINTENANCE_READ_ONLY", "1")
+    monkeypatch.setenv("HOLLOW_LODGE_ADMIN_TOKEN", "admin-secret")
+    client = TestClient(create_app(data_dir=tmp_path, invite_codes=["secret-invite"]))
+
+    health = client.get("/health")
+    diagnostics = client.get("/diagnostics")
+    export = client.get(
+        "/identity/admin/event-log/export",
+        headers={"X-Hollow-Lodge-Admin-Token": "admin-secret"},
+    )
+    register = client.post(
+        "/identity/register",
+        json={"invite_code": "secret-invite", "display_name": "Ada"},
+        headers={"Idempotency-Key": "register-a"},
+    )
+
+    assert health.status_code == 200
+    assert diagnostics.status_code == 200
+    assert diagnostics.json()["data"]["maintenance"] == {
+        "read_only": True,
+        "env": "HOLLOW_LODGE_MAINTENANCE_READ_ONLY",
+    }
+    assert export.status_code == 200
+    assert register.status_code == 503
+    assert register.headers["Retry-After"] == "60"
+    assert register.json() == {
+        "detail": (
+            "server is in read-only maintenance mode; mutating commands are "
+            "temporarily disabled"
+        )
+    }
+    assert "secret-invite" not in register.text
+
+
+def test_diagnostics_reports_read_write_maintenance_state(tmp_path, monkeypatch):
+    monkeypatch.delenv("HOLLOW_LODGE_MAINTENANCE_READ_ONLY", raising=False)
+    client = TestClient(create_app(data_dir=tmp_path))
+
+    response = client.get("/diagnostics")
+
+    assert response.status_code == 200
+    assert response.json()["data"]["maintenance"] == {
+        "read_only": False,
+        "env": "HOLLOW_LODGE_MAINTENANCE_READ_ONLY",
+    }
+
+
+def test_read_only_maintenance_rejects_invalid_flag(tmp_path, monkeypatch):
+    monkeypatch.setenv("HOLLOW_LODGE_MAINTENANCE_READ_ONLY", "sometimes")
+
+    with pytest.raises(RuntimeError) as exc_info:
+        create_app(data_dir=tmp_path)
+
+    assert "HOLLOW_LODGE_MAINTENANCE_READ_ONLY must be one of" in str(exc_info.value)
+
+
 def test_diagnostics_reports_safe_operational_status(tmp_path, monkeypatch):
     monkeypatch.setenv("HOLLOW_LODGE_ORACLE_PROVIDER", "openai")
     monkeypatch.delenv("HOLLOW_LODGE_OPENAI_API_KEY", raising=False)

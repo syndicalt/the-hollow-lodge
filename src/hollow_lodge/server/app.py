@@ -4,7 +4,8 @@ import os
 from pathlib import Path
 from typing import Any
 
-from fastapi import FastAPI
+from fastapi import FastAPI, Request
+from fastapi.responses import JSONResponse
 
 from hollow_lodge import __version__
 from hollow_lodge.eventlog.config import (
@@ -47,6 +48,10 @@ from hollow_lodge.workflows.openai_oracle import OpenAIResolutionOracle
 from hollow_lodge.workflows.oracle_factory import oracle_diagnostics_from_env, resolution_oracle_from_env
 
 
+MAINTENANCE_READ_ONLY_ENV = "HOLLOW_LODGE_MAINTENANCE_READ_ONLY"
+READ_ONLY_ALLOWED_METHODS = {"GET", "HEAD", "OPTIONS"}
+
+
 def create_app(
     *,
     data_dir: str | Path | None = None,
@@ -58,6 +63,7 @@ def create_app(
         version="0.1.0",
         summary="Authoritative server for The Hollow Lodge.",
     )
+    app.state.maintenance_read_only = _env_flag(MAINTENANCE_READ_ONLY_ENV)
     configured_data_dir = os.environ.get("HOLLOW_LODGE_DATA_DIR")
     storage_configured = data_dir is not None or configured_data_dir is not None
     root = Path(data_dir) if data_dir is not None else Path(configured_data_dir or ".hollow-lodge")
@@ -104,6 +110,23 @@ def create_app(
         event_store=event_store,
         crew_service=crew_service,
     )
+
+    @app.middleware("http")
+    async def maintenance_read_only_guard(request: Request, call_next):
+        if not app.state.maintenance_read_only:
+            return await call_next(request)
+        if request.method.upper() in READ_ONLY_ALLOWED_METHODS:
+            return await call_next(request)
+        return JSONResponse(
+            status_code=503,
+            headers={"Retry-After": "60"},
+            content={
+                "detail": (
+                    "server is in read-only maintenance mode; mutating "
+                    "commands are temporarily disabled"
+                )
+            },
+        )
 
     if data_dir is not None:
         app.state.contract_service = ContractService(
@@ -162,10 +185,30 @@ def create_app(
                     **event_store_guard_diagnostics(),
                     **projection_guard_diagnostics(),
                 },
+                "maintenance": _maintenance_diagnostics(app),
             },
         }
 
     return app
+
+
+def _maintenance_diagnostics(app: FastAPI) -> dict[str, Any]:
+    return {
+        "read_only": bool(getattr(app.state, "maintenance_read_only", False)),
+        "env": MAINTENANCE_READ_ONLY_ENV,
+    }
+
+
+def _env_flag(name: str) -> bool:
+    value = os.environ.get(name, "").strip().lower()
+    if value in {"", "0", "false", "no", "off"}:
+        return False
+    if value in {"1", "true", "yes", "on"}:
+        return True
+    raise RuntimeError(
+        f"{name} must be one of 1, true, yes, on, 0, false, no, or off; "
+        f"got {value!r}"
+    )
 
 
 def _oracle_provider_name(oracle: ResolutionOracle) -> str:

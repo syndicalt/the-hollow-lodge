@@ -2850,6 +2850,29 @@ Expected verification:
 - Render a live MCP inbox for `corelumen` and confirm the contract surface loads
   through the deployed server after projection reads are enabled.
 
+### Slice 113: Event Log Migration Read-Only Mode
+
+Status: completed.
+
+Add an explicit server read-only maintenance mode for the final authoritative
+event-log Postgres migration. `HOLLOW_LODGE_MAINTENANCE_READ_ONLY=1` now lets
+operators freeze mutating HTTP commands before taking the production JSONL
+export, generating its manifest, importing to Postgres, and switching
+`HOLLOW_LODGE_EVENT_DATABASE_URL`. The guard keeps GET/HEAD/OPTIONS paths
+available so `/health`, `/diagnostics`, event-log verification, and event-log
+export still work while gameplay/admin mutations return a bounded HTTP 503
+with `Retry-After`.
+
+`/diagnostics.data.maintenance` reports whether read-only mode is active and
+names the controlling environment variable. Invalid flag values fail fast at
+startup so production cannot silently boot in an ambiguous migration state.
+
+Expected verification:
+
+- `pytest tests/server/test_app_config.py::test_read_only_maintenance_allows_reads_and_blocks_mutations tests/server/test_app_config.py::test_diagnostics_reports_read_write_maintenance_state tests/server/test_app_config.py::test_read_only_maintenance_rejects_invalid_flag -q`
+- `pytest tests/server/test_app_config.py tests/server/test_identity_routes.py tests/client/test_cli_commands.py -q`
+- `pytest -q`
+
 ## Completion Standard
 
 Each slice must:

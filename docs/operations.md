@@ -541,6 +541,21 @@ hollow-lodge admin event-log-import-postgres \
   --dry-run
 ```
 
+Before taking the final production export, freeze mutating commands so the
+JSONL chain head cannot advance between backup, manifest verification, import,
+and backend cutover:
+
+```sh
+railway variable set --service hollow-lodge-server HOLLOW_LODGE_MAINTENANCE_READ_ONLY=1
+```
+
+After the redeploy, confirm `/diagnostics.data.maintenance.read_only=true`.
+Health checks, diagnostics, event-log verification, and event-log export remain
+available; gameplay and admin mutation commands return HTTP 503 with a
+`Retry-After` header. Leave read-only mode enabled until the Postgres import,
+`HOLLOW_LODGE_EVENT_DATABASE_URL` cutover, backend smoke with the backup
+manifest, and Postgres event-log guard verification have all passed.
+
 Then import into an empty Postgres event-log database:
 
 ```sh
@@ -574,6 +589,13 @@ python scripts/smoke_projection_backend.py \
   --require-current-projection-read-surfaces \
   --require-current-projection-schema \
   --require-sequence-alignment
+```
+
+When the hosted Postgres event-log smoke passes, restore writes by removing the
+maintenance flag and redeploying:
+
+```sh
+railway variable delete --service hollow-lodge-server HOLLOW_LODGE_MAINTENANCE_READ_ONLY
 ```
 
 Treat exports as sensitive operational data. They include server-visible events
