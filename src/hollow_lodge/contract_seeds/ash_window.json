@@ -73,7 +73,7 @@
         "contract_id": "contract_ash_window",
         "phase": "Cinder Preview",
         "trigger": "action_mentions_tag",
-        "required_terms": ["soot"],
+        "required_term_groups": [["soot", "residue", "cinder"]],
         "award_scope": "crew",
         "award_reason": "Followed the ash notice to the soot sample."
       }
@@ -85,6 +85,20 @@
     "allowed_reveal_strings": [
       "Fire chronology is now suspect.",
       "Residual soot points toward another lead."
+    ],
+    "rubric_facts": [
+      {
+        "fact_id": "fact_fire_chronology",
+        "points": 20,
+        "required_artifact_ids": ["artifact_ash_notice", "artifact_soot_sample"],
+        "reveal": "Fire chronology is now suspect."
+      },
+      {
+        "fact_id": "fact_material_residue",
+        "points": 12,
+        "required_artifact_ids": ["artifact_soot_sample"],
+        "reveal": "Residual soot points toward another lead."
+      }
     ]
   }
 }

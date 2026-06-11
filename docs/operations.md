@@ -32,6 +32,29 @@ Deploy the public site from the `site/` directory:
 railway up site --path-as-root --service the-hollow-lodge --detach
 ```
 
+## Autopilot
+
+The server runs the game without a GM when the autopilot loop is enabled:
+
+```sh
+HOLLOW_LODGE_AUTOPILOT_INTERVAL_SECONDS=60   # seconds between passes; 0 disables (default)
+HOLLOW_LODGE_MIN_ACTIVE_CONTRACTS=1          # open contracts to keep on the board
+```
+
+Each pass first resolves every published contract whose phase timer has
+expired (phase time is tracked server-side from the contract's publish
+timestamp), then publishes queued packaged contract seeds until the board has
+the configured number of open contracts. Seed release order is curated in
+`hollow_lodge/server/autopilot.py` (`CONTRACT_RELEASE_ORDER`); packaged seeds
+not in that list are appended alphabetically, so shipping a new contract is
+adding one JSON file to `src/hollow_lodge/contract_seeds/`.
+
+Phase timing trusts only the server clock in production.
+`HOLLOW_LODGE_TRUST_CLIENT_PHASE_CLOCK=1` lets dev/test tooling assert
+`hours_elapsed` on lock requests; it is ignored whenever the production
+Postgres preset is enabled. Players can still lock an expired phase manually;
+the autopilot is the backstop that keeps the game moving when nobody does.
+
 ## Health Checks
 
 ```sh

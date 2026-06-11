@@ -21,11 +21,18 @@ from hollow_lodge.domain.identity import (
     hash_token,
 )
 from hollow_lodge.domain.proofs import ProofDossier, ProofFragment
-from hollow_lodge.domain.scoring import AuctionPreviewScoreInput
+from hollow_lodge.domain.scoring import (
+    LEGACY_SCORING_MODE,
+    RUBRIC_SCORING_MODE,
+    ArtifactScoreContext,
+    AuctionPreviewScoreInput,
+    RubricFact,
+)
 from hollow_lodge.domain.actions import NormalizedAction, compile_action_intent
 from hollow_lodge.eventlog.jsonl_store import EventStore, JsonlEventStore
 from hollow_lodge.eventlog.visibility import Principal
 from hollow_lodge.server.artifact_seed import STARTER_ARTIFACT_GRAPH, STARTER_PUBLIC_ARTIFACT_IDS
+from hollow_lodge.server.production_postgres import env_flag, production_postgres_enabled
 from hollow_lodge.server.artifact_service import ArtifactService
 from hollow_lodge.server.artifact_unlocks import (
     action_unlock_candidates,
@@ -62,6 +69,19 @@ REGISTRATION_REPLAY_TTL = timedelta(minutes=15)
 INVITE_REPLAY_TTL = timedelta(minutes=15)
 SIDE_ACTION_LIMIT_PER_PHASE = 1
 COMMAND_SERIALIZATION_LOCK = threading.RLock()
+
+TRUST_CLIENT_PHASE_CLOCK_ENV = "HOLLOW_LODGE_TRUST_CLIENT_PHASE_CLOCK"
+
+
+def trust_client_phase_clock() -> bool:
+    """Dev/test affordance: honor a client-asserted phase clock on lock requests.
+
+    Never honored when the production preset is enabled; production phase
+    timing is always derived from the contract publish timestamp.
+    """
+    if production_postgres_enabled():
+        return False
+    return env_flag(TRUST_CLIENT_PHASE_CLOCK_ENV)
 
 
 def _event_store_replay_dir(event_store: EventStore) -> Path:
@@ -567,6 +587,10 @@ class CrewService:
             if crew is None:
                 return False
             return player_id in crew.member_ids
+
+    def member_of_any(self, player_id: str) -> bool:
+        with self._lock:
+            return any(player_id in crew.member_ids for crew in self._crews.values())
 
     def has_crew(self, crew_id: str) -> bool:
         with self._lock:
@@ -1083,8 +1107,8 @@ class ContractService:
         *,
         contract_id: str,
         actor_id: str,
-        hours_elapsed: int,
         idempotency_key: str,
+        client_hours_elapsed: int | None = None,
     ) -> dict:
         contract = self._contract_by_id(contract_id)
         phase_name = contract.phase.name
@@ -1096,7 +1120,6 @@ class ContractService:
                     or existing.actor_id != actor_id
                     or existing.payload["contract_id"] != contract_id
                     or existing.payload["phase"] != phase_name
-                    or existing.payload["hours_elapsed"] != hours_elapsed
                 ):
                     raise ValueError("idempotency key conflict")
                 self._record_auction_preview_legacy_deltas(
@@ -1129,8 +1152,12 @@ class ContractService:
                     phase=phase_name,
                 )
                 return resolved
+            if client_hours_elapsed is not None and trust_client_phase_clock():
+                server_hours_elapsed = client_hours_elapsed
+            else:
+                server_hours_elapsed = self._auction_preview_hours_elapsed(contract_id)
             if (
-                hours_elapsed < contract.phase.remaining_hours
+                server_hours_elapsed < contract.phase.remaining_hours
                 and self._meaningful_action_count(contract_id=contract_id, phase=phase_name) < 2
             ):
                 raise ValueError("phase still active")
@@ -1138,7 +1165,7 @@ class ContractService:
                 contract_id=contract_id,
                 phase=phase_name,
             )
-            lock_hours_elapsed = hours_elapsed
+            lock_hours_elapsed = server_hours_elapsed
             if locked is None:
                 self._event_store.append_command(
                     event_type="contract.phase.locked",
@@ -1147,7 +1174,7 @@ class ContractService:
                     payload={
                         "contract_id": contract_id,
                         "phase": phase_name,
-                        "hours_elapsed": hours_elapsed,
+                        "hours_elapsed": server_hours_elapsed,
                     },
                     idempotency_key=f"phase-lock.{contract_id}.auction-preview",
                 )
@@ -1184,6 +1211,82 @@ class ContractService:
                 phase=phase_name,
             )
             return reveal
+
+    def published_contracts(self) -> list[Contract]:
+        latest: dict[str, Contract] = {}
+        for event in self._event_store.read():
+            if event.type == "contract.board.published":
+                latest[event.payload["contract_id"]] = Contract.model_validate(
+                    event.payload
+                )
+        return list(latest.values())
+
+    def unresolved_active_contracts(self) -> list[Contract]:
+        return [
+            contract
+            for contract in self.published_contracts()
+            if self._contract_lifecycle_status(contract.contract_id) != "archived"
+            and self._resolved_auction_preview(
+                contract_id=contract.contract_id,
+                phase=contract.phase.name,
+            )
+            is None
+        ]
+
+    def resolve_due_phases(self) -> list[str]:
+        """Resolve every published contract whose phase timer has expired.
+
+        Server-driven counterpart to the player lock route; idempotent, so it
+        is safe to call from a periodic sweep.
+        """
+        resolved: list[str] = []
+        for contract in self.unresolved_active_contracts():
+            contract_id = contract.contract_id
+            if (
+                self._auction_preview_hours_elapsed(contract_id)
+                < contract.phase.remaining_hours
+            ):
+                continue
+            self.lock_auction_preview(
+                contract_id=contract_id,
+                actor_id="server",
+                idempotency_key=f"auto-lock.{contract_id}.{contract.phase.name}",
+            )
+            resolved.append(contract_id)
+        return resolved
+
+    def ensure_active_contracts(
+        self,
+        *,
+        seeds: list[ContractSeed],
+        minimum_active: int = 1,
+    ) -> list[str]:
+        """Publish queued seeds until the board has minimum_active open contracts.
+
+        Seeds whose activation is rejected (for example an arc requirement
+        that is not met yet) stay queued for a later pass.
+        """
+        published_ids = {
+            contract.contract_id for contract in self.published_contracts()
+        }
+        open_count = len(self.unresolved_active_contracts())
+        activated: list[str] = []
+        for seed in seeds:
+            if open_count + len(activated) >= minimum_active:
+                break
+            contract_id = seed.contract.contract_id
+            if contract_id in published_ids:
+                continue
+            try:
+                self.activate_contract_seed(
+                    seed=seed,
+                    actor_id="server",
+                    idempotency_key=f"auto-release.{contract_id}",
+                )
+            except ValueError:
+                continue
+            activated.append(contract_id)
+        return activated
 
     def _seed_starter_contract(self) -> None:
         with self._lock:
@@ -1682,13 +1785,53 @@ class ContractService:
                         for claim in score_input.typed_claims
                     ),
                     crew_noise=score_input.crew_noise,
+                    last_dossier_edit_sequence=self._last_dossier_edit_sequence(
+                        score_input.crew_id
+                    ),
                 )
                 for score_input in score_inputs
             ),
             allowed_evidence_ids=allowed_evidence_ids,
             score_min=0,
             score_max=100,
+            scoring_mode=(
+                LEGACY_SCORING_MODE
+                if contract_id == STARTER_CONTRACT.contract_id
+                else RUBRIC_SCORING_MODE
+            ),
+            artifact_contexts=self._artifact_score_contexts(contract_id),
+            rubric_facts=tuple(
+                RubricFact.model_validate(fact)
+                for fact in scoring_hints.get("rubric_facts", ())
+            ),
         )
+
+    def _artifact_score_contexts(
+        self, contract_id: str
+    ) -> tuple[ArtifactScoreContext, ...]:
+        graph = self._artifact_graph_for_contract(contract_id)
+        if self._artifact_service is not None:
+            public_ids = set(self._artifact_service.seeded_graphs()[contract_id][1])
+        else:
+            public_ids = set(STARTER_PUBLIC_ARTIFACT_IDS)
+        return tuple(
+            ArtifactScoreContext(
+                artifact_id=artifact.artifact_id,
+                proof_lanes=tuple(artifact.proof_lanes),
+                hidden=artifact.artifact_id not in public_ids,
+            )
+            for artifact in graph.artifacts
+        )
+
+    def _last_dossier_edit_sequence(self, crew_id: str) -> int:
+        last_sequence = 0
+        for event in self._event_store.read():
+            if (
+                event.type.startswith("proof.dossier.")
+                and event.payload.get("crew_id") == crew_id
+            ):
+                last_sequence = event.sequence
+        return last_sequence
 
     def _contract_by_id(self, contract_id: str) -> Contract:
         for event in reversed(self._event_store.read()):
@@ -1698,6 +1841,20 @@ class ContractService:
             ):
                 return Contract.model_validate(event.payload)
         raise KeyError(contract_id)
+
+    def _auction_preview_hours_elapsed(self, contract_id: str) -> int:
+        published_at: datetime | None = None
+        for event in reversed(self._event_store.read()):
+            if (
+                event.type == "contract.board.published"
+                and event.payload["contract_id"] == contract_id
+            ):
+                published_at = event.timestamp
+                break
+        if published_at is None:
+            return 0
+        elapsed = datetime.now(UTC) - published_at
+        return max(0, int(elapsed.total_seconds() // 3600))
 
     def _hidden_truth_for_contract(self, contract_id: str) -> HiddenTruth:
         for event in reversed(self._event_store.read()):
@@ -3030,6 +3187,8 @@ class ActionService:
         for graph, _visible_ids in graphs:
             for rule in graph.unlock_rules:
                 terms.update(rule.required_terms)
+                for group in rule.required_term_groups:
+                    terms.update(group)
         return terms
 
     def _global_action_count(self) -> int:

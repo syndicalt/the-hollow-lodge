@@ -398,18 +398,32 @@ For alpha, prefer simple action-triggered unlocks:
   "contract_id": "contract_ash_window",
   "phase": "Cinder Preview",
   "trigger": "action_mentions_tag",
-  "required_terms": ["soot"],
+  "required_term_groups": [["soot", "residue", "cinder"]],
   "award_scope": "crew",
   "award_reason": "Followed the ash notice to the soot sample."
 }
 ```
 
+Term semantics:
+
+- `required_term_groups` is a list of synonym groups. A group is satisfied
+  when the action mentions any one of its terms. Prefer this for new rules so
+  players are not punished for natural phrasing.
+- `required_terms` is a flat list where every term must be mentioned (each
+  term acts as its own group). Use it only when a rule genuinely needs two
+  distinct concepts in one action (for example `clerk` and `catalogue`).
+- Groups and flat terms combine: every flat term and every group must be
+  satisfied for the rule to fire.
+
 Design rules:
 
 - Every action-unlocked artifact should have at least one visible breadcrumb.
+- At least one term in every group must appear verbatim in public text
+  (contract premise, evidence asset summaries, or a public artifact's title,
+  summary, or full text). The seed lint test enforces this.
 - Required terms should be fair and likely from public artifacts.
-- Avoid requiring exact poetic language.
-- Use 1-2 terms for most rules.
+- Avoid requiring exact poetic language; add 2-3 synonyms per group.
+- Use one group (or 1-2 flat terms) for most rules.
 - Do not hide all viable proof behind one obscure unlock.
 - Do not make every crew receive every artifact automatically.
 
@@ -473,6 +487,39 @@ Use:
 ```
 
 Rubric hooks should correspond to dossier needs and proof lanes.
+
+### Rubric Facts
+
+Every seeded contract is scored by the seed-driven rubric scorer: crews earn
+points for proof lanes they cover with citations, a corroboration bonus for
+multi-lane proofs, a premium for citing unlocked (hidden) artifacts, and —
+most importantly — points for **rubric facts**. Facts are the hidden key
+findings of the contract, and they are what separates two competent crews.
+
+```json
+"scoring_hints": {
+  "rubric_facts": [
+    {
+      "fact_id": "fact_fire_chronology",
+      "points": 20,
+      "required_artifact_ids": ["artifact_ash_notice", "artifact_soot_sample"],
+      "reveal": "Fire chronology is now suspect."
+    }
+  ]
+}
+```
+
+A crew establishes a fact when one of its typed claims cites every artifact in
+`required_artifact_ids` (and matches `required_predicate`, when set). The
+`reveal` string is the only part of a fact players ever see, and it must
+appear in `allowed_reveal_strings`. Author 2-3 facts per contract: one
+reachable from public artifacts, the rest gated behind unlocks so
+investigation outscores checklist play. The seed lint test enforces that
+facts reference real artifacts and use allowed reveal strings.
+
+Ties are never silent: standings sort by score, then established facts, then
+contamination, then crew noise, then the earliest final dossier edit, and the
+resolution narration states that ladder.
 
 Allowed reveal strings are player-safe resolution text. They should reveal
 consequences or partial truths without dumping the hidden truth unless the phase

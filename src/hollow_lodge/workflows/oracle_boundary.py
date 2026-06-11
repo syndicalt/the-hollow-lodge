@@ -7,6 +7,14 @@ from typing import Annotated, Protocol, Self
 
 from pydantic import BaseModel, ConfigDict, Field, model_validator
 
+from hollow_lodge.domain.scoring import (
+    LEGACY_SCORING_MODE,
+    RUBRIC_SCORING_MODE,
+    ArtifactScoreContext,
+    RubricFact,
+    established_fact_ids,
+)
+
 
 MAX_ORACLE_RESULT_LINES = 12
 MAX_ORACLE_TEXT_CHARS = 500
@@ -54,6 +62,9 @@ class AuctionPreviewCrewPacket(BaseModel):
     compiled_actions: tuple[CompiledActionSignal, ...] = ()
     typed_claims: tuple[TypedClaimSignal, ...] = ()
     crew_noise: int = Field(default=0, ge=0)
+    # Event-log sequence of the crew's final dossier edit; the last rung of
+    # the tiebreak ladder (earlier edit wins).
+    last_dossier_edit_sequence: int = Field(default=0, ge=0)
 
 
 class AuctionPreviewOraclePacket(BaseModel):
@@ -68,6 +79,9 @@ class AuctionPreviewOraclePacket(BaseModel):
     allowed_evidence_ids: tuple[str, ...] = ()
     score_min: int = Field(default=0, ge=0)
     score_max: int = Field(default=100, ge=1)
+    scoring_mode: str = LEGACY_SCORING_MODE
+    artifact_contexts: tuple[ArtifactScoreContext, ...] = ()
+    rubric_facts: tuple[RubricFact, ...] = ()
 
     @model_validator(mode="after")
     def validate_score_bounds(self) -> Self:
@@ -179,12 +193,46 @@ def validate_auction_preview_result(
     _reject_hidden_truth_leak(packet=packet, result=result)
 
     ordered_standings = tuple(
-        sorted(
-            accepted_standings,
-            key=lambda standing: (-standing.score, standing.crew_id),
-        )
+        sorted(accepted_standings, key=_standing_sort_key(packet))
     )
     return result.model_copy(update={"standings": ordered_standings})
+
+
+TIEBREAK_LADDER_NARRATION = (
+    "Ties break on established key facts, then contamination, then crew "
+    "noise, then the earliest final dossier edit."
+)
+
+
+def _standing_sort_key(packet: AuctionPreviewOraclePacket):
+    """Tiebreak ladder, derived from packet data only.
+
+    Built exclusively from the server-authored packet so no oracle provider
+    can influence ordering beyond the (clamped) score itself.
+    """
+    if packet.scoring_mode != RUBRIC_SCORING_MODE:
+        return lambda standing: (-standing.score, standing.crew_id)
+
+    crews_by_id = {crew.crew_id: crew for crew in packet.crews}
+
+    def key(standing: AuctionPreviewCrewResult):
+        crew = crews_by_id[standing.crew_id]
+        facts = len(established_fact_ids(packet.rubric_facts, crew.typed_claims))
+        contaminated = sum(
+            1
+            for edge in crew.known_edges
+            if isinstance(edge, dict) and edge.get("relation") == "contaminates"
+        )
+        return (
+            -standing.score,
+            -facts,
+            contaminated,
+            crew.crew_noise,
+            crew.last_dossier_edit_sequence,
+            standing.crew_id,
+        )
+
+    return key
 
 
 def _unique_crew_ids(crew_ids: Iterable[str]) -> set[str]:

@@ -50,6 +50,7 @@ from hollow_lodge.server.services import (
     ProofService,
     VisibilityService,
 )
+from hollow_lodge.server.autopilot import start_autopilot
 from hollow_lodge.workflows.deterministic_oracle import DeterministicResolutionOracle
 from hollow_lodge.workflows.oracle_boundary import ResolutionOracle
 from hollow_lodge.workflows.openai_oracle import OpenAIResolutionOracle
@@ -158,6 +159,7 @@ def create_app(
             context="startup",
             last_sequence=_last_event_sequence(startup_events),
         )
+    app.state.autopilot_thread = start_autopilot(app)
 
     app.include_router(identity_router)
     app.include_router(crews_router)

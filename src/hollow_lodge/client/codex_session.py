@@ -6,6 +6,7 @@ from typing import Any
 import httpx
 
 from hollow_lodge.client.api import HollowLodgeApi, new_command_key
+from hollow_lodge.client.errors import FriendlyApi
 from hollow_lodge.client.artifact_render import (
     build_artifact_graph_packet,
     build_artifact_packet,
@@ -51,9 +52,11 @@ class CodexGameSession:
         self.config_path = config_path
         self.local_log_path = local_log_path
         self.config: ClientConfig = load_config(config_path)
-        self.api = api or HollowLodgeApi(
-            server_url=self.config.server_url,
-            token=self.config.token,
+        self.api = api or FriendlyApi(
+            HollowLodgeApi(
+                server_url=self.config.server_url,
+                token=self.config.token,
+            )
         )
         self._refresh_display_name()
         self.local_log = LocalEventLog(local_log_path)

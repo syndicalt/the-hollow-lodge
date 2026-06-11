@@ -43,8 +43,8 @@
         "contract_id": "contract_wax_eclipse_bond",
         "kind": "letter",
         "title": "Sealed Repair Bond",
-        "public_summary": "A chapel repair bond carries a sun-dark seal dated before the recorded sky event.",
-        "full_text": "Bond abstract: repair fund assigned under a blackened sun seal. Filing date precedes the almanac by three days.",
+        "public_summary": "A chapel repair bond carries a sun-dark seal dated before the recorded sky event, entered under a notary stamp.",
+        "full_text": "Bond abstract: repair fund assigned under a blackened sun seal. Filing date precedes the almanac by three days. The notary's filing stamp sits beside the seal.",
         "tags": ["bond", "seal", "eclipse", "repair"],
         "proof_lanes": ["provenance", "leverage"],
         "phase_relevance": ["Bond Preview"],
@@ -114,7 +114,7 @@
         "contract_id": "contract_wax_eclipse_bond",
         "phase": "Bond Preview",
         "trigger": "action_mentions_tag",
-        "required_terms": ["notary"],
+        "required_term_groups": [["notary", "filing", "counterbook"]],
         "award_scope": "crew",
         "award_reason": "Pulled the notary counterbook behind the filed bond."
       },
@@ -124,7 +124,7 @@
         "contract_id": "contract_wax_eclipse_bond",
         "phase": "Bond Preview",
         "trigger": "action_mentions_tag",
-        "required_terms": ["bell"],
+        "required_term_groups": [["bell", "ringers", "noon"]],
         "award_scope": "crew",
         "award_reason": "Followed the almanac bell note to a private service invoice."
       }
@@ -136,6 +136,23 @@
     "allowed_reveal_strings": [
       "The seal date does not survive contact with the almanac.",
       "The repair fund reaches a private noon service."
+    ],
+    "rubric_facts": [
+      {
+        "fact_id": "fact_seal_backdate",
+        "points": 20,
+        "required_artifact_ids": [
+          "artifact_eclipse_bond",
+          "artifact_notary_counterbook"
+        ],
+        "reveal": "The seal date does not survive contact with the almanac."
+      },
+      {
+        "fact_id": "fact_private_service",
+        "points": 15,
+        "required_artifact_ids": ["artifact_bell_invoice"],
+        "reveal": "The repair fund reaches a private noon service."
+      }
     ]
   }
 }

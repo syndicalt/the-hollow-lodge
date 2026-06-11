@@ -44,7 +44,7 @@
         "kind": "receipt",
         "title": "Undertaker Receipt",
         "public_summary": "The undertaker charged for nine veiled attendants at a wake recorded with only eight witnesses.",
-        "full_text": "Receipt: nine veiled attendants paid from the estate purse. Clerk's margin: one name was settled off-ledger.",
+        "full_text": "Receipt: nine veiled attendants paid from the estate purse. Clerk's margin: one name was settled off-ledger. A parish burial fee is itemized but unsigned.",
         "tags": ["undertaker", "receipt", "mourner", "wake"],
         "proof_lanes": ["provenance", "leverage"],
         "phase_relevance": ["Wake Preview"],
@@ -55,8 +55,8 @@
         "contract_id": "contract_ninth_mourner_receipt",
         "kind": "catalogue",
         "title": "Mourning Ring Notice",
-        "public_summary": "A mourning ring lot was inserted after catalogue closure.",
-        "full_text": "Catalogue notice: black enamel ring added by private instruction after print. Viewing restricted to bonded crews.",
+        "public_summary": "A mourning ring lot was inserted after catalogue closure; a glove remains folded in the case.",
+        "full_text": "Catalogue notice: black enamel ring added by private instruction after print. Viewing restricted to bonded crews. A mourner's glove remains folded in the ring case.",
         "tags": ["ring", "estate", "catalogue", "bonded"],
         "proof_lanes": ["provenance", "material"],
         "phase_relevance": ["Wake Preview"],
@@ -114,7 +114,7 @@
         "contract_id": "contract_ninth_mourner_receipt",
         "phase": "Wake Preview",
         "trigger": "action_mentions_tag",
-        "required_terms": ["burial"],
+        "required_term_groups": [["burial", "parish", "witness"]],
         "award_scope": "crew",
         "award_reason": "Checked the parish burial index behind the undertaker's receipt."
       },
@@ -124,7 +124,7 @@
         "contract_id": "contract_ninth_mourner_receipt",
         "phase": "Wake Preview",
         "trigger": "action_mentions_tag",
-        "required_terms": ["glove"],
+        "required_term_groups": [["glove", "ring case", "wax"]],
         "award_scope": "crew",
         "award_reason": "Inspected the ring case for glove and wax traces."
       }
@@ -136,6 +136,23 @@
     "allowed_reveal_strings": [
       "The witness count no longer holds.",
       "The ring case carries a chapel trace."
+    ],
+    "rubric_facts": [
+      {
+        "fact_id": "fact_witness_count",
+        "points": 20,
+        "required_artifact_ids": [
+          "artifact_mourner_receipt",
+          "artifact_parish_burial_index"
+        ],
+        "reveal": "The witness count no longer holds."
+      },
+      {
+        "fact_id": "fact_chapel_trace",
+        "points": 15,
+        "required_artifact_ids": ["artifact_black_glove_thread"],
+        "reveal": "The ring case carries a chapel trace."
+      }
     ]
   }
 }
