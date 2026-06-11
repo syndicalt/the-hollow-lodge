@@ -43,8 +43,8 @@
         "contract_id": "contract_violet_hour_inventory",
         "kind": "catalogue",
         "title": "Devotional Clock Inventory Card",
-        "public_summary": "The clock card carries two room marks in the same clerk's hand.",
-        "full_text": "Inventory card: gilt devotional clock, violet enamel dial, marked for the west parlor and east study in the same hour.",
+        "public_summary": "The clock card carries two room marks in the same clerk's hand and a clockmaker's repair note under the enamel.",
+        "full_text": "Inventory card: gilt devotional clock, violet enamel dial, marked for the west parlor and east study in the same hour. Margin: enamel lifted once by a clockmaker for a dial repair.",
         "tags": ["clock", "inventory", "violet", "room"],
         "proof_lanes": ["provenance", "material"],
         "phase_relevance": ["Inventory Preview"],
@@ -55,8 +55,8 @@
         "contract_id": "contract_violet_hour_inventory",
         "kind": "ledger",
         "title": "Carrier Delivery Ledger",
-        "public_summary": "The carrier ledger records two deliveries for one devotional clock.",
-        "full_text": "Delivery ledger: one clock collected from Calder House, delivered twice under the same docket number.",
+        "public_summary": "The carrier ledger records two deliveries for one devotional clock, the second initialed beside a tram stamp.",
+        "full_text": "Delivery ledger: one clock collected from Calder House, delivered twice under the same docket number. The second run is initialed beside a north tram stamp.",
         "tags": ["delivery", "ledger", "docket", "carrier"],
         "proof_lanes": ["provenance", "leverage"],
         "phase_relevance": ["Inventory Preview"],
@@ -114,7 +114,7 @@
         "contract_id": "contract_violet_hour_inventory",
         "phase": "Inventory Preview",
         "trigger": "action_mentions_tag",
-        "required_terms": ["clockmaker"],
+        "required_term_groups": [["clockmaker", "enamel", "repair"]],
         "award_scope": "crew",
         "award_reason": "Asked a clockmaker to lift the enamel repair mark."
       },
@@ -124,7 +124,7 @@
         "contract_id": "contract_violet_hour_inventory",
         "phase": "Inventory Preview",
         "trigger": "action_mentions_tag",
-        "required_terms": ["tram"],
+        "required_term_groups": [["tram", "streetcar", "route"]],
         "award_scope": "crew",
         "award_reason": "Checked the carrier's route against tram ticket punches."
       }
@@ -136,6 +136,23 @@
     "allowed_reveal_strings": [
       "The clock's identity holds, but the hour does not.",
       "The carrier ledger now has a witness contradiction."
+    ],
+    "rubric_facts": [
+      {
+        "fact_id": "fact_owed_hour",
+        "points": 15,
+        "required_artifact_ids": ["artifact_clockmaker_scratch"],
+        "reveal": "The clock's identity holds, but the hour does not."
+      },
+      {
+        "fact_id": "fact_witness_contradiction",
+        "points": 20,
+        "required_artifact_ids": [
+          "artifact_delivery_ledger",
+          "artifact_tram_witness_ticket"
+        ],
+        "reveal": "The carrier ledger now has a witness contradiction."
+      }
     ]
   }
 }

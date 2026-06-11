@@ -6,6 +6,7 @@ import typer
 
 from hollow_lodge import __version__
 from hollow_lodge.client.api import HollowLodgeApi, new_command_key
+from hollow_lodge.client.errors import FriendlyApi, GameCommandError
 from hollow_lodge.client.artifact_render import (
     build_artifact_graph_packet,
     build_artifact_packet,
@@ -1879,8 +1880,8 @@ def packet_lead_vote(
     typer.echo(response)
 
 
-def _api_from_config(config: ClientConfig) -> HollowLodgeApi:
-    return HollowLodgeApi(server_url=config.server_url, token=config.token)
+def _api_from_config(config: ClientConfig) -> FriendlyApi:
+    return FriendlyApi(HollowLodgeApi(server_url=config.server_url, token=config.token))
 
 
 def _server_health_status(server_url: str) -> str:
@@ -2064,7 +2065,11 @@ def _payload_matches_conversation(payload: dict, conversation_id: str) -> bool:
 
 
 def main() -> None:
-    app()
+    try:
+        app()
+    except GameCommandError as exc:
+        typer.secho(f"Error: {exc.message}", fg=typer.colors.RED, err=True)
+        raise SystemExit(exc.exit_code)
 
 
 if __name__ == "__main__":

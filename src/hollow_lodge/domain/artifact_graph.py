@@ -56,6 +56,10 @@ class ArtifactUnlockRule(BaseModel):
     phase: str = Field(min_length=1)
     trigger: ArtifactUnlockTrigger
     required_terms: tuple[str, ...] = ()
+    # Each group is a synonym set: the group is satisfied when the action
+    # mentions any one of its terms. Groups combine with required_terms
+    # (every term and every group must be satisfied).
+    required_term_groups: tuple[tuple[str, ...], ...] = ()
     required_artifact_ids: tuple[str, ...] = ()
     award_scope: ArtifactAwardScope = "crew"
     award_reason: str = Field(min_length=1)

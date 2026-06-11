@@ -25,8 +25,12 @@ def action_unlock_candidates(
         if rule.artifact_id in already_visible_artifact_ids:
             continue
         if rule.trigger == "action_mentions_tag":
-            if {term.casefold() for term in rule.required_terms}.issubset(
-                normalized_terms
+            term_groups = [
+                (term,) for term in rule.required_terms
+            ] + [tuple(group) for group in rule.required_term_groups]
+            if all(
+                any(term.casefold() in normalized_terms for term in group)
+                for group in term_groups
             ):
                 candidates.append(rule)
         elif rule.trigger == "action_exposes_asset":

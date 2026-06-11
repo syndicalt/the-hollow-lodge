@@ -45,7 +45,9 @@ logger = logging.getLogger(__name__)
 
 
 class LockAuctionPreviewRequest(BaseModel):
-    hours_elapsed: int = Field(ge=0)
+    # Deprecated: the server derives elapsed phase time from the contract's
+    # publish timestamp; a client-supplied value is accepted but ignored.
+    hours_elapsed: int | None = Field(default=None, ge=0)
 
 
 class ActivateContractSeedRequest(BaseModel):
@@ -251,12 +253,17 @@ def lock_auction_preview(
     idempotency_key: str = Header(..., alias="Idempotency-Key"),
     player: Player = Depends(current_player),
 ):
+    if not request.app.state.crew_service.member_of_any(player.player_id):
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="not a crew member",
+        )
     try:
         result = _contract_service(request).lock_auction_preview(
             contract_id=contract_id,
             actor_id=player.player_id,
-            hours_elapsed=payload.hours_elapsed,
             idempotency_key=idempotency_key,
+            client_hours_elapsed=payload.hours_elapsed,
         )
         _refresh_projection_store(request)
         return result

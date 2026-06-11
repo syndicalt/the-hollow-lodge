@@ -1,7 +1,13 @@
 from __future__ import annotations
 
-from hollow_lodge.domain.scoring import AuctionPreviewScoreInput, score_auction_preview
+from hollow_lodge.domain.scoring import (
+    RUBRIC_SCORING_MODE,
+    AuctionPreviewScoreInput,
+    score_auction_preview,
+    score_rubric_contract,
+)
 from hollow_lodge.workflows.oracle_boundary import (
+    TIEBREAK_LADDER_NARRATION,
     AuctionPreviewCrewResult,
     AuctionPreviewOraclePacket,
     AuctionPreviewOracleResult,
@@ -42,29 +48,36 @@ class DeterministicResolutionOracle:
         self,
         packet: AuctionPreviewOraclePacket,
     ) -> AuctionPreviewOracleResult:
+        rubric_mode = packet.scoring_mode == RUBRIC_SCORING_MODE
         scores = []
         for crew in packet.crews:
-            score = score_auction_preview(
-                AuctionPreviewScoreInput(
-                    crew_id=crew.crew_id,
-                    evidence_ids=crew.evidence_ids,
-                    artifact_citations=tuple(
-                        citation.model_dump(mode="json")
-                        for citation in crew.artifact_citations
-                    ),
-                    known_edges=crew.known_edges,
-                    exposed_assets=crew.exposed_assets,
-                    compiled_actions=tuple(
-                        action.model_dump(mode="json")
-                        for action in crew.compiled_actions
-                    ),
-                    typed_claims=tuple(
-                        claim.model_dump(mode="json")
-                        for claim in crew.typed_claims
-                    ),
-                    crew_noise=crew.crew_noise,
-                )
+            score_input = AuctionPreviewScoreInput(
+                crew_id=crew.crew_id,
+                evidence_ids=crew.evidence_ids,
+                artifact_citations=tuple(
+                    citation.model_dump(mode="json")
+                    for citation in crew.artifact_citations
+                ),
+                known_edges=crew.known_edges,
+                exposed_assets=crew.exposed_assets,
+                compiled_actions=tuple(
+                    action.model_dump(mode="json")
+                    for action in crew.compiled_actions
+                ),
+                typed_claims=tuple(
+                    claim.model_dump(mode="json")
+                    for claim in crew.typed_claims
+                ),
+                crew_noise=crew.crew_noise,
             )
+            if rubric_mode:
+                score = score_rubric_contract(
+                    score_input,
+                    artifact_contexts=packet.artifact_contexts,
+                    rubric_facts=packet.rubric_facts,
+                )
+            else:
+                score = score_auction_preview(score_input)
             strengths = list(score.strengths)
             if crew.artifact_citations:
                 strengths.append("cited artifact source material")
@@ -76,14 +89,25 @@ class DeterministicResolutionOracle:
                 score.model_copy(
                     update={
                         "total": adjusted_total,
-                        "standing": _standing(
-                            total=adjusted_total,
-                            strengths=adjusted_strengths,
+                        "standing": (
+                            score.standing
+                            if rubric_mode
+                            else _standing(
+                                total=adjusted_total,
+                                strengths=adjusted_strengths,
+                            )
                         ),
                         "strengths": adjusted_strengths,
                     }
                 )
             )
+        if rubric_mode:
+            narration = (
+                "The phase resolves from cited proof lanes and established "
+                f"key facts. {TIEBREAK_LADDER_NARRATION}"
+            )
+        else:
+            narration = "The auction preview resolves from submitted proof packets."
         result = AuctionPreviewOracleResult(
             provider=self.runtime_metadata(),
             standings=tuple(
@@ -94,15 +118,23 @@ class DeterministicResolutionOracle:
                     strengths=score.strengths,
                     weaknesses=score.weaknesses,
                     penalties=score.penalties,
-                    revealed_clues=_safe_public_reveals(
-                        score.revealed_clues,
-                        allowed_reveal_strings=packet.allowed_reveal_strings,
+                    revealed_clues=(
+                        tuple(
+                            clue
+                            for clue in score.revealed_clues
+                            if clue in packet.allowed_reveal_strings
+                        )
+                        if rubric_mode
+                        else _safe_public_reveals(
+                            score.revealed_clues,
+                            allowed_reveal_strings=packet.allowed_reveal_strings,
+                        )
                     ),
                 )
                 for score in scores
             ),
             contract_state=tuple(packet.allowed_reveal_strings[:2]),
-            narration="The auction preview resolves from submitted proof packets.",
+            narration=narration,
             validation_warnings=(),
         )
         return validate_auction_preview_result(packet=packet, result=result)

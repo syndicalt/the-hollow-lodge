@@ -40,7 +40,7 @@ SHIPPED_CONTRACT_SMOKES = (
         "hours_elapsed": 4,
         "crew_actions": (
             "Follow the ash notice into the soot cooling pattern.",
-            "Interview the witness about the recovered window frame.",
+            "Compare the glass residue against the reported fire time.",
         ),
         "artifact_citation": {
             "artifact_id": "artifact_ash_notice",
